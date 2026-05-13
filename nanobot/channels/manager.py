@@ -47,10 +47,12 @@ class ChannelManager:
         bus: MessageBus,
         *,
         session_manager: "SessionManager | None" = None,
+        agent_manager: Any = None,
     ):
         self.config = config
         self.bus = bus
         self._session_manager = session_manager
+        self._agent_manager = agent_manager
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
 
@@ -85,6 +87,8 @@ class ChannelManager:
                     static_path = _default_webui_dist()
                     if static_path is not None:
                         kwargs["static_dist_path"] = static_path
+                    if self._agent_manager is not None:
+                        kwargs["agent_manager"] = self._agent_manager
                 channel = cls(section, self.bus, **kwargs)
                 channel.transcription_provider = transcription_provider
                 channel.transcription_api_key = transcription_key

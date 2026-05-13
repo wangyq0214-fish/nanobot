@@ -1,5 +1,15 @@
 export type Role = "user" | "assistant" | "tool" | "system";
 
+/** User role in the teaching system */
+export type UserRole = "student" | "teacher" | "researcher";
+
+/** Logged-in user info */
+export interface UserInfo {
+  role: UserRole;
+  userId: string;
+  displayName: string;
+}
+
 /** "trace" rows are intermediate agent breadcrumbs (tool-call hints,
  * progress pings) that should not be rendered as conversational replies. */
 export type MessageKind = "message" | "trace";
@@ -62,6 +72,8 @@ export interface BootstrapResponse {
   ws_path: string;
   expires_in: number;
   model_name?: string | null;
+  role?: UserRole;
+  user_id?: string;
 }
 
 export type ConnectionStatus =

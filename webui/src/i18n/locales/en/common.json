@@ -23,6 +23,7 @@
     "newChat": "New chat",
     "recent": "Recent",
     "refreshSessions": "Refresh sessions",
+    "logout": "Log out",
     "language": {
       "label": "Language",
       "ariaLabel": "Change language"
@@ -107,6 +108,63 @@
     "messageTooBig": {
       "title": "Message too large",
       "body": "The server rejected your last message because it exceeded the size limit. Remove some images or try smaller files, then send again."
+    }
+  },
+  "teacher": {
+    "home": {
+      "title": "Teaching Command Center",
+      "subtitle": "Choose a feature to get started"
+    },
+    "feature": {
+      "lessonPlan": {
+        "title": "Smart Lesson Planner",
+        "desc": "Style transfer, differentiated versions, cross-disciplinary"
+      },
+      "quizGen": {
+        "title": "Quiz Generator",
+        "desc": "Auto-generate tiered questions from lesson plans"
+      },
+      "reflection": {
+        "title": "Teaching Reflection",
+        "desc": "Voice input classroom notes, AI structured summary"
+      },
+      "qa": {
+        "title": "Teaching Q&A",
+        "desc": "Ask any teaching-related questions"
+      }
+    }
+  },
+  "login": {
+    "title": "Teaching Agent System",
+    "subtitle": "Select a role and enter your name to begin",
+    "selectRole": "Select Role",
+    "role": {
+      "student": "Student",
+      "student.desc": "Tutoring & guided learning",
+      "teacher": "Teacher",
+      "teacher.desc": "Quizzes, grading, analytics",
+      "researcher": "Researcher",
+      "researcher.desc": "Literature search & paper analysis"
+    },
+    "userId": "Username",
+    "userId.placeholder": "Enter your username",
+    "mode": {
+      "login": "Login",
+      "register": "Register"
+    },
+    "submit": "Enter System",
+    "submitLogin": "Login",
+    "submitRegister": "Register",
+    "switchToLogin": "Already have an account? Login",
+    "switchToRegister": "No account? Register",
+    "error": {
+      "selectRole": "Please select a role",
+      "enterName": "Please enter a username",
+      "nameTooLong": "Username must be 64 characters or fewer",
+      "networkError": "Network error, please try again",
+      "userExists": "Username already exists",
+      "userNotFound": "User not found, please register first",
+      "serverError": "Server error, please try again"
     }
   }
 }

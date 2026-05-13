@@ -27,8 +27,9 @@ export default defineConfig(({ mode }) => {
       sourcemap: false,
     },
     server: {
-      host: "127.0.0.1",
+      host: "0.0.0.0",
       port: 5173,
+      allowedHosts: true,  // 允许所有主机名（包括 ngrok）
       strictPort: true,
       // Move Vite's HMR socket to a dedicated port so it doesn't collide with
       // the ``/`` proxy below (Vite HMR and the nanobot ws upgrade both sit on

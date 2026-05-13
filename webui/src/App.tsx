@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DeleteConfirm } from "@/components/DeleteConfirm";
+import { LoginScreen } from "@/components/LoginScreen";
 import { Sidebar } from "@/components/Sidebar";
 import { ThreadShell } from "@/components/thread/ThreadShell";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -10,10 +11,43 @@ import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { deriveWsUrl, fetchBootstrap } from "@/lib/bootstrap";
 import { NanobotClient } from "@/lib/nanobot-client";
-import { ClientProvider } from "@/providers/ClientProvider";
-import type { ChatSummary } from "@/lib/types";
+import { ClientProvider, useClient } from "@/providers/ClientProvider";
+import type { ChatSummary, UserInfo, UserRole } from "@/lib/types";
+
+const USER_STORAGE_KEY = "nanobot-webui.user";
+
+function loadSavedUser(): UserInfo | null {
+  try {
+    const raw = localStorage.getItem(USER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.role && parsed?.userId) {
+      return parsed as UserInfo;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function saveUser(user: UserInfo): void {
+  try {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  } catch {
+    // ignore
+  }
+}
+
+function clearSavedUser(): void {
+  try {
+    localStorage.removeItem(USER_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 type BootState =
+  | { status: "login" }
   | { status: "loading" }
   | { status: "error"; message: string }
   | {
@@ -21,6 +55,7 @@ type BootState =
       client: NanobotClient;
       token: string;
       modelName: string | null;
+      user: UserInfo;
     };
 
 const SIDEBAR_STORAGE_KEY = "nanobot-webui.sidebar";
@@ -39,20 +74,31 @@ function readSidebarOpen(): boolean {
 
 export default function App() {
   const { t } = useTranslation();
-  const [state, setState] = useState<BootState>({ status: "loading" });
+  const [state, setState] = useState<BootState>(() => {
+    const saved = loadSavedUser();
+    return saved ? { status: "loading" } : { status: "login" };
+  });
 
+  // Bootstrap on mount if user is already logged in
   useEffect(() => {
+    if (state.status !== "loading") return;
+    const saved = loadSavedUser();
+    if (!saved) {
+      setState({ status: "login" });
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
-        const boot = await fetchBootstrap();
+        const boot = await fetchBootstrap("", saved.role, saved.userId);
         if (cancelled) return;
         const url = deriveWsUrl(boot.ws_path, boot.token);
         const client = new NanobotClient({
           url,
           onReauth: async () => {
             try {
-              const refreshed = await fetchBootstrap();
+              const refreshed = await fetchBootstrap("", saved.role, saved.userId);
               return deriveWsUrl(refreshed.ws_path, refreshed.token);
             } catch {
               return null;
@@ -65,6 +111,7 @@ export default function App() {
           client,
           token: boot.token,
           modelName: boot.model_name ?? null,
+          user: saved,
         });
       } catch (e) {
         if (cancelled) return;
@@ -74,6 +121,21 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, [state.status]);
+
+  const handleLogin = useCallback(async (role: UserRole, userId: string) => {
+    const user: UserInfo = {
+      role,
+      userId,
+      displayName: userId,
+    };
+    saveUser(user);
+    setState({ status: "loading" });
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    clearSavedUser();
+    setState({ status: "login" });
   }, []);
 
   useEffect(() => {
@@ -92,6 +154,10 @@ export default function App() {
     const id = globalThis.setTimeout(warm, 250);
     return () => globalThis.clearTimeout(id);
   }, []);
+
+  if (state.status === "login") {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   if (state.status === "loading") {
     return (
@@ -141,15 +207,17 @@ export default function App() {
       client={state.client}
       token={state.token}
       modelName={state.modelName}
+      user={state.user}
     >
-      <Shell />
+      <Shell onLogout={handleLogout} />
     </ClientProvider>
   );
 }
 
-function Shell() {
+function Shell({ onLogout }: { onLogout?: () => void }) {
   const { t, i18n } = useTranslation();
   const { theme, toggle } = useTheme();
+  const { user } = useClient();
   const { sessions, loading, refresh, createChat, deleteChat } = useSessions();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [desktopSidebarOpen, setDesktopSidebarOpen] =
@@ -258,6 +326,7 @@ function Shell() {
     activeKey,
     loading,
     theme,
+    user,
     onToggleTheme: toggle,
     onNewChat: () => {
       void onNewChat();
@@ -266,6 +335,7 @@ function Shell() {
     onRefresh: () => void refresh(),
     onRequestDelete: (key: string, label: string) =>
       setPendingDelete({ key, label }),
+    onLogout,
   };
 
   return (

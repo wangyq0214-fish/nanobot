@@ -1,11 +1,13 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { NanobotClient } from "@/lib/nanobot-client";
+import type { UserInfo } from "@/lib/types";
 
 interface ClientContextValue {
   client: NanobotClient;
   token: string;
   modelName: string | null;
+  user: UserInfo | null;
 }
 
 const ClientContext = createContext<ClientContextValue | null>(null);
@@ -14,15 +16,17 @@ export function ClientProvider({
   client,
   token,
   modelName = null,
+  user = null,
   children,
 }: {
   client: NanobotClient;
   token: string;
   modelName?: string | null;
+  user?: UserInfo | null;
   children: ReactNode;
 }) {
   return (
-    <ClientContext.Provider value={{ client, token, modelName }}>
+    <ClientContext.Provider value={{ client, token, modelName, user }}>
       {children}
     </ClientContext.Provider>
   );

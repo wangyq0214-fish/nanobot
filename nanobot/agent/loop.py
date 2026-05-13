@@ -194,6 +194,7 @@ class AgentLoop:
         unified_session: bool = False,
         disabled_skills: list[str] | None = None,
         tools_config: ToolsConfig | None = None,
+        agent_manager: Any = None,  # 新增：智能体管理器
     ):
         from nanobot.config.schema import ExecToolConfig, ToolsConfig, WebToolsConfig
 
@@ -227,7 +228,17 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
 
-        self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
+        # 新增：智能体管理器
+        self.agent_manager = agent_manager
+
+        # 获取当前激活的智能体配置
+        active_agent_profile = None
+        if self.agent_manager:
+            active_agent = self.agent_manager.get_active_agent()
+            if active_agent:
+                active_agent_profile = active_agent.to_dict()
+
+        self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills, agent_profile=active_agent_profile, agent_manager=agent_manager)
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         self.runner = AgentRunner(provider)
@@ -260,6 +271,21 @@ class AgentLoop:
         self._concurrency_gate: asyncio.Semaphore | None = (
             asyncio.Semaphore(_max) if _max > 0 else None
         )
+        # Per-user workspace support: templates directory for role-based workspaces
+        nanobot_root = Path.home() / ".nanobot"
+        candidate = nanobot_root / "templates"
+        if candidate.is_dir():
+            self._templates_dir = candidate
+        elif workspace.parent.name == "templates" and workspace.parent.parent.name == "nanobot":
+            self._templates_dir = workspace.parent
+        else:
+            self._templates_dir = None
+        self._user_workspaces: dict[str, tuple[ContextBuilder, SessionManager]] = {}
+
+        # Ensure default workspace has required subdirectories for fallback
+        (workspace / "sessions").mkdir(parents=True, exist_ok=True)
+        (workspace / "memory").mkdir(parents=True, exist_ok=True)
+
         self.consolidator = Consolidator(
             store=self.context.memory,
             provider=provider,
@@ -622,11 +648,85 @@ class AgentLoop:
                 else None
             )
 
+    def _resolve_user_context(
+        self, role: str, user_id: str
+    ) -> tuple[ContextBuilder, SessionManager] | None:
+        """Resolve per-user ContextBuilder and SessionManager.
+
+        Returns (context, sessions) for the given role+user_id, creating the
+        user workspace from templates on first access.  Returns None when
+        templates are not available (single-user fallback).
+        """
+        if not role or not user_id or not self._templates_dir:
+            return None
+
+        cache_key = f"{role}:{user_id}"
+        if cache_key in self._user_workspaces:
+            return self._user_workspaces[cache_key]
+
+        template_dir = self._templates_dir / role
+        if not template_dir.is_dir():
+            logger.warning("Template directory not found for role '{}': {}", role, template_dir)
+            return None
+
+        # users/ directory sits alongside templates/
+        users_dir = self._templates_dir.parent / "users"
+        user_ws = users_dir / role / user_id
+
+        # First access: copy template files to user workspace
+        if not user_ws.exists():
+            import shutil
+            user_ws.mkdir(parents=True, exist_ok=True)
+            for f in template_dir.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, user_ws / f.name)
+            # Create subdirectories
+            (user_ws / "memory").mkdir(exist_ok=True)
+            (user_ws / "sessions").mkdir(exist_ok=True)
+            logger.info("Created user workspace: {}", user_ws)
+
+        # Build per-user ContextBuilder with role workspace for shared files
+        ctx = ContextBuilder(
+            workspace=user_ws,
+            timezone=self.context.timezone,
+            disabled_skills=list(self._extra_hooks) if hasattr(self, '_disabled_skills') else None,
+            agent_profile=None,
+            agent_manager=self.agent_manager,
+            role_workspace=template_dir,
+        )
+        sessions = SessionManager(user_ws)
+        self._user_workspaces[cache_key] = (ctx, sessions)
+        return ctx, sessions
+
     async def _dispatch(self, msg: InboundMessage) -> None:
         """Process a message: per-session serial, cross-session concurrent."""
-        session_key = self._effective_session_key(msg)
-        if session_key != msg.session_key:
+        # --- Per-user workspace resolution ---
+        metadata = msg.metadata or {}
+        role = metadata.get("role", "")
+        user_id = metadata.get("user_id", "")
+        logger.debug("Dispatch: role={}, user_id={}, metadata={}", role, user_id, metadata)
+        user_ctx_sessions = self._resolve_user_context(role, user_id)
+
+        # Switch agent based on role
+        if role and self.agent_manager:
+            role_agent_map = {
+                "student": "student_agent",
+                "teacher": "teacher_agent",
+                "researcher": "researcher_agent",
+            }
+            target = role_agent_map.get(role)
+            if target:
+                self.agent_manager.switch_agent(target)
+
+        # Per-user session key: prefix with role:user_id for isolation
+        if role and user_id:
+            original_key = self._effective_session_key(msg)
+            session_key = f"{role}:{user_id}:{original_key}"
             msg = dataclasses.replace(msg, session_key_override=session_key)
+        else:
+            session_key = self._effective_session_key(msg)
+            if session_key != msg.session_key:
+                msg = dataclasses.replace(msg, session_key_override=session_key)
         lock = self._session_locks.setdefault(session_key, asyncio.Lock())
         gate = self._concurrency_gate or nullcontext()
 
@@ -673,6 +773,7 @@ class AgentLoop:
                     response = await self._process_message(
                         msg, on_stream=on_stream, on_stream_end=on_stream_end,
                         pending_queue=pending,
+                        user_ctx_sessions=user_ctx_sessions,
                     )
                     if response is not None:
                         await self.bus.publish_outbound(response)
@@ -692,10 +793,11 @@ class AgentLoop:
                     # next conversation turn.
                     try:
                         key = self._effective_session_key(msg)
-                        session = self.sessions.get_or_create(key)
+                        _fallback_sessions = user_ctx_sessions[1] if user_ctx_sessions else self.sessions
+                        session = _fallback_sessions.get_or_create(key)
                         if self._restore_runtime_checkpoint(session):
                             self._clear_pending_user_turn(session)
-                            self.sessions.save(session)
+                            _fallback_sessions.save(session)
                             logger.info(
                                 "Restored partial context for cancelled session {}",
                                 key,
@@ -764,8 +866,34 @@ class AgentLoop:
         on_stream: Callable[[str], Awaitable[None]] | None = None,
         on_stream_end: Callable[..., Awaitable[None]] | None = None,
         pending_queue: asyncio.Queue | None = None,
+        user_ctx_sessions: tuple[ContextBuilder, SessionManager] | None = None,
     ) -> OutboundMessage | None:
         """Process a single inbound message and return the response."""
+        # Temporarily swap to per-user context/sessions when available
+        _orig_context = self.context
+        _orig_sessions = self.sessions
+        if user_ctx_sessions:
+            self.context, self.sessions = user_ctx_sessions
+            logger.debug("Using user workspace: {}", self.context.workspace)
+        try:
+            return await self._process_message_inner(
+                msg, session_key=session_key,
+                on_progress=on_progress, on_stream=on_stream,
+                on_stream_end=on_stream_end, pending_queue=pending_queue,
+            )
+        finally:
+            self.context = _orig_context
+            self.sessions = _orig_sessions
+
+    async def _process_message_inner(
+        self,
+        msg: InboundMessage,
+        session_key: str | None = None,
+        on_progress: Callable[..., Awaitable[None]] | None = None,
+        on_stream: Callable[[str], Awaitable[None]] | None = None,
+        on_stream_end: Callable[..., Awaitable[None]] | None = None,
+        pending_queue: asyncio.Queue | None = None,
+    ) -> OutboundMessage | None:
         # System messages: parse origin from chat_id ("channel:chat_id")
         if msg.channel == "system":
             channel, chat_id = (

@@ -23,17 +23,19 @@ export function useSessions(): {
   createChat: () => Promise<string>;
   deleteChat: (key: string) => Promise<void>;
 } {
-  const { client, token } = useClient();
+  const { client, token, user } = useClient();
   const [sessions, setSessions] = useState<ChatSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
+  const userRef = useRef(user);
+  userRef.current = user;
 
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      const rows = await listSessions(tokenRef.current);
+      const rows = await listSessions(tokenRef.current, "", user?.role, user?.userId);
       setSessions(rows);
       setError(null);
     } catch (e) {
@@ -43,7 +45,7 @@ export function useSessions(): {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role, user?.userId]);
 
   useEffect(() => {
     void refresh();
@@ -70,7 +72,8 @@ export function useSessions(): {
 
   const deleteChat = useCallback(
     async (key: string) => {
-      await apiDeleteSession(tokenRef.current, key);
+      const u = userRef.current;
+      await apiDeleteSession(tokenRef.current, key, "", u?.role, u?.userId);
       setSessions((prev) => prev.filter((s) => s.key !== key));
     },
     [],
@@ -85,7 +88,7 @@ export function useSessionHistory(key: string | null): {
   loading: boolean;
   error: string | null;
 } {
-  const { token } = useClient();
+  const { token, user } = useClient();
   const [state, setState] = useState<{
     key: string | null;
     messages: UIMessage[];
@@ -119,7 +122,7 @@ export function useSessionHistory(key: string | null): {
     });
     (async () => {
       try {
-        const body = await fetchSessionMessages(token, key);
+        const body = await fetchSessionMessages(token, key, "", user?.role, user?.userId);
         if (cancelled) return;
         const ui: UIMessage[] = body.messages.flatMap((m, idx) => {
           if (m.role !== "user" && m.role !== "assistant") return [];

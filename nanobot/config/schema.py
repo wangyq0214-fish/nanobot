@@ -65,6 +65,17 @@ class DreamConfig(Base):
         return f"every {hours}h"
 
 
+class AgentProfile(Base):
+    """单个智能体的配置"""
+    name: str  # 智能体标识符，如 "ai_tutor"
+    display_name: str = Field(alias="displayName")  # 显示名称，如 "AI知识导师"
+    role: str = ""  # 角色描述
+    description: str = ""  # 功能描述
+    system_prompt_override: str | None = Field(default=None, alias="systemPromptOverride")  # 覆盖系统提示词
+    temperature: float | None = None  # 覆盖温度
+    enabled: bool = True
+
+
 class AgentDefaults(Base):
     """Default agent configuration."""
 
@@ -91,6 +102,10 @@ class AgentDefaults(Base):
         serialization_alias="idleCompactAfterMinutes",
     )  # Auto-compact idle threshold in minutes (0 = disabled)
     dream: DreamConfig = Field(default_factory=DreamConfig)
+
+    # 新增：多智能体配置
+    active_agent: str = Field(default="", alias="activeAgent")  # 当前激活的智能体
+    agents: list[AgentProfile] = Field(default_factory=list)  # 智能体列表
 
 
 class AgentsConfig(Base):

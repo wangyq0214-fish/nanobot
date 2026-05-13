@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { TeacherHome } from "@/components/TeacherHome";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
@@ -39,7 +40,7 @@ export function ThreadShell({
   const chatId = session?.chatId ?? null;
   const historyKey = session?.key ?? null;
   const { messages: historical, loading } = useSessionHistory(historyKey);
-  const { client, modelName } = useClient();
+  const { client, modelName, user } = useClient();
   const [booting, setBooting] = useState(false);
   const pendingFirstRef = useRef<string | null>(null);
   const messageCacheRef = useRef<Map<string, UIMessage[]>>(new Map());
@@ -114,6 +115,8 @@ export function ThreadShell({
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
       {t("thread.loadingConversation")}
     </div>
+  ) : user?.role === "teacher" && !session ? (
+    <TeacherHome onSendMessage={handleWelcomeSend} />
   ) : (
     <div className="flex w-full max-w-[40rem] flex-col gap-2 text-left animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
       <div className="inline-flex items-center gap-2 text-[11px] font-medium text-muted-foreground">

@@ -37,6 +37,8 @@ function splitKey(key: string): { channel: string; chatId: string } {
 export async function listSessions(
   token: string,
   base: string = "",
+  role?: string,
+  userId?: string,
 ): Promise<ChatSummary[]> {
   type Row = {
     key: string;
@@ -44,10 +46,12 @@ export async function listSessions(
     updated_at: string | null;
     preview?: string;
   };
-  const body = await request<{ sessions: Row[] }>(
-    `${base}/api/sessions`,
-    token,
-  );
+  const params = new URLSearchParams();
+  if (role) params.set("role", role);
+  if (userId) params.set("user_id", userId);
+  const qs = params.toString();
+  const url = `${base}/api/sessions${qs ? `?${qs}` : ""}`;
+  const body = await request<{ sessions: Row[] }>(url, token);
   return body.sessions.map((s) => ({
     key: s.key,
     ...splitKey(s.key),
@@ -71,6 +75,8 @@ export async function fetchSessionMessages(
   token: string,
   key: string,
   base: string = "",
+  role?: string,
+  userId?: string,
 ): Promise<{
   key: string;
   created_at: string | null;
@@ -87,20 +93,26 @@ export async function fetchSessionMessages(
     media_urls?: SessionMediaUrl[];
   }>;
 }> {
-  return request(
-    `${base}/api/sessions/${encodeURIComponent(key)}/messages`,
-    token,
-  );
+  const params = new URLSearchParams();
+  if (role) params.set("role", role);
+  if (userId) params.set("user_id", userId);
+  const qs = params.toString();
+  const url = `${base}/api/sessions/${encodeURIComponent(key)}/messages${qs ? `?${qs}` : ""}`;
+  return request(url, token);
 }
 
 export async function deleteSession(
   token: string,
   key: string,
   base: string = "",
+  role?: string,
+  userId?: string,
 ): Promise<boolean> {
-  const body = await request<{ deleted: boolean }>(
-    `${base}/api/sessions/${encodeURIComponent(key)}/delete`,
-    token,
-  );
+  const params = new URLSearchParams();
+  if (role) params.set("role", role);
+  if (userId) params.set("user_id", userId);
+  const qs = params.toString();
+  const url = `${base}/api/sessions/${encodeURIComponent(key)}/delete${qs ? `?${qs}` : ""}`;
+  const body = await request<{ deleted: boolean }>(url, token);
   return body.deleted;
 }

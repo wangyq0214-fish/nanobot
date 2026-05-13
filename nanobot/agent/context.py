@@ -16,17 +16,35 @@ from nanobot.utils.prompt_templates import render_template
 class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
 
+    # Files loaded from the role workspace (shared per role)
+    _ROLE_FILES = ["AGENTS.md", "SOUL.md", "TOOLS.md"]
+    # Files loaded from the user workspace (per-user)
+    _USER_FILES = ["USER.md"]
+    # Legacy flat list for backward compat (single-workspace mode)
     BOOTSTRAP_FILES = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
     _MAX_RECENT_HISTORY = 50
     _MAX_HISTORY_CHARS = 32_000  # hard cap on recent history section size
     _RUNTIME_CONTEXT_END = "[/Runtime Context]"
 
-    def __init__(self, workspace: Path, timezone: str | None = None, disabled_skills: list[str] | None = None):
+    def __init__(
+        self,
+        workspace: Path,
+        timezone: str | None = None,
+        disabled_skills: list[str] | None = None,
+        agent_profile: dict | None = None,
+        agent_manager: Any = None,
+        role_workspace: Path | None = None,
+    ):
+        # user_workspace: USER.md, memory/, sessions/
         self.workspace = workspace
+        # role_workspace: AGENTS.md, SOUL.md, TOOLS.md (shared per role)
+        self.role_workspace = role_workspace or workspace
         self.timezone = timezone
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
+        self.agent_profile = agent_profile or {}  # 新增：智能体配置
+        self.agent_manager = agent_manager  # 新增：智能体管理器引用
 
     def build_system_prompt(
         self,
@@ -34,7 +52,18 @@ class ContextBuilder:
         channel: str | None = None,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
-        parts = [self._get_identity(channel=channel)]
+        # 动态获取当前激活的智能体配置
+        current_agent_profile = None
+        if self.agent_manager:
+            active_agent = self.agent_manager.get_active_agent()
+            if active_agent:
+                current_agent_profile = active_agent.to_dict()
+
+        # 如果有智能体特定的系统提示词，优先使用
+        if current_agent_profile and current_agent_profile.get('system_prompt_override'):
+            parts = [current_agent_profile['system_prompt_override']]
+        else:
+            parts = [self._get_identity(channel=channel)]
 
         bootstrap = self._load_bootstrap_files()
         if bootstrap:
@@ -107,10 +136,18 @@ class ContextBuilder:
         return _to_blocks(left) + _to_blocks(right)
 
     def _load_bootstrap_files(self) -> str:
-        """Load all bootstrap files from workspace."""
+        """Load bootstrap files from role workspace and user workspace."""
         parts = []
 
-        for filename in self.BOOTSTRAP_FILES:
+        # Role-shared files: AGENTS.md, SOUL.md, TOOLS.md
+        for filename in self._ROLE_FILES:
+            file_path = self.role_workspace / filename
+            if file_path.exists():
+                content = file_path.read_text(encoding="utf-8")
+                parts.append(f"## {filename}\n\n{content}")
+
+        # User-specific files: USER.md
+        for filename in self._USER_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
                 content = file_path.read_text(encoding="utf-8")

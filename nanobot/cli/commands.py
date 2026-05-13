@@ -577,6 +577,17 @@ def serve(
     bus = MessageBus()
     provider = _make_provider(runtime_config)
     session_manager = SessionManager(runtime_config.workspace_path)
+
+    # 初始化智能体管理器
+    agent_manager = None
+    defaults = runtime_config.agents.defaults
+    if defaults.agents:
+        from nanobot.agent.manager import SimpleAgentManager
+        agent_manager = SimpleAgentManager({
+            'activeAgent': defaults.active_agent or 'ai_tutor',
+            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
+        })
+
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -598,6 +609,7 @@ def serve(
         disabled_skills=runtime_config.agents.defaults.disabled_skills,
         session_ttl_minutes=runtime_config.agents.defaults.session_ttl_minutes,
         tools_config=runtime_config.tools,
+        agent_manager=agent_manager,
     )
 
     model_name = runtime_config.agents.defaults.model
@@ -679,6 +691,16 @@ def _run_gateway(
     cron_store_path = config.workspace_path / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
 
+    # 初始化智能体管理器
+    agent_manager = None
+    defaults = config.agents.defaults
+    if defaults.agents:
+        from nanobot.agent.manager import SimpleAgentManager
+        agent_manager = SimpleAgentManager({
+            'activeAgent': defaults.active_agent or 'ai_tutor',
+            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
+        })
+
     # Create agent with cron service
     agent = AgentLoop(
         bus=bus,
@@ -702,6 +724,7 @@ def _run_gateway(
         disabled_skills=config.agents.defaults.disabled_skills,
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
         tools_config=config.tools,
+        agent_manager=agent_manager,
     )
 
     # Set cron callback (needs agent)
@@ -769,7 +792,7 @@ def _run_gateway(
 
     # Create channel manager (forwards SessionManager so the WebSocket channel
     # can serve the embedded webui's REST surface).
-    channels = ChannelManager(config, bus, session_manager=session_manager)
+    channels = ChannelManager(config, bus, session_manager=session_manager, agent_manager=agent_manager)
 
     def _pick_heartbeat_target() -> tuple[str, str]:
         """Pick a routable channel/chat target for heartbeat-triggered messages."""
@@ -1000,6 +1023,16 @@ def agent(
     else:
         logger.disable("nanobot")
 
+    # 初始化智能体管理器
+    agent_manager = None
+    defaults = config.agents.defaults
+    if defaults.agents:
+        from nanobot.agent.manager import SimpleAgentManager
+        agent_manager = SimpleAgentManager({
+            'activeAgent': defaults.active_agent or 'ai_tutor',
+            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
+        })
+
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -1021,6 +1054,7 @@ def agent(
         disabled_skills=config.agents.defaults.disabled_skills,
         session_ttl_minutes=config.agents.defaults.session_ttl_minutes,
         tools_config=config.tools,
+        agent_manager=agent_manager,
     )
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):
@@ -1504,6 +1538,77 @@ def _login_github_copilot() -> None:
         console.print(f"[green]✓ Authenticated with GitHub Copilot[/green]  [dim]{account}[/dim]")
     except Exception as e:
         console.print(f"[red]Authentication error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def agents(
+    config: str = typer.Option(None, "-c", "--config", help="Config file path"),
+    action: str = typer.Argument("list", help="Action: list, switch, current"),
+    agent_name: str = typer.Argument(None, help="Agent name (for switch action)"),
+):
+    """管理智能体 (list/switch/current)"""
+    from nanobot.config.loader import load_config, save_config
+    from nanobot.agent.manager import SimpleAgentManager
+
+    config_path = Path(config).expanduser().resolve() if config else None
+    cfg = load_config(config_path)
+
+    # 检查是否配置了多智能体
+    if not cfg.agents.defaults.agents:
+        console.print("[yellow]未配置多智能体系统[/yellow]")
+        console.print("\n请在配置文件中添加 agents 配置。")
+        raise typer.Exit(0)
+
+    # 创建智能体管理器
+    manager_config = {
+        'activeAgent': cfg.agents.defaults.active_agent or 'ai_tutor',
+        'agents': [a.model_dump() for a in cfg.agents.defaults.agents]
+    }
+    manager = SimpleAgentManager(manager_config)
+
+    if action == "list":
+        # 列出所有智能体
+        console.print("\n[bold cyan]可用智能体：[/bold cyan]\n")
+        for agent in manager.list_agents():
+            active = "✓" if agent['name'] == manager.active_agent_name else " "
+            console.print(f"  [{active}] [bold]{agent['display_name']}[/bold] [dim]({agent['name']})[/dim]")
+            console.print(f"      {agent['description']}\n")
+
+    elif action == "switch":
+        # 切换智能体
+        if not agent_name:
+            console.print("[red]请指定要切换的智能体名称[/red]")
+            console.print("\n用法: nanobot agents switch <agent_name>")
+            raise typer.Exit(1)
+
+        if manager.switch_agent(agent_name):
+            # 更新配置文件
+            cfg.agents.defaults.active_agent = agent_name
+            save_config(cfg, config_path)
+
+            agent = manager.get_agent(agent_name)
+            console.print(f"[green]✓ 已切换到：{agent.display_name}[/green]")
+        else:
+            console.print(f"[red]✗ 智能体不存在：{agent_name}[/red]")
+            console.print("\n可用的智能体：")
+            for agent in manager.list_agents():
+                console.print(f"  - {agent['name']}")
+            raise typer.Exit(1)
+
+    elif action == "current":
+        # 显示当前智能体
+        agent = manager.get_active_agent()
+        if agent:
+            console.print(f"\n[bold cyan]当前智能体：[/bold cyan] {agent.display_name}")
+            console.print(f"[dim]角色：[/dim] {agent.role}")
+            console.print(f"[dim]描述：[/dim] {agent.description}\n")
+        else:
+            console.print("[yellow]未设置当前智能体[/yellow]")
+
+    else:
+        console.print(f"[red]未知操作：{action}[/red]")
+        console.print("\n可用操作: list, switch, current")
         raise typer.Exit(1)
 
 

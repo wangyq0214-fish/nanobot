@@ -135,6 +135,8 @@ def _http_json_response(data: dict[str, Any], *, status: int = 200) -> Response:
     return Response(status, reason, headers, body)
 
 
+
+
 def _read_webui_model_name() -> str | None:
     """Return the configured default model for readonly webui display."""
     try:
@@ -384,11 +386,13 @@ class WebSocketChannel(BaseChannel):
         *,
         session_manager: "SessionManager | None" = None,
         static_dist_path: Path | None = None,
+        agent_manager: Any = None,
     ):
         if isinstance(config, dict):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
+        self._agent_manager = agent_manager
         # chat_id -> connections subscribed to it (fan-out target).
         self._subs: dict[str, set[Any]] = {}
         # connection -> chat_ids it is subscribed to (O(1) cleanup on disconnect).
@@ -399,6 +403,8 @@ class WebSocketChannel(BaseChannel):
         self._issued_tokens: dict[str, float] = {}
         # Multi-use tokens for the embedded webui's REST surface; checked but not consumed.
         self._api_tokens: dict[str, float] = {}
+        # Token metadata: role, user_id associated with each token
+        self._token_metadata: dict[str, dict[str, str]] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._session_manager = session_manager
@@ -429,6 +435,8 @@ class WebSocketChannel(BaseChannel):
             if not subs:
                 self._subs.pop(cid, None)
         self._conn_default.pop(connection, None)
+        if hasattr(self, '_conn_metadata'):
+            self._conn_metadata.pop(connection, None)
 
     async def _send_event(self, connection: Any, event: str, **fields: Any) -> None:
         """Send a control event (attached, error, ...) to a single connection."""
@@ -525,9 +533,15 @@ class WebSocketChannel(BaseChannel):
 
         # 2. WebUI bootstrap: localhost-only, mints tokens for the embedded UI.
         if got == "/webui/bootstrap":
-            return self._handle_webui_bootstrap(connection)
+            return self._handle_webui_bootstrap(connection, request)
 
         # 3. REST surface for the embedded UI.
+        if got == "/api/users/register":
+            return self._handle_users_register(request)
+
+        if got == "/api/users/validate":
+            return self._handle_users_validate(request)
+
         if got == "/api/sessions":
             return self._handle_sessions_list(request)
 
@@ -540,6 +554,17 @@ class WebSocketChannel(BaseChannel):
         m = re.match(r"^/api/sessions/([^/]+)/delete$", got)
         if m:
             return self._handle_session_delete(request, m.group(1))
+
+        # Agent management endpoints
+        if got == "/api/agents":
+            return self._handle_agents_list(request)
+
+        if got == "/api/agents/current":
+            return self._handle_agents_current(request)
+
+        m = re.match(r"^/api/agents/([^/]+)/switch$", got)
+        if m:
+            return self._handle_agents_switch(request, m.group(1))
 
         # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
         # payload decodes to a path inside :func:`get_media_dir`. See
@@ -592,9 +617,7 @@ class WebSocketChannel(BaseChannel):
             if now > expiry:
                 self._api_tokens.pop(token_key, None)
 
-    def _handle_webui_bootstrap(self, connection: Any) -> Response:
-        if not _is_localhost(connection):
-            return _http_error(403, "webui bootstrap is localhost-only")
+    def _handle_webui_bootstrap(self, connection: Any, request: WsRequest | None = None) -> Response:
         # Cap outstanding tokens to avoid runaway growth from a misbehaving client.
         self._purge_expired_issued_tokens()
         self._purge_expired_api_tokens()
@@ -607,37 +630,172 @@ class WebSocketChannel(BaseChannel):
                 status=429,
                 content_type="application/json; charset=utf-8",
             )
+
+        # Parse role and user_id from query parameters
+        role = ""
+        user_id = ""
+        if request:
+            query = _parse_query(request.path)
+            role = _query_first(query, "role") or ""
+            user_id = _query_first(query, "user_id") or ""
+
         token = f"nbwt_{secrets.token_urlsafe(32)}"
         expiry = time.monotonic() + float(self.config.token_ttl_s)
         # Same string registered in both pools: the WS handshake consumes one copy
         # while the REST surface keeps validating the other until TTL expiry.
         self._issued_tokens[token] = expiry
         self._api_tokens[token] = expiry
-        return _http_json_response(
-            {
-                "token": token,
-                "ws_path": self._expected_path(),
-                "expires_in": self.config.token_ttl_s,
-                "model_name": _read_webui_model_name(),
+
+        # Store user metadata associated with this token
+        if role or user_id:
+            self._token_metadata[token] = {
+                "role": role,
+                "user_id": user_id,
             }
-        )
+
+        resp: dict[str, Any] = {
+            "token": token,
+            "ws_path": self._expected_path(),
+            "expires_in": self.config.token_ttl_s,
+            "model_name": _read_webui_model_name(),
+        }
+        if role:
+            resp["role"] = role
+        if user_id:
+            resp["user_id"] = user_id
+        return _http_json_response(resp)
+
+    # -- User management helpers ----------------------------------------------
+
+    @property
+    def _users_file(self) -> Path:
+        return Path.home() / ".nanobot" / "users.json"
+
+    def _load_users(self) -> dict[str, Any]:
+        path = self._users_file
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def _save_users(self, data: dict[str, Any]) -> None:
+        path = self._users_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _create_user_workspace(self, role: str, user_id: str) -> None:
+        """Create user workspace by copying template files."""
+        templates_dir = Path.home() / ".nanobot" / "templates" / role
+        if not templates_dir.is_dir():
+            logger.warning("Template directory not found: {}", templates_dir)
+            return
+
+        users_dir = Path.home() / ".nanobot" / "users" / role / user_id
+        if users_dir.exists():
+            return
+
+        # Copy entire template directory structure
+        shutil.copytree(templates_dir, users_dir, dirs_exist_ok=True)
+        # Ensure sessions directory exists (may not be in template)
+        (users_dir / "sessions").mkdir(exist_ok=True)
+        logger.info("Created workspace for user: {} (role={})", user_id, role)
+
+    # -- User management HTTP handlers ----------------------------------------
+
+    def _handle_users_register(self, request: WsRequest) -> Response:
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        display_name = _query_first(query, "display_name") or user_id
+
+        if not role or not user_id:
+            return _http_error(400, "role and user_id are required")
+        if role not in ("student", "teacher", "researcher"):
+            return _http_error(400, "Invalid role")
+        if len(user_id) > 64:
+            return _http_error(400, "user_id too long (max 64)")
+
+        users = self._load_users()
+        key = f"{role}:{user_id}"
+        if key in users:
+            return _http_error(409, "User already exists")
+
+        users[key] = {
+            "role": role,
+            "userId": user_id,
+            "displayName": display_name,
+            "registeredAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        self._save_users(users)
+
+        # Create user workspace from templates
+        self._create_user_workspace(role, user_id)
+
+        logger.info("Registered user: {} (role={})", user_id, role)
+        return _http_json_response({"ok": True, "user": users[key]})
+
+    def _handle_users_validate(self, request: WsRequest) -> Response:
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+
+        if not role or not user_id:
+            return _http_error(400, "role and user_id are required")
+
+        users = self._load_users()
+        key = f"{role}:{user_id}"
+        user = users.get(key)
+        if not user:
+            return _http_error(404, "User not found")
+
+        return _http_json_response({"ok": True, "user": user})
 
     def _handle_sessions_list(self, request: WsRequest) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        if self._session_manager is None:
+
+        # Parse role/user_id from query for per-user session lookup
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+
+        # Determine sessions directory: user workspace or global
+        if role and user_id:
+            sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+            user_prefix = f"{role}_{user_id}_"
+        elif self._session_manager is not None:
+            sessions_dir = self._session_manager.workspace / "sessions"
+            user_prefix = ""
+        else:
             return _http_error(503, "session manager unavailable")
-        sessions = self._session_manager.list_sessions()
-        # The webui is only meaningful for websocket-channel chats — CLI /
-        # Slack / Lark / Discord sessions can't be resumed from the browser,
-        # so leaking them into the sidebar is just noise. Filter to the
-        # ``websocket:`` prefix and strip absolute paths on the way out.
-        cleaned = [
-            {k: v for k, v in s.items() if k != "path"}
-            for s in sessions
-            if isinstance(s.get("key"), str) and s["key"].startswith("websocket:")
-        ]
-        return _http_json_response({"sessions": cleaned})
+
+        if not sessions_dir.is_dir():
+            return _http_json_response({"sessions": []})
+
+        # Scan JSONL session files
+        sessions = []
+        for f in sorted(sessions_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+            stem = f.stem  # filename without .jsonl
+            # Convert underscores back to colons to get original key
+            key = stem.replace("_", ":")
+            # Only show websocket sessions
+            if "websocket:" not in key:
+                continue
+            # Strip user prefix for frontend display
+            if user_prefix and key.startswith(user_prefix.replace("_", ":")):
+                display_key = key[len(user_prefix.replace("_", ":")):]
+            else:
+                display_key = key
+            sessions.append({
+                "key": display_key,
+                "created_at": None,
+                "updated_at": None,
+                "preview": "",
+            })
+
+        return _http_json_response({"sessions": sessions})
 
     @staticmethod
     def _is_webui_session_key(key: str) -> bool:
@@ -657,9 +815,50 @@ class WebSocketChannel(BaseChannel):
         # caller probe arbitrary CLI / Slack / Lark history by handcrafted URL.
         if not self._is_webui_session_key(decoded_key):
             return _http_error(404, "session not found")
-        data = self._session_manager.read_session_file(decoded_key)
-        if data is None:
-            return _http_error(404, "session not found")
+
+        # Parse role/user_id to find user workspace
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+
+        if role and user_id:
+            # Reconstruct full key with user prefix for user workspace
+            full_key = f"{role}:{user_id}:{decoded_key}"
+            user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+            # Use safe_key to match file naming convention (colons -> underscores)
+            from nanobot.session.manager import SessionManager
+            safe_key = SessionManager.safe_key(full_key)
+            session_file = user_sessions_dir / f"{safe_key}.jsonl"
+            if not session_file.exists():
+                return _http_error(404, "session not found")
+            # Read JSONL file directly
+            try:
+                messages = []
+                created_at = updated_at = None
+                with open(session_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        entry = json.loads(line)
+                        if entry.get("_type") == "metadata":
+                            created_at = entry.get("created_at")
+                            updated_at = entry.get("updated_at")
+                        else:
+                            messages.append(entry)
+                data = {
+                    "key": full_key,
+                    "created_at": created_at,
+                    "updated_at": updated_at,
+                    "messages": messages,
+                }
+            except Exception as e:
+                logger.warning("Failed to read user session {}: {}", full_key, e)
+                return _http_error(500, "Failed to read session")
+        else:
+            data = self._session_manager.read_session_file(decoded_key)
+            if data is None:
+                return _http_error(404, "session not found")
         # Decorate persisted user messages with signed media URLs so the
         # client can render previews. The raw on-disk ``media`` paths are
         # stripped on the way out — they leak server filesystem layout and
@@ -806,8 +1005,62 @@ class WebSocketChannel(BaseChannel):
         # JSONL, so keep the blast radius narrow and explicit.
         if not self._is_webui_session_key(decoded_key):
             return _http_error(404, "session not found")
-        deleted = self._session_manager.delete_session(decoded_key)
-        return _http_json_response({"deleted": bool(deleted)})
+
+        # Parse role/user_id to find user workspace
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+
+        if role and user_id:
+            # Reconstruct full key with user prefix for user workspace
+            full_key = f"{role}:{user_id}:{decoded_key}"
+            user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+            # Use safe_key to match file naming convention (colons -> underscores)
+            from nanobot.session.manager import SessionManager
+            safe_key = SessionManager.safe_key(full_key)
+            session_file = user_sessions_dir / f"{safe_key}.jsonl"
+            if not session_file.exists():
+                return _http_json_response({"deleted": False})
+            try:
+                session_file.unlink()
+                return _http_json_response({"deleted": True})
+            except OSError as e:
+                logger.warning("Failed to delete user session {}: {}", full_key, e)
+                return _http_error(500, "Failed to delete session")
+        else:
+            deleted = self._session_manager.delete_session(decoded_key)
+            return _http_json_response({"deleted": bool(deleted)})
+
+    def _handle_agents_list(self, request: WsRequest) -> Response:
+        """List all available agents."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+            return _http_json_response({"agents": [], "has_multi_agent": False})
+        agents = self._agent_manager.list_agents()
+        return _http_json_response({"agents": agents, "has_multi_agent": True})
+
+    def _handle_agents_current(self, request: WsRequest) -> Response:
+        """Get the current active agent."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+            return _http_json_response({"agent": None, "has_multi_agent": False})
+        active_agent = self._agent_manager.get_active_agent()
+        if active_agent:
+            return _http_json_response({"agent": active_agent.to_dict(), "has_multi_agent": True})
+        return _http_json_response({"agent": None, "has_multi_agent": True})
+
+    def _handle_agents_switch(self, request: WsRequest, agent_name: str) -> Response:
+        """Switch to a different agent."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+            return _http_error(503, "multi-agent system not configured")
+        success = self._agent_manager.switch_agent(agent_name)
+        if success:
+            return _http_json_response({"success": True, "agent": agent_name})
+        return _http_error(404, "agent not found")
 
     def _serve_static(self, request_path: str) -> Response | None:
         """Resolve *request_path* against the built SPA directory; SPA fallback to index.html."""
@@ -934,6 +1187,16 @@ class WebSocketChannel(BaseChannel):
             logger.warning("websocket: client_id too long ({} chars), truncating", len(client_id))
             client_id = client_id[:128]
 
+        # Extract role/user_id from token metadata
+        token = _query_first(query, "token") or ""
+        conn_meta: dict[str, str] = {}
+        if token and token in self._token_metadata:
+            conn_meta = self._token_metadata.pop(token, {})
+            logger.info("websocket: token metadata loaded for role={}, user_id={}", conn_meta.get("role"), conn_meta.get("user_id"))
+        # Store per-connection metadata for use in _dispatch_envelope
+        self._conn_metadata: dict[Any, dict[str, str]] = getattr(self, '_conn_metadata', {})
+        self._conn_metadata[connection] = conn_meta
+
         default_chat_id = str(uuid.uuid4())
 
         try:
@@ -967,11 +1230,13 @@ class WebSocketChannel(BaseChannel):
                 content = _parse_inbound_payload(raw)
                 if content is None:
                     continue
+                msg_meta = {"remote": getattr(connection, "remote_address", None)}
+                msg_meta.update(conn_meta)
                 await self._handle_message(
                     sender_id=client_id,
                     chat_id=default_chat_id,
                     content=content,
-                    metadata={"remote": getattr(connection, "remote_address", None)},
+                    metadata=msg_meta,
                 )
         except Exception as e:
             logger.debug("websocket connection ended: {}", e)
@@ -1101,12 +1366,16 @@ class WebSocketChannel(BaseChannel):
 
             # Auto-attach on first use so clients can one-shot without a separate attach.
             self._attach(connection, cid)
+            msg_meta = {"remote": getattr(connection, "remote_address", None)}
+            conn_meta = getattr(self, '_conn_metadata', {}).get(connection, {})
+            msg_meta.update(conn_meta)
+            logger.debug("WS message: conn_meta={}, msg_meta={}", conn_meta, msg_meta)
             await self._handle_message(
                 sender_id=client_id,
                 chat_id=cid,
                 content=content,
                 media=media_paths or None,
-                metadata={"remote": getattr(connection, "remote_address", None)},
+                metadata=msg_meta,
             )
             return
         await self._send_event(connection, "error", detail=f"unknown type: {t!r}")

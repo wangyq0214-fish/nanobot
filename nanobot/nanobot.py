@@ -66,6 +66,15 @@ class Nanobot:
         bus = MessageBus()
         defaults = config.agents.defaults
 
+        # 新增：初始化智能体管理器
+        agent_manager = None
+        if defaults.agents:  # 如果配置了多智能体
+            from nanobot.agent.manager import SimpleAgentManager
+            agent_manager = SimpleAgentManager({
+                'activeAgent': defaults.active_agent or 'ai_tutor',
+                'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
+            })
+
         loop = AgentLoop(
             bus=bus,
             provider=provider,
@@ -85,6 +94,7 @@ class Nanobot:
             disabled_skills=defaults.disabled_skills,
             session_ttl_minutes=defaults.session_ttl_minutes,
             tools_config=config.tools,
+            agent_manager=agent_manager,  # 新增
         )
         return cls(loop)
 

@@ -92,3 +92,7 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# User data & local config
+.nanobot/
+users.json

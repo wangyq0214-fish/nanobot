@@ -1,24 +1,27 @@
-import { Moon, PanelLeftClose, Plus, RefreshCcw, Sun } from "lucide-react";
+import { LogOut, Moon, PanelLeftClose, Plus, RefreshCcw, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { AgentSwitcher } from "@/components/AgentSwitcher";
 import { ChatList } from "@/components/ChatList";
 import { ConnectionBadge } from "@/components/ConnectionBadge";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import type { ChatSummary } from "@/lib/types";
+import type { ChatSummary, UserInfo } from "@/lib/types";
 
 interface SidebarProps {
   sessions: ChatSummary[];
   activeKey: string | null;
   loading: boolean;
   theme: "light" | "dark";
+  user?: UserInfo | null;
   onToggleTheme: () => void;
   onNewChat: () => void;
   onSelect: (key: string) => void;
   onRefresh: () => void;
   onRequestDelete: (key: string, label: string) => void;
   onCollapse: () => void;
+  onLogout?: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -59,6 +62,9 @@ export function Sidebar(props: SidebarProps) {
           {t("sidebar.newChat")}
         </Button>
       </div>
+      <div className="px-2 pb-2.5">
+        <AgentSwitcher />
+      </div>
       <Separator className="bg-sidebar-border/70" />
       <div className="flex items-center justify-between px-2.5 py-2 text-[11px] font-medium text-muted-foreground">
         <span>{t("sidebar.recent")}</span>
@@ -82,6 +88,30 @@ export function Sidebar(props: SidebarProps) {
         />
       </div>
       <Separator className="bg-sidebar-border/70" />
+      {props.user && (
+        <div className="flex items-center justify-between gap-2 px-2.5 py-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm">
+              {props.user.role === "student" ? "📚" : props.user.role === "teacher" ? "👨‍🏫" : "🔬"}
+            </span>
+            <span className="truncate text-xs text-muted-foreground">
+              {props.user.displayName}
+            </span>
+          </div>
+          {props.onLogout && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              onClick={props.onLogout}
+              aria-label={t("sidebar.logout")}
+              title={t("sidebar.logout")}
+            >
+              <LogOut className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 px-2.5 py-2 text-xs">
         <ConnectionBadge />
         <LanguageSwitcher />
