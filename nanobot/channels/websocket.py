@@ -566,6 +566,14 @@ class WebSocketChannel(BaseChannel):
         if m:
             return self._handle_agents_switch(request, m.group(1))
 
+        # Source file endpoints (user workspace source directory)
+        if got == "/api/source":
+            return self._handle_source_list(request)
+
+        m = re.match(r"^/api/source/(.+)$", got)
+        if m:
+            return self._handle_source_file(request, m.group(1))
+
         # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
         # payload decodes to a path inside :func:`get_media_dir`. See
         # :meth:`_sign_media_path` for the inverse direction used to build
@@ -751,6 +759,59 @@ class WebSocketChannel(BaseChannel):
             return _http_error(404, "User not found")
 
         return _http_json_response({"ok": True, "user": user})
+
+    # -- Source file HTTP handlers -------------------------------------------
+
+    def _resolve_source_dir(self, request: WsRequest) -> Path | Response:
+        """Resolve the source directory for a user, or return an error response."""
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        if not role or not user_id:
+            return _http_error(400, "role and user_id are required")
+        source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
+        if not source_dir.is_dir():
+            return _http_error(404, "Source directory not found")
+        return source_dir
+
+    def _handle_source_list(self, request: WsRequest) -> Response:
+        result = self._resolve_source_dir(request)
+        if isinstance(result, Response):
+            return result
+        source_dir = result
+
+        files = []
+        for f in sorted(source_dir.rglob("*")):
+            if f.is_file():
+                rel = f.relative_to(source_dir)
+                files.append({
+                    "category": str(rel.parent) if str(rel.parent) != "." else "",
+                    "name": f.name,
+                    "path": str(rel).replace("\\", "/"),
+                })
+        return _http_json_response({"files": files})
+
+    def _handle_source_file(self, request: WsRequest, file_path: str) -> Response:
+        file_path = unquote(file_path)
+        # Security: reject path traversal
+        if ".." in file_path:
+            return _http_error(400, "Invalid path")
+        result = self._resolve_source_dir(request)
+        if isinstance(result, Response):
+            return result
+        source_dir = result
+
+        target = (source_dir / file_path).resolve()
+        # Ensure resolved path is still under source_dir
+        if not str(target).startswith(str(source_dir.resolve())):
+            return _http_error(403, "Access denied")
+        if not target.is_file():
+            return _http_error(404, "File not found")
+
+        content = target.read_text(encoding="utf-8")
+        return _http_json_response({"content": content})
 
     def _handle_sessions_list(self, request: WsRequest) -> Response:
         if not self._check_api_token(request):
@@ -1378,6 +1439,34 @@ class WebSocketChannel(BaseChannel):
                 metadata=msg_meta,
             )
             return
+        if t == "save_source":
+            path = envelope.get("path")
+            content = envelope.get("content")
+            if not path or not isinstance(path, str):
+                await self._send_event(connection, "error", detail="missing path")
+                return
+            if not isinstance(content, str):
+                await self._send_event(connection, "error", detail="missing content")
+                return
+            conn_meta = getattr(self, '_conn_metadata', {}).get(connection, {})
+            role = conn_meta.get("role", "")
+            user_id = conn_meta.get("user_id", "")
+            if not role or not user_id:
+                await self._send_event(connection, "error", detail="not authenticated")
+                return
+            if ".." in path:
+                await self._send_event(connection, "error", detail="invalid path")
+                return
+            source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
+            target = (source_dir / path).resolve()
+            if not str(target).startswith(str(source_dir.resolve())):
+                await self._send_event(connection, "error", detail="access denied")
+                return
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            await self._send_event(connection, "source_saved", path=path)
+            return
+
         await self._send_event(connection, "error", detail=f"unknown type: {t!r}")
 
     async def stop(self) -> None:

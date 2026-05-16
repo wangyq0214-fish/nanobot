@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **nanobot** (`nanobot-ai` on PyPI) is a lightweight Python 3.11+ AI agent framework that connects LLMs to chat channels (Telegram, Slack, Discord, Feishu, DingTalk, WhatsApp, etc.) with tool execution, memory, skills, and scheduling. It also includes a React/TypeScript WebUI and a WhatsApp bridge.
 
+## Branching Strategy
+
+Two-branch model. When in doubt, target `nightly`.
+
+| Your Change | Target Branch |
+|-------------|---------------|
+| New feature / refactoring | `nightly` |
+| Bug fix / docs | `main` |
+
+Nightly features are cherry-picked into `main` PRs ~weekly.
+
 ## Common Commands
 
 ### Python (core)
@@ -18,6 +29,10 @@ pytest -k test_name            # Run a single test by name
 ruff check nanobot/            # Lint
 ruff format nanobot/           # Format
 ```
+
+Optional dependency groups: `api`, `wecom`, `weixin`, `msteams`, `matrix`, `discord`, `langsmith`, `pdf`. Install with `pip install -e ".[group]"`.
+
+CI runs on Ubuntu + Windows across Python 3.11–3.14. Ruff in CI only checks F401/F841.
 
 ### WebUI (webui/)
 ```bash
@@ -53,6 +68,7 @@ Chat Channels → MessageBus (async queues) → AgentLoop → LLM Provider → T
 | `agent/hook.py` | Lifecycle hooks: `before_iteration`, `before_execute_tools`, `after_iteration`, `on_stream`, `finalize_content` |
 | `agent/subagent.py` | Background subagent task execution |
 | `agent/tools/` | Built-in tools: filesystem, shell, search, web, cron, ask, message, notebook, spawn, MCP |
+| `agent/manager.py` | `SimpleAgentManager` — multi-agent persona orchestration |
 | `providers/` | LLM provider abstraction (`LLMProvider` ABC). 25+ providers via `ProviderSpec` registry |
 | `channels/` | Chat platform integrations extending `BaseChannel`. Auto-discovered via `pkgutil` + entry_points |
 | `bus/` | `MessageBus` with `InboundMessage`/`OutboundMessage` async queues |
@@ -71,12 +87,21 @@ Chat Channels → MessageBus (async queues) → AgentLoop → LLM Provider → T
 - **Plugin channels**: Auto-discovered via `pkgutil` scanning + `entry_points("nanobot.channels")`
 - **Config**: Pydantic models in `config/schema.py`, loaded from `~/.nanobot/config.json`. Supports `${ENV_VAR}` interpolation and `_migrate_config()` for schema evolution
 - **Skills**: Directory-based with `SKILL.md` files. Progressive loading — summary first, full content on demand
+- **Templates**: `nanobot/templates/` — Jinja2 templates (`SOUL.md`, `USER.md`, `TOOLS.md`, `AGENTS.md`) assembled into system prompts by `ContextBuilder`
 
 ### Entry Points
 
 - **CLI**: `nanobot` command → `nanobot/cli/commands.py` (Typer app)
-- **SDK**: `Nanobot.from_config()` → `await bot.run("message")` → `RunResult`
+- **SDK**: `Nanobot.from_config()` in `nanobot/nanobot.py` → `await bot.run("message")` → `RunResult`
 - **Module**: `python -m nanobot` → same Typer app
+
+### Tests
+
+Tests in `tests/` mirror the source package structure (`tests/agent/`, `tests/providers/`, `tests/channels/`, etc.). Root-level tests are integration tests.
+
+### Docs
+
+Detailed documentation in `docs/`: configuration, deployment, SDK usage, channel setup, channel plugin guide.
 
 ## Code Style
 

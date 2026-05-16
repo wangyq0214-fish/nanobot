@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nanobot · 助教工作台</title>
+<style>
+/* ====== Theme ====== */
+:root {
+    --bg-root: #f4f3f9;
+    --bg-card: rgba(255,255,255,0.55);
+    --bg-card-hover: rgba(255,255,255,0.86);
+    --bg-nav: rgba(255,255,255,0.82);
+    --bg-input: rgba(255,255,255,0.50);
+    --bg-tag: rgba(107,93,240,0.05);
+    --bg-display: #fefeff;
+    --bg-sidebar: rgba(250,249,254,0.70);
+    --accent: #6B5DF0;
+    --accent-light: rgba(107,93,240,0.20);
+    --accent-soft: rgba(107,93,240,0.07);
+    --accent-glow: rgba(107,93,240,0.16);
+    --accent-bright: rgba(107,93,240,0.32);
+    --accent-deep: #5A4AD0;
+    --accent-teal: #0EA5B9;
+    --accent-amber: #F59E0B;
+    --accent-orange: #F97316;
+    --accent-mint: #10B981;
+    --accent-sky: #38A8E8;
+    --accent-rose: #E04470;
+    --accent-teal-soft: rgba(14,165,185,0.07);
+    --accent-amber-soft: rgba(245,158,11,0.07);
+    --accent-orange-soft: rgba(249,115,22,0.07);
+    --accent-mint-soft: rgba(16,185,129,0.07);
+    --accent-rose-soft: rgba(224,68,112,0.07);
+    --accent-teal-light: rgba(14,165,185,0.20);
+    --accent-amber-light: rgba(245,158,11,0.20);
+    --accent-orange-light: rgba(249,115,22,0.20);
+    --accent-mint-light: rgba(16,185,129,0.20);
+    --accent-rose-light: rgba(224,68,112,0.20);
+    --border-light: rgba(0,0,0,0.08);
+    --border-medium: rgba(0,0,0,0.14);
+    --border-active: #6B5DF0;
+    --border-active-glow: rgba(107,93,240,0.38);
+    --text-primary: #1a1828;
+    --text-secondary: #514e68;
+    --text-muted: #85829e;
+    --divider: rgba(0,0,0,0.06);
+    --red: #F04438; --green: #16A34A;
+    --card-radius: 16px;
+    --panel-radius: 16px;
+    --trans: 0.35s cubic-bezier(0.22,0.08,0.22,1);
+    --trans-spring: 0.45s cubic-bezier(0.34,1.56,0.64,1);
+    --bubble-ai: rgba(107,93,240,0.06);
+    --bubble-ai-border: rgba(107,93,240,0.14);
+    --bubble-user: rgba(14,165,185,0.07);
+    --bubble-user-border: rgba(14,165,185,0.18);
+    --board-bg: #2a4a2f;
+    --board-frame: #8B6914;
+    --board-chalk: #e8e4d8;
+}
+body.dark {
+    --bg-root: #080810;
+    --bg-card: rgba(18,19,34,0.50);
+    --bg-card-hover: rgba(24,25,44,0.72);
+    --bg-nav: rgba(10,11,22,0.88);
+    --bg-input: rgba(18,16,36,0.50);
+    --bg-tag: rgba(123,92,255,0.06);
+    --bg-display: #0f0f1a;
+    --bg-sidebar: rgba(12,13,24,0.65);
+    --accent: #8B70FF;
+    --accent-light: rgba(139,112,255,0.24);
+    --accent-soft: rgba(139,112,255,0.09);
+    --accent-glow: rgba(139,112,255,0.22);
+    --accent-bright: rgba(139,112,255,0.40);
+    --accent-deep: #6B50E0;
+    --accent-teal: #22B8CF;
+    --accent-amber: #FBBF24;
+    --accent-orange: #FB923C;
+    --accent-mint: #34D399;
+    --accent-sky: #38A8E8;
+    --accent-rose: #F06090;
+    --accent-teal-soft: rgba(34,184,207,0.09);
+    --accent-amber-soft: rgba(251,191,36,0.09);
+    --accent-orange-soft: rgba(251,146,60,0.09);
+    --accent-mint-soft: rgba(52,211,153,0.09);
+    --accent-rose-soft: rgba(240,96,144,0.09);
+    --accent-teal-light: rgba(34,184,207,0.24);
+    --accent-amber-light: rgba(251,191,36,0.24);
+    --accent-orange-light: rgba(251,146,60,0.24);
+    --accent-mint-light: rgba(52,211,153,0.24);
+    --accent-rose-light: rgba(240,96,144,0.24);
+    --border-light: rgba(255,255,255,0.09);
+    --border-medium: rgba(255,255,255,0.16);
+    --border-active: #8B70FF;
+    --border-active-glow: rgba(139,112,255,0.48);
+    --text-primary: #e2e0f4;
+    --text-secondary: #a09cb8;
+    --text-muted: #6d6a88;
+    --divider: rgba(255,255,255,0.07);
+    --bubble-ai: rgba(139,112,255,0.08);
+    --bubble-ai-border: rgba(139,112,255,0.18);
+    --bubble-user: rgba(34,184,207,0.09);
+    --bubble-user-border: rgba(34,184,207,0.22);
+    --board-bg: #1a2f1e;
+    --board-frame: #6B5010;
+    --board-chalk: #d8d4c8;
+    --panel-radius: 4px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { font-size: 15px; }
+body {
+    font-family: 'Inter','SF Pro Display','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+    color: var(--text-primary); background: var(--bg-root);
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+    transition: background 0.4s, color 0.4s, border-radius 0.4s;
+    overflow: hidden;
+}
+.app-shell { display:flex; flex-direction:column; height:100vh; width:100%; overflow:hidden; padding:6px 10px; gap:6px; min-width:1100px; }
+
+/* ====== TOP NAV ====== */
+.top-nav {
+    flex-shrink:0; height:50px; display:flex; align-items:center; justify-content:space-between;
+    background:var(--bg-nav); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:1.5px solid var(--border-medium); border-radius:var(--panel-radius);
+    padding:0 24px; position:relative;
+    box-shadow:0 0 16px var(--accent-soft);
+    transition: border-radius 0.4s;
+}
+.top-nav::before { content:''; position:absolute; pointer-events:none; top:-1px; left:28px; right:28px; height:1.5px; border-radius:1px; background:linear-gradient(90deg,transparent,var(--accent-light),transparent); opacity:0.55; }
+.nav-left { display:flex; align-items:center; gap:20px; }
+.nav-logo { font-family:'Playfair Display','Georgia',serif; font-style:italic; font-size:1.4rem; font-weight:700; color:var(--accent); letter-spacing:-0.01em; display:flex; align-items:center; gap:7px; }
+.nav-logo .dot { width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 12px var(--accent-glow); animation:dotPulse 2s ease-in-out infinite; }
+@keyframes dotPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:0.6} }
+.nav-center { display:flex; align-items:center; gap:3px; }
+.nav-tab { padding:6px 14px; border-radius:13px; font-size:0.82rem; font-weight:500; color:var(--text-secondary); cursor:pointer; transition:all 0.25s; border:1.5px solid transparent; white-space:nowrap; }
+.nav-tab:hover { color:var(--text-primary); background:var(--bg-tag); }
+.nav-tab.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent-light); box-shadow:0 0 14px var(--accent-glow); }
+.nav-right { display:flex; align-items:center; gap:8px; }
+.nav-icon { width:32px; height:32px; border-radius:50%; border:1.5px solid var(--border-medium); background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-secondary); transition:all 0.25s; flex-shrink:0; }
+.nav-icon svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.nav-icon:hover { color:var(--accent); border-color:var(--border-active); box-shadow:0 0 16px var(--accent-glow); }
+.nav-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#7B5CFF,#A78BFA); display:flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:0.74rem; cursor:pointer; border:2px solid transparent; box-shadow:0 0 16px var(--accent-glow); transition:all 0.25s; }
+.nav-avatar:hover { transform:scale(1.06); }
+
+/* ====== MAIN AREA ====== */
+.main-area { flex:1; min-height:0; display:flex; gap:1px; position:relative; }
+
+/* ====== LEFT TOOL STRIP ====== */
+.tool-strip {
+    width:48px; flex-shrink:0; display:flex; flex-direction:column; gap:4px;
+    background:var(--bg-sidebar); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border:1.5px solid var(--border-light); border-radius:var(--panel-radius);
+    padding:6px; position:relative; z-index:10;
+    transition: border-radius 0.4s;
+}
+.tool-btn {
+    width:36px; height:36px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; transition:all 0.25s; border:1px solid transparent;
+    color:var(--text-muted); position:relative;
+}
+.tool-btn svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.tool-btn:hover { color:var(--text-primary); background:var(--bg-card-hover); border-color:var(--border-light); }
+.tool-btn.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent-light); box-shadow:0 0 10px var(--accent-soft); }
+.tool-btn .tooltip {
+    position:absolute; left:44px; top:50%; transform:translateY(-50%);
+    background:var(--bg-card); border:1px solid var(--border-medium); border-radius:7px;
+    padding:4px 10px; font-size:0.72rem; white-space:nowrap; pointer-events:none;
+    opacity:0; transition:opacity 0.2s; z-index:20; color:var(--text-primary);
+}
+.tool-btn:hover .tooltip { opacity:1; }
+.tool-divider { height:1px; background:var(--divider); margin:4px 6px; flex-shrink:0; }
+.tool-spacer { flex:1; }
+.tool-stats { margin-top:auto; display:flex; flex-direction:column; gap:3px; }
+.ts-item { text-align:center; padding:5px 2px; border-radius:6px; font-size:0.64rem; font-weight:600; cursor:pointer; transition:all 0.2s; border:1px solid transparent; }
+.ts-item:hover { background:var(--bg-card-hover); }
+.ts-val { font-size:0.80rem; }
+.ts-lbl { font-size:0.56rem; color:var(--text-muted); }
+
+/* ====== LEFT PANEL ====== */
+.left-panel {
+    width:38%; min-width:380px; flex-shrink:0; display:flex; flex-direction:column;
+    background:var(--bg-card); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border:1.5px solid var(--border-active); border-radius:var(--panel-radius);
+    position:relative; overflow:hidden;
+    box-shadow:0 0 18px var(--accent-glow),0 0 40px var(--accent-soft);
+    transition: border-radius 0.4s;
+}
+/* Glow strips — clockwise rotation */
+.lp-strip { position:absolute; pointer-events:none; z-index:1; }
+.lp-strip.top, .lp-strip.bottom { left:-100%; width:100%; height:1.5px; background:linear-gradient(90deg,transparent,#C4B0FF,#7B5CFF,#C4B0FF,transparent); box-shadow:0 0 7px #C4B0FF; }
+.lp-strip.right, .lp-strip.left { top:-100%; width:1.5px; height:100%; background:linear-gradient(180deg,transparent,#C4B0FF,#A78BFA,#C4B0FF,transparent); box-shadow:0 0 7px #C4B0FF; }
+/* clockwise: top→right→bottom→left */
+.lp-strip.top    { top:0;    animation:scanH 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); }
+.lp-strip.right  { right:0;  animation:scanV 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay:0.8s; }
+.lp-strip.bottom { bottom:0; animation:scanHRev 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay:1.6s; }
+.lp-strip.left   { left:0;   animation:scanVRev 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay:2.4s; }
+@keyframes scanH    { 0%{left:-100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{left:100%;opacity:0} }
+@keyframes scanHRev { 0%{left:100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{left:-100%;opacity:0} }
+@keyframes scanV    { 0%{top:-100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:100%;opacity:0} }
+@keyframes scanVRev { 0%{top:100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:-100%;opacity:0} }
+
+.lp-header {
+    flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px; border-bottom:1px solid var(--divider); background:var(--bg-card);
+}
+.lp-header-left { display:flex; align-items:center; gap:8px; }
+.lp-ai-avatar { width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,var(--accent),#A78BFA); display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.7rem; font-weight:700; }
+.lp-mode-tabs { display:flex; gap:2px; }
+.lp-mode-tab {
+    padding:5px 12px; border-radius:8px; font-size:0.76rem; font-weight:500;
+    color:var(--text-muted); cursor:pointer; transition:all 0.25s;
+    border:1.5px solid transparent; display:flex; align-items:center; gap:5px;
+}
+.lp-mode-tab:hover { color:var(--text-primary); background:var(--bg-tag); }
+.lp-mode-tab.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent-light); box-shadow:0 0 12px var(--accent-glow); }
+.lp-mode-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+.lp-mode-tab.active .lp-mode-dot { background:var(--accent); box-shadow:0 0 6px var(--accent-glow); }
+
+.lp-body { flex:1; min-height:0; overflow-y:auto; }
+.lp-body::-webkit-scrollbar { width:3px; }
+.lp-body::-webkit-scrollbar-thumb { background:var(--accent-soft); border-radius:3px; }
+
+.lp-mode-panel { display:none; height:100%; animation:fadeSlide 0.3s ease-out; }
+.lp-mode-panel.active { display:flex; flex-direction:column; }
+@keyframes fadeSlide { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ---- CHAT MODE ---- */
+.chat-messages { flex:1; min-height:0; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+.chat-messages::-webkit-scrollbar { width:3px; }
+.chat-messages::-webkit-scrollbar-thumb { background:var(--accent-soft); border-radius:3px; }
+.chat-msg { display:flex; gap:8px; animation:msgIn 0.35s ease-out; max-width:92%; }
+@keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.chat-msg.ai { align-self:flex-start; }
+.chat-msg.user { align-self:flex-end; flex-direction:row-reverse; }
+.chat-msg.sys { align-self:flex-start; }
+.chat-msg .msg-avatar { width:30px; height:30px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:0.68rem; font-weight:700; color:#fff; margin-top:2px; }
+.chat-msg.ai .msg-avatar { background:linear-gradient(135deg,var(--accent),#A78BFA); }
+.chat-msg.user .msg-avatar { background:linear-gradient(135deg,var(--accent-teal),#5CCFCF); }
+.chat-msg.sys .msg-avatar { background:linear-gradient(135deg,#F59E0B,#F0A050); font-size:0.75rem; }
+.chat-msg .msg-bubble { padding:9px 13px; border-radius:12px; font-size:0.80rem; line-height:1.6; word-break:break-word; }
+.chat-msg.ai .msg-bubble { background:var(--bubble-ai); border:1px solid var(--bubble-ai-border); border-top-left-radius:3px; color:var(--text-primary); }
+.chat-msg.user .msg-bubble { background:var(--bubble-user); border:1px solid var(--bubble-user-border); border-top-right-radius:3px; color:var(--text-primary); }
+.chat-msg.sys .msg-bubble { background:rgba(245,158,11,0.05); border:1px dashed rgba(245,158,11,0.22); border-radius:8px; font-size:0.72rem; color:var(--text-muted); font-style:italic; }
+.chat-msg .msg-time { font-size:0.60rem; color:var(--text-muted); margin-top:3px; padding:0 4px; }
+.chat-msg.user .msg-time { text-align:right; }
+.chat-typing { align-self:flex-start; display:none; gap:6px; padding:6px 12px; background:var(--bubble-ai); border:1px solid var(--bubble-ai-border); border-radius:12px; border-top-left-radius:3px; margin-left:38px; }
+.chat-typing.show { display:flex; }
+.chat-typing span { width:6px; height:6px; border-radius:50%; background:var(--accent); animation:typeBounce 1.2s ease-in-out infinite; }
+.chat-typing span:nth-child(2) { animation-delay:0.2s; } .chat-typing span:nth-child(3) { animation-delay:0.4s; }
+@keyframes typeBounce { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-6px);opacity:1} }
+
+.chat-chips { flex-shrink:0; display:flex; gap:6px; padding:4px 14px 8px; flex-wrap:wrap; border-top:1px solid var(--divider); justify-content:center; }
+.chat-chip { padding:5px 12px; border-radius:14px; font-size:0.68rem; font-weight:500; cursor:pointer; transition:all 0.22s; white-space:nowrap; border:1.5px solid var(--border-light); background:var(--bg-tag); color:var(--text-secondary); display:flex; align-items:center; gap:5px; }
+.chat-chip svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.chat-chip:hover { border-color:var(--border-active); color:var(--accent); box-shadow:0 0 10px var(--accent-soft); transform:translateY(-1px); }
+
+.chat-input-wrap { flex-shrink:0; display:flex; align-items:center; gap:6px; padding:8px 14px; border-top:1px solid var(--divider); background:var(--bg-card); }
+.chat-input { flex:1; padding:8px 12px; border-radius:20px; min-height:38px; max-height:100px; border:1.5px solid var(--border-light); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.80rem; outline:none; resize:none; transition:all 0.25s; line-height:1.5; }
+.chat-input:focus { border-color:var(--border-active); box-shadow:0 0 12px var(--accent-soft); }
+.chat-send { width:36px; height:36px; border-radius:50%; border:none; cursor:pointer; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; transition:all 0.25s; flex-shrink:0; box-shadow:0 0 10px var(--accent-glow); }
+.chat-send:hover { box-shadow:0 0 22px var(--accent-bright); transform:scale(1.06); }
+.chat-send svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+
+/* ---- TEMPLATE MODE ---- */
+.tpl-panel-body { padding:12px 14px; flex:1; overflow-y:auto; }
+.tpl-panel-body::-webkit-scrollbar { width:3px; }
+.tpl-panel-body::-webkit-scrollbar-thumb { background:var(--accent-soft); border-radius:3px; }
+.lp-meta { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+.lp-field { display:flex; flex-direction:column; gap:2px; min-width:80px; }
+.lp-field label { font-size:0.62rem; font-weight:600; color:var(--text-muted); letter-spacing:0.04em; text-transform:uppercase; }
+.lp-field input, .lp-field select { padding:6px 9px; border-radius:7px; border:1.5px solid var(--border-light); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.80rem; outline:none; transition:all 0.25s; min-width:90px; }
+.lp-field input:focus, .lp-field select:focus { border-color:var(--border-active); box-shadow:0 0 8px var(--accent-soft); }
+.lp-title-input { width:100%; padding:9px 12px; border-radius:8px; border:1.5px solid var(--border-light); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:1rem; font-weight:600; outline:none; transition:all 0.25s; margin-bottom:10px; }
+.lp-title-input:focus { border-color:var(--border-active); box-shadow:0 0 14px var(--accent-soft); }
+.lp-section { margin-bottom:8px; border:1.5px solid var(--border-light); border-radius:9px; background:var(--bg-tag); overflow:hidden; transition:all 0.25s; position:relative; }
+.lp-section:hover { border-color:var(--border-medium); }
+.lp-section.open { border-color:var(--accent-light); background:var(--accent-soft); }
+.lp-section-header { display:flex; align-items:center; justify-content:space-between; padding:7px 10px; cursor:pointer; user-select:none; font-size:0.80rem; font-weight:600; color:var(--text-secondary); transition:all 0.25s; }
+.lp-section-header:hover { color:var(--text-primary); }
+.lp-section.open .lp-section-header { color:var(--accent); border-bottom:1px solid var(--divider); }
+.lp-section-body { display:none; padding:8px 10px; }
+.lp-section.open .lp-section-body { display:block; animation:fadeSlide 0.25s ease-out; }
+.lp-textarea { width:100%; min-height:70px; padding:7px 10px; border-radius:7px; border:1.5px solid var(--border-light); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.78rem; outline:none; resize:vertical; transition:all 0.25s; line-height:1.6; }
+.lp-textarea:focus { border-color:var(--border-active); box-shadow:0 0 10px var(--accent-soft); }
+.lp-chevron { transition:transform 0.3s; color:var(--text-muted); }
+.lp-section.open .lp-chevron { transform:rotate(180deg); color:var(--accent); }
+.tpl-actions { display:flex; gap:5px; padding:8px 14px; border-top:1px solid var(--divider); }
+.wb-btn { padding:5px 11px; border-radius:7px; font-size:0.72rem; font-weight:500; cursor:pointer; border:1.5px solid var(--border-medium); background:transparent; color:var(--text-secondary); transition:all 0.25s; font-family:inherit; display:flex; align-items:center; gap:4px; }
+.wb-btn:hover { border-color:var(--border-active); color:var(--accent); }
+.wb-btn.primary { background:var(--accent); color:#fff; border-color:transparent; box-shadow:0 0 12px var(--accent-glow); }
+.wb-btn.primary:hover { box-shadow:0 0 22px var(--accent-bright); transform:translateY(-1px); }
+
+/* ---- COMMAND MODE ---- */
+.cmd-panel-body { padding:10px 14px; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+.cmd-panel-body::-webkit-scrollbar { width:3px; }
+.cmd-panel-body::-webkit-scrollbar-thumb { background:var(--accent-soft); border-radius:3px; }
+.cmd-cat-tabs { display:flex; gap:3px; flex-wrap:wrap; }
+.cmd-cat-tab { padding:4px 10px; border-radius:14px; font-size:0.68rem; font-weight:500; cursor:pointer; transition:all 0.2s; border:1.5px solid var(--border-light); background:transparent; color:var(--text-muted); white-space:nowrap; }
+.cmd-cat-tab:hover { border-color:var(--border-medium); color:var(--text-primary); }
+.cmd-cat-tab.active { color:#fff; }
+.cmd-cat-tab[data-cat="all"].active { background:var(--accent); border-color:var(--accent); }
+.cmd-cat-tab[data-cat="polish"].active { background:var(--accent-teal); border-color:var(--accent-teal); }
+.cmd-cat-tab[data-cat="adapt"].active { background:var(--accent-orange); border-color:var(--accent-orange); }
+.cmd-cat-tab[data-cat="generate"].active { background:var(--accent-mint); border-color:var(--accent-mint); }
+.cmd-cat-tab[data-cat="export"].active { background:var(--accent-amber); border-color:var(--accent-amber); }
+.cmd-cat-tab[data-cat="custom"].active { background:var(--accent-rose); border-color:var(--accent-rose); }
+.cmd-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.cmd-card { padding:10px; border-radius:9px; border:1.5px solid var(--border-light); background:var(--bg-tag); cursor:pointer; transition:all 0.25s var(--trans-spring); display:flex; flex-direction:column; gap:4px; position:relative; overflow:hidden; }
+.cmd-card::after { content:''; position:absolute; top:0; left:0; width:3px; height:100%; border-radius:3px 0 0 3px; opacity:0; transition:opacity 0.25s; }
+.cmd-card:hover { transform:translateY(-2px); }
+.cmd-card:hover::after { opacity:1; }
+.cmd-card[data-cat="polish"]:hover { border-color:var(--accent-teal); box-shadow:0 0 14px var(--accent-teal-light); }
+.cmd-card[data-cat="polish"]::after { background:var(--accent-teal); }
+.cmd-card[data-cat="polish"] .cmd-icon svg { stroke:var(--accent-teal); }
+.cmd-card[data-cat="adapt"]:hover { border-color:var(--accent-orange); box-shadow:0 0 14px var(--accent-orange-light); }
+.cmd-card[data-cat="adapt"]::after { background:var(--accent-orange); }
+.cmd-card[data-cat="adapt"] .cmd-icon svg { stroke:var(--accent-orange); }
+.cmd-card[data-cat="generate"]:hover { border-color:var(--accent-mint); box-shadow:0 0 14px var(--accent-mint-light); }
+.cmd-card[data-cat="generate"]::after { background:var(--accent-mint); }
+.cmd-card[data-cat="generate"] .cmd-icon svg { stroke:var(--accent-mint); }
+.cmd-card[data-cat="export"]:hover { border-color:var(--accent-amber); box-shadow:0 0 14px var(--accent-amber-light); }
+.cmd-card[data-cat="export"]::after { background:var(--accent-amber); }
+.cmd-card[data-cat="export"] .cmd-icon svg { stroke:var(--accent-amber); }
+.cmd-card[data-cat="polish"] .cmd-name { color:var(--accent-teal); }
+.cmd-card[data-cat="adapt"] .cmd-name { color:var(--accent-orange); }
+.cmd-card[data-cat="generate"] .cmd-name { color:var(--accent-mint); }
+.cmd-card[data-cat="export"] .cmd-name { color:var(--accent-amber); }
+.cmd-card .cmd-icon { display:flex; align-items:center; gap:4px; }
+.cmd-card .cmd-icon svg { width:16px; height:16px; stroke:var(--accent); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.cmd-card .cmd-name { font-size:0.78rem; font-weight:600; color:var(--accent); }
+.cmd-card .cmd-desc { font-size:0.64rem; color:var(--text-muted); }
+.cmd-add-row { display:flex; gap:6px; padding:0 14px 10px; border-top:1px solid var(--divider); padding-top:8px; }
+.cmd-add-input { flex:1; padding:5px 9px; border-radius:7px; border:1.5px solid var(--border-light); background:var(--bg-input); color:var(--text-primary); font-family:inherit; font-size:0.72rem; outline:none; transition:all 0.2s; }
+.cmd-add-input:focus { border-color:var(--border-active); }
+.cmd-add-btn { padding:5px 12px; border-radius:7px; font-size:0.70rem; font-weight:500; cursor:pointer; border:1.5px dashed var(--border-medium); background:transparent; color:var(--text-muted); transition:all 0.2s; white-space:nowrap; }
+.cmd-add-btn:hover { border-color:var(--border-active); color:var(--accent); background:var(--bg-tag); }
+.cmd-custom-list { display:flex; flex-direction:column; gap:3px; }
+.cmd-custom-item { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; font-size:0.72rem; background:var(--bg-tag); border:1px solid transparent; transition:all 0.2s; }
+.cmd-custom-item:hover { border-color:var(--border-light); }
+.cmd-custom-del { cursor:pointer; color:var(--text-muted); font-size:0.8rem; padding:2px 5px; border-radius:4px; transition:all 0.2s; }
+.cmd-custom-del:hover { color:var(--red); background:rgba(240,68,56,0.06); }
+
+/* ====== RESIZER ====== */
+.resizer { width:8px; flex-shrink:0; cursor:col-resize; position:relative; z-index:15; background:transparent; transition:background 0.2s; }
+.resizer:hover, .resizer.active { background:var(--accent-light); }
+.resizer::after { content:''; position:absolute; left:50%; top:10%; bottom:10%; width:2px; border-radius:1px; background:var(--border-light); transform:translateX(-50%); transition:all 0.2s; }
+.resizer:hover::after, .resizer.active::after { background:var(--accent); width:3px; box-shadow:0 0 10px var(--accent-glow); }
+
+/* ====== DISPLAY AREA (right) ====== */
+.display-area {
+    flex:1; min-width:340px; display:flex; flex-direction:column;
+    background:var(--bg-display); border:1.5px solid var(--border-light);
+    border-radius:var(--panel-radius); position:relative; overflow:hidden;
+    box-shadow:0 0 14px rgba(0,0,0,0.03);
+    transition: border-radius 0.4s;
+}
+.display-header {
+    flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+    padding:8px 16px; border-bottom:1px solid var(--divider); background:var(--bg-card);
+}
+.display-title { font-size:0.80rem; font-weight:600; color:var(--text-secondary); display:flex; align-items:center; gap:6px; }
+.display-title .dot { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow:0 0 6px rgba(22,163,74,0.3); }
+.display-actions { display:flex; gap:5px; align-items:center; }
+.da-btn {
+    padding:4px 10px; border-radius:6px; font-size:0.70rem; font-weight:500; cursor:pointer;
+    border:1.5px solid var(--border-light); background:transparent; color:var(--text-muted);
+    transition:all 0.25s; font-family:inherit; position:relative;
+}
+.da-btn:hover { border-color:var(--border-medium); color:var(--text-primary); }
+.da-btn.active { color:var(--accent); border-color:var(--accent-light); background:var(--accent-soft); }
+.da-btn.editing { color:var(--green); border-color:rgba(22,163,74,0.25); background:rgba(22,163,74,0.05); }
+.da-btn .da-tip { display:none; position:absolute; top:110%; left:50%; transform:translateX(-50%); background:var(--bg-card); border:1px solid var(--border-medium); border-radius:6px; padding:3px 8px; font-size:0.60rem; white-space:nowrap; z-index:10; color:var(--text-secondary); }
+.da-btn:hover .da-tip { display:block; }
+
+.display-body {
+    flex:1; min-height:0; overflow-y:auto; padding:24px 32px;
+    font-size:0.88rem; line-height:1.85; color:var(--text-primary);
+}
+.display-body::-webkit-scrollbar { width:4px; }
+.display-body::-webkit-scrollbar-thumb { background:var(--border-medium); border-radius:4px; }
+
+/* Document content */
+.doc-content h1 { font-family:'Playfair Display','Georgia',serif; font-size:1.6rem; font-weight:700; color:var(--accent); margin-bottom:20px; padding-bottom:12px; border-bottom:2px solid var(--accent-light); letter-spacing:0.02em; }
+.doc-content h2 { font-size:1.15rem; font-weight:700; margin:28px 0 14px; padding-left:12px; border-left:3px solid var(--accent); color:var(--text-primary); letter-spacing:0.01em; }
+.doc-content h3 { font-size:1rem; font-weight:650; margin:20px 0 10px; color:var(--accent-deep); letter-spacing:0.01em; }
+.doc-content h4 { font-size:0.90rem; font-weight:600; margin:14px 0 8px; color:var(--text-secondary); }
+.doc-content p { margin:8px 0; }
+.doc-content strong { color:var(--text-primary); font-weight:650; }
+.doc-content ul, .doc-content ol { margin:8px 0; padding-left:22px; }
+.doc-content li { margin:3px 0; }
+.doc-content table { width:100%; border-collapse:collapse; margin:12px 0; font-size:0.84rem; border-radius:8px; overflow:hidden; }
+.doc-content table th { background:var(--accent-soft); color:var(--accent); font-weight:600; padding:8px 12px; text-align:left; border-bottom:2px solid var(--accent-light); font-size:0.78rem; letter-spacing:0.03em; }
+.doc-content table td { padding:7px 12px; border-bottom:1px solid var(--divider); color:var(--text-secondary); }
+.doc-content table tr:last-child td { border-bottom:none; }
+.doc-content table tbody tr:hover td { background:var(--accent-soft); }
+.doc-content table td:first-child { font-weight:550; color:var(--accent-deep); }
+.doc-content blockquote { margin:10px 0; padding:8px 14px; border-left:3px solid var(--accent-amber); background:rgba(245,158,11,0.04); border-radius:0 6px 6px 0; color:var(--text-secondary); }
+.doc-content hr { border:none; height:1px; background:var(--divider); margin:20px 0; }
+.doc-content code { font-family:'JetBrains Mono','Cascadia Code',monospace; font-size:0.78rem; background:var(--bg-tag); padding:1px 5px; border-radius:3px; color:var(--accent-deep); }
+.doc-content .highlight-box { background:var(--accent-soft); border:1.5px solid var(--accent-light); border-radius:10px; padding:12px 16px; margin:12px 0; }
+.doc-content .tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:600; margin-right:4px; }
+.doc-content .tag.obj { background:rgba(107,93,240,0.08); color:var(--accent); }
+.doc-content .tag.act { background:rgba(14,165,185,0.08); color:var(--accent-teal); }
+.doc-content .tag.ref { background:rgba(245,158,11,0.08); color:#E09000; }
+
+/* Editing mode */
+.display-body[contenteditable="true"]:focus { outline:2px dashed var(--accent-light); outline-offset:4px; border-radius:4px; }
+.display-body[contenteditable="true"]:hover { background:rgba(107,93,240,0.01); }
+
+/* ====== CHALKBOARD ====== */
+.chalkboard { margin:20px 0; position:relative; }
+.board-frame { background:linear-gradient(180deg,#C4943C 0%,#A0722A 4%,#8B6018 8%,#6B4810 12%,#8B6018 16%,#A0722A 20%,#C4943C 24%,#B8862A 50%,#C4943C 76%,#A0722A 80%,#8B6018 84%,#6B4810 88%,#8B6018 92%,#A0722A 96%,#C4943C 100%); border-radius:14px; padding:10px; box-shadow:0 4px 20px rgba(0,0,0,0.18),inset 0 1px 2px rgba(255,255,255,0.08); }
+.board-frame::after { content:''; position:absolute; inset:8px; border-radius:6px; border:1px solid rgba(0,0,0,0.18); pointer-events:none; }
+.board-inner { background:var(--board-bg); background-image: radial-gradient(ellipse at 20% 15%, rgba(255,255,255,0.03) 0%,transparent 50%), radial-gradient(ellipse at 80% 85%, rgba(0,0,0,0.08) 0%,transparent 50%), repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(255,255,255,0.008) 2px,rgba(255,255,255,0.008) 4px); border-radius:6px; padding:24px 28px; color:var(--board-chalk); font-family:'STKaiti','KaiTi','楷体','Noto Serif SC',serif; letter-spacing:0.03em; line-height:1.9; position:relative; overflow:hidden; }
+.board-inner::before { content:''; position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 0%,rgba(255,255,255,0.04),transparent 60%), radial-gradient(circle at 30% 80%,rgba(200,220,200,0.05),transparent 50%); border-radius:6px; }
+.board-tray { height:6px; background:linear-gradient(180deg,#C4943C,#8B6018); border-radius:0 0 3px 3px; margin:0 20px; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+.board-title { font-size:1.3rem; font-weight:700; text-align:center; letter-spacing:0.08em; margin-bottom:20px; text-shadow:0 1px 2px rgba(0,0,0,0.2); position:relative; z-index:1; }
+.board-title::after { content:''; display:block; width:60%; height:1px; margin:8px auto 0; background:linear-gradient(90deg,transparent,rgba(232,228,216,0.3),transparent); }
+.board-section { position:relative; z-index:1; margin-bottom:16px; }
+.board-section-title { font-size:0.82rem; font-weight:700; letter-spacing:0.05em; padding:3px 10px; border-left:3px solid rgba(232,228,216,0.55); margin-bottom:8px; color:rgba(255,255,240,0.9); }
+.board-flow { display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; position:relative; z-index:1; }
+.board-box { background:rgba(255,255,255,0.04); border:1px dashed rgba(232,228,216,0.22); border-radius:10px; padding:12px 14px; flex:1; min-width:130px; text-align:center; }
+.board-box.central { border-style:solid; border-color:rgba(232,228,216,0.35); background:rgba(255,255,255,0.06); flex:1.4; }
+.board-box-title { font-size:0.80rem; font-weight:700; margin-bottom:6px; color:rgba(255,255,245,0.95); }
+.board-box ul { list-style:none; padding:0; margin:0; font-size:0.76rem; }
+.board-box li { margin:3px 0; opacity:0.82; }
+.board-box li.hl { color:#FFD580; font-weight:600; opacity:1; }
+.board-arrow { display:flex; align-items:center; font-size:1.2rem; color:rgba(232,228,216,0.4); flex-shrink:0; padding-top:20px; }
+.board-footer { text-align:center; font-size:0.80rem; margin-top:14px; letter-spacing:0.05em; opacity:0.7; position:relative; z-index:1; }
+.board-footer span { margin:0 10px; }
+.board-corner { position:absolute; width:40px; height:40px; pointer-events:none; z-index:2; }
+.board-corner.tl { top:2px; left:2px; border-top:1.5px solid rgba(232,228,216,0.15); border-left:1.5px solid rgba(232,228,216,0.15); border-radius:4px 0 0 0; }
+.board-corner.br { bottom:2px; right:2px; border-bottom:1.5px solid rgba(232,228,216,0.15); border-right:1.5px solid rgba(232,228,216,0.15); border-radius:0 0 4px 0; }
+.chalk-dust { position:absolute; bottom:4px; left:10%; right:10%; height:20px; background:radial-gradient(ellipse at center,rgba(220,210,180,0.15),transparent 70%); pointer-events:none; border-radius:50%; }
+
+/* ====== KNOWLEDGE TREE ====== */
+.knowledge-tree { margin:16px 0; position:relative; }
+.tree-root {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 20px; border-radius:20px; margin:0 auto 22px;
+    background:linear-gradient(135deg,var(--accent-soft),var(--bg-tag));
+    border:2px solid var(--accent-light); font-weight:700; font-size:0.92rem;
+    position:relative; left:50%; transform:translateX(-50%);
+    box-shadow:0 0 16px var(--accent-soft);
+}
+.tree-root svg { width:18px; height:18px; stroke:var(--accent); fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.tree-root::after { content:''; position:absolute; bottom:-18px; left:50%; width:1.5px; height:16px; background:var(--accent); transform:translateX(-50%); opacity:0.22; border-radius:1px; }
+.tree-branches { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; padding-top:4px; position:relative; }
+.tree-branch { flex:1; min-width:140px; max-width:220px; position:relative; padding-top:18px; }
+.tree-branch::before { content:''; position:absolute; top:0; left:50%; width:1.5px; height:16px; background:var(--accent); transform:translateX(-50%); opacity:0.18; border-radius:1px; }
+.tree-card { background:var(--bg-card); border:1.5px solid var(--border-light); border-radius:12px; padding:12px; transition:all 0.3s var(--trans-spring); cursor:default; box-shadow:0 2px 8px rgba(0,0,0,0.02); min-width:140px; flex:1; }
+.tree-card:hover { box-shadow:0 4px 16px var(--accent-soft); transform:translateY(-2px); border-color:var(--accent-light); }
+.tree-card-title { font-size:0.78rem; font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:5px; color:var(--accent); }
+.tree-card-title svg { width:16px; height:16px; stroke:var(--accent); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.tree-card-body { font-size:0.72rem; color:var(--text-secondary); line-height:1.6; }
+.tree-card-body .tcl { padding:2px 0; display:flex; align-items:flex-start; gap:4px; }
+.tree-card-body .tcl::before { content:'·'; color:var(--accent); font-weight:700; flex-shrink:0; }
+.tree-card-sub { margin-top:6px; padding-top:6px; border-top:1px dashed var(--divider); font-size:0.68rem; color:var(--text-muted); }
+
+/* ====== BOTTOM WIDGET BAR ====== */
+.widget-bar {
+    flex-shrink:0; display:flex; align-items:center; gap:2px;
+    background:var(--bg-card); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border:1.5px solid var(--border-light); border-radius:var(--panel-radius);
+    padding:4px 8px; height:42px; overflow:hidden;
+    transition: border-radius 0.4s;
+}
+.widget-pill { padding:4px 10px; border-radius:6px; font-size:0.70rem; font-weight:500; color:var(--text-muted); cursor:pointer; transition:all 0.25s; border:1px solid transparent; white-space:nowrap; flex-shrink:0; display:flex; align-items:center; gap:4px; }
+.widget-pill:hover { color:var(--text-primary); background:var(--bg-tag); border-color:var(--border-light); }
+.widget-pill.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent-light); box-shadow:0 0 8px var(--accent-glow); }
+.widget-pill .pill-dot { width:4px; height:4px; border-radius:50%; flex-shrink:0; }
+.widget-popup { display:none; position:absolute; bottom:50px; left:50%; transform:translateX(-50%); background:var(--bg-card); border:1.5px solid var(--border-active); border-radius:var(--panel-radius); box-shadow:0 0 24px var(--accent-glow),0 8px 32px rgba(0,0,0,0.12); padding:14px 18px; z-index:50; min-width:340px; max-width:500px; animation:popIn 0.3s cubic-bezier(0.34,1.56,0.64,1); max-height:280px; overflow-y:auto; }
+@keyframes popIn { from{opacity:0;transform:translateX(-50%) translateY(10px) scale(0.95)} to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)} }
+.widget-popup.show { display:block; }
+.widget-popup::-webkit-scrollbar { width:3px; }
+.widget-popup::-webkit-scrollbar-thumb { background:var(--accent-soft); border-radius:3px; }
+
+.sig-r { display:flex; align-items:center; justify-content:space-between; padding:5px 8px; border-radius:6px; transition:all 0.2s; cursor:pointer; border:1px solid transparent; }
+.sig-r:hover { background:var(--bg-card-hover); border-color:var(--border-light); }
+.sig-r.active { border-color:var(--accent-light); background:var(--accent-soft); }
+.sig-l { display:flex; align-items:center; gap:6px; min-width:0; }
+.sdot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.sdot.r{ background:var(--red); box-shadow:0 0 7px rgba(240,68,56,0.45); }
+.sdot.g{ background:var(--green); box-shadow:0 0 5px rgba(22,163,74,0.35); }
+.sdot.a{ background:var(--accent-amber); box-shadow:0 0 5px rgba(245,158,11,0.40); }
+.sdot.p{ background:var(--accent); box-shadow:0 0 5px var(--accent-glow); }
+.sname { font-size:0.76rem; font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sdesc { font-size:0.64rem; color:var(--text-muted); }
+.spct { font-size:0.76rem; font-weight:650; }
+.spct.up{ color:var(--green); } .spct.dn{ color:var(--red); } .spct.st{ color:var(--text-muted); }
+.gauge-wrap { display:flex; align-items:center; gap:10px; }
+.gauge-svg { width:100px; height:70px; }
+.g-track { fill:none; stroke:var(--divider); stroke-width:6; stroke-linecap:round; }
+.g-fill { fill:none; stroke:url(#gGrad); stroke-width:6; stroke-linecap:round; stroke-dasharray:130; stroke-dashoffset:130; animation:gFill 1.2s ease-out forwards; }
+@keyframes gFill { to { stroke-dashoffset:18; } }
+.g-endpoint { fill:#fff; stroke:#7B5CFF; stroke-width:2; filter:drop-shadow(0 0 6px rgba(123,92,255,0.55)); }
+.g-val { font-size:1.8rem; font-weight:700; letter-spacing:-0.03em; color:var(--accent); }
+.g-lbl { font-size:0.62rem; color:var(--text-muted); letter-spacing:0.05em; }
+.g-stats { display:flex; gap:12px; margin-top:5px; }
+.gs-item { text-align:center; }
+.gs-val { font-size:0.80rem; font-weight:650; }
+.gs-lbl { font-size:0.58rem; color:var(--text-muted); }
+.fit-i { display:flex; align-items:center; gap:5px; padding:4px 6px; border-radius:5px; transition:all 0.2s; cursor:pointer; border:1px solid transparent; }
+.fit-i:hover { background:var(--bg-card-hover); border-color:var(--border-light); }
+.fit-i.selected { border-color:var(--accent-light); background:var(--accent-soft); }
+.fit-bar { width:2px; height:20px; border-radius:1px; flex-shrink:0; }
+.fit-name { font-size:0.74rem; font-weight:550; }
+.fit-sub { font-size:0.62rem; color:var(--text-muted); }
+.fit-sc { font-size:0.76rem; font-weight:650; }
+.stat-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:10px; }
+.stat-box { text-align:center; padding:7px 4px; border-radius:7px; border:1.5px solid var(--border-light); background:var(--bg-tag); }
+.stat-num { font-size:1.2rem; font-weight:700; color:var(--accent); }
+.stat-lbl { font-size:0.62rem; color:var(--text-muted); margin-top:1px; }
+.alert-row { display:flex; align-items:center; gap:6px; padding:5px 7px; border-radius:5px; transition:all 0.2s; cursor:pointer; border:1px solid transparent; }
+.alert-row:hover { background:var(--bg-card-hover); border-color:var(--border-light); }
+.alert-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.alert-name { font-size:0.76rem; font-weight:550; }
+.alert-sub { font-size:0.64rem; color:var(--text-muted); }
+
+@media(max-width:1280px){ .app-shell{ padding:4px 6px; gap:4px; min-width:0; } .tool-strip{ width:40px; } .left-panel{ width:36%; min-width:340px; } .display-body{ padding:16px 20px; } }
+@media(max-width:900px){ .app-shell{ min-height:auto; } .main-area{ flex-direction:column; } .tool-strip{ flex-direction:row; width:100%; height:44px; } .left-panel{ width:100%; min-width:0; max-height:45%; } .resizer{ display:none; } .display-area{ flex:1; min-height:350px; } }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+<!-- ====== TOP NAV ====== -->
+<nav class="top-nav">
+    <div class="nav-left"><span class="nav-logo"><span class="dot"></span>Nanobot</span></div>
+    <div class="nav-center">
+        <span class="nav-tab active">教案与活动</span>
+        <span class="nav-tab">作业批改</span>
+        <span class="nav-tab">学情分析</span>
+    </div>
+    <div class="nav-right">
+        <button class="nav-icon" id="themeToggle" title="切换主题">
+            <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 1 0 0 16 7 7 0 0 1 0-14"/></svg>
+        </button>
+        <button class="nav-icon" title="通知">
+            <svg viewBox="0 0 20 20"><path d="M16 12V8A6 6 0 0 0 4 8v4M2 12h16M12 16a2 2 0 0 1-4 0"/></svg>
+        </button>
+        <div class="nav-avatar">助</div>
+    </div>
+</nav>
+
+<!-- ====== MAIN AREA ====== -->
+<div class="main-area" id="mainArea">
+
+<!-- ====== LEFT TOOL STRIP ====== -->
+<div class="tool-strip">
+    <div class="tool-btn active" title="教案编辑">
+        <svg viewBox="0 0 20 20"><rect x="3" y="2" width="14" height="16" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>
+        <span class="tooltip">教案编辑</span>
+    </div>
+    <div class="tool-btn" title="模板">
+        <svg viewBox="0 0 20 20"><rect x="3" y="2" width="6" height="7" rx="1"/><rect x="11" y="2" width="6" height="7" rx="1"/><path d="M5 11v7h10v-7"/></svg>
+        <span class="tooltip">模板</span>
+    </div>
+    <div class="tool-btn" title="AI 工具箱">
+        <svg viewBox="0 0 20 20"><path d="M10 2v4M10 14v4M2 10h4M14 10h4"/><circle cx="10" cy="10" r="4"/></svg>
+        <span class="tooltip">AI 工具箱</span>
+    </div>
+    <div class="tool-divider"></div>
+    <div class="tool-btn" title="保存草稿" onclick="handleSaveDraft()">
+        <svg viewBox="0 0 20 20"><path d="M5 3v14l5-3 5 3V3a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1z"/></svg>
+        <span class="tooltip">保存草稿</span>
+    </div>
+    <div class="tool-btn" title="完成" style="color:var(--green);">
+        <svg viewBox="0 0 20 20"><path d="M5 11l4 4 7-8"/></svg>
+        <span class="tooltip">完成</span>
+    </div>
+    <div class="tool-spacer"></div>
+    <div class="tool-stats">
+        <div class="ts-item" style="color:var(--green);"><div class="ts-val">82%</div><div class="ts-lbl">掌握率</div></div>
+        <div class="ts-item" style="color:var(--accent);"><div class="ts-val">93%</div><div class="ts-lbl">完成度</div></div>
+    </div>
+</div>
+
+<!-- ====== LEFT PANEL ====== -->
+<aside class="left-panel" id="leftPanel">
+    <div class="lp-strip top"></div><div class="lp-strip right"></div><div class="lp-strip bottom"></div><div class="lp-strip left"></div>
+
+    <div class="lp-header">
+        <div class="lp-header-left">
+            <div class="lp-ai-avatar">AI</div>
+            <span style="font-size:0.82rem;font-weight:600;">Nanobot 助教</span>
+        </div>
+        <div class="lp-mode-tabs">
+            <span class="lp-mode-tab active" data-mode="chat" onclick="switchLeftMode('chat')"><span class="lp-mode-dot"></span>对话</span>
+            <span class="lp-mode-tab" data-mode="tpl" onclick="switchLeftMode('tpl')"><span class="lp-mode-dot"></span>模板</span>
+            <span class="lp-mode-tab" data-mode="cmd" onclick="switchLeftMode('cmd')"><span class="lp-mode-dot"></span>指令</span>
+        </div>
+    </div>
+
+    <div class="lp-body">
+        <!-- CHAT MODE -->
+        <div class="lp-mode-panel active" id="panel-chat">
+            <div class="chat-messages" id="chatMessages">
+                <div class="chat-msg ai"><div class="msg-avatar">AI</div><div><div class="msg-bubble">您好！我是 Nanobot 助教，可以帮您生成和优化教案。<br><br>请告诉我您需要的 <strong>学科、年级和课题</strong>，我就可以开始工作了。</div><div class="msg-time">17:32</div></div></div>
+                <div class="chat-msg user"><div class="msg-avatar">师</div><div><div class="msg-bubble">帮我生成一节《背影》的教案</div><div class="msg-time">17:32</div></div></div>
+                <div class="chat-msg ai"><div class="msg-avatar">AI</div><div><div class="msg-bubble">好的，朱自清的《背影》是八年级语文上册的经典篇目。<br><br>让我先确认几个关键信息…</div><div class="msg-time">17:32</div></div></div>
+                <div class="chat-msg sys"><div class="msg-avatar">?</div><div><div class="msg-bubble">确认：年级、课时、教材版本…</div><div class="msg-time">17:32</div></div></div>
+                <div class="chat-msg user"><div class="msg-avatar">师</div><div><div class="msg-bubble">八年级，2课时，部编版</div><div class="msg-time">17:33</div></div></div>
+                <div class="chat-msg sys"><div class="msg-avatar">?</div><div><div class="msg-bubble">读取教案模板…</div><div class="msg-time">17:33</div></div></div>
+                <div class="chat-msg sys"><div class="msg-avatar">?</div><div><div class="msg-bubble">教案已生成：<code>教案_背影_八年级.md</code></div><div class="msg-time">17:33</div></div></div>
+                <div class="chat-msg ai"><div class="msg-avatar">AI</div><div><div class="msg-bubble">教案已生成完成！<br><br>右侧展示了完整教案，您可以 <strong>点击右上角编辑按钮</strong> 直接修改任何内容，也可用下方快捷指令继续优化。</div><div class="msg-time">17:33</div></div></div>
+                <div class="chat-typing" id="typingIndicator"><span></span><span></span><span></span></div>
+            </div>
+            <div class="chat-chips">
+                <span class="chat-chip" onclick="sendQuickCmd('polish')"><svg viewBox="0 0 20 20"><path d="M13 2L4 11l-1 4 4-1 9-9-3-3z"/><path d="M4 11l3 3"/></svg> 语言润色</span>
+                <span class="chat-chip" onclick="sendQuickCmd('adapt')"><svg viewBox="0 0 20 20"><path d="M2 18L10 2l3 5 5 3-8 8z"/></svg> 难度适配</span>
+                <span class="chat-chip" onclick="sendQuickCmd('evaluate')"><svg viewBox="0 0 20 20"><rect x="3" y="12" width="3" height="6" rx="0.5"/><rect x="8.5" y="7" width="3" height="11" rx="0.5"/><rect x="14" y="3" width="3" height="15" rx="0.5"/></svg> 智能评估</span>
+                <span class="chat-chip" onclick="sendQuickCmd('export')"><svg viewBox="0 0 20 20"><path d="M10 3v10M6 9l4 4 4-4M3 15v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg> 导出教案</span>
+            </div>
+            <div class="chat-input-wrap">
+                <textarea class="chat-input" id="chatInput" placeholder="描述你想要生成的教案…" rows="1" onkeydown="handleChatKey(event)"></textarea>
+                <button class="chat-send" onclick="sendMessage()" title="发送">
+                    <svg viewBox="0 0 20 20"><path d="M2 18L18 10 2 2v7l11 1-11 1v7z"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- TEMPLATE MODE -->
+        <div class="lp-mode-panel" id="panel-tpl">
+            <div class="tpl-panel-body">
+                <input class="lp-title-input" type="text" value="《背影》——朱自清" placeholder="输入教案标题...">
+                <div class="lp-meta">
+                    <div class="lp-field"><label>学科</label><select><option>语文</option></select></div>
+                    <div class="lp-field"><label>年级</label><select><option>八年级（上册）</option></select></div>
+                    <div class="lp-field"><label>课时</label><select><option>2课时（90分钟）</option></select></div>
+                    <div class="lp-field"><label>教材</label><select><option>部编版（人教版）</option></select></div>
+                </div>
+                <div class="lp-section open">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><circle cx="10" cy="10" r="3"/><circle cx="10" cy="10" r="7"/><path d="M10 3v3M10 14v3M3 10h3M14 10h3"/></svg>教学目标</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">知识目标：了解朱自清生平及写作背景；掌握重点字词；理清叙事线索和结构层次。&#10;能力目标：学习以"背影"为线索、以小见大的写作手法；品味朴素深情的语言；运用细节描写进行片段写作。&#10;素养目标：感受父子深挚亲情，理解中国式父爱的含蓄深沉；培养感恩意识。</textarea></div>
+                </div>
+                <div class="lp-section">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><path d="M10 2l6 6-6 10L4 8z"/></svg>教学重难点</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">重点：品读"望父买橘"等经典段落，体会细节描写中蕴含的深情。&#10;难点：体会朴素文字背后复杂的父子情感。&#10;突破策略：朗读感悟法、情境还原法、对比分析法、问题链驱动。</textarea></div>
+                </div>
+                <div class="lp-section">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><path d="M3 10h3l2-5 4 10 2-5h3"/></svg>教学过程</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">第一课时（45分钟）：导入→初读扫清障碍→整体感知理清结构→聚焦"背影"精读品味→练习→总结&#10;第二课时（45分钟）：温故导入→探究"背影"深层意蕴→品味语言特色→练习→总结</textarea></div>
+                </div>
+                <div class="lp-section">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><path d="M3 17h14M7 3v4l-4 8h14l-4-8V3"/></svg>板书设计</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">《背影》——朱自清&#10;线索：背影（点题 / 买橘详写 / 离别 / 思念）&#10;手法：以小见大 / 细节描写 / 铺垫蓄势 / 朴素语言&#10;主题：父子深情 + 成长中的理解与愧疚</textarea></div>
+                </div>
+                <div class="lp-section">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><rect x="4" y="2" width="12" height="16" rx="1.5"/><path d="M7 2v3h6V2M7 8h6M7 11h6M7 14h3"/></svg>练习与作业</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">基础练习：四次"背影"分析、四次"流泪"分析、选择题、简答题&#10;拓展练习：仿写片段《那一刻，我读懂了你》（200字）&#10;课后作业：背诵第6段；采访家人亲情故事</textarea></div>
+                </div>
+                <div class="lp-section">
+                    <div class="lp-section-header" onclick="this.parentElement.classList.toggle('open')"><span><svg width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;margin-right:5px;"><path d="M8 2c-3 0-5 2.5-5 5 0 2 1.5 3.5 2 5h6c0.5-1.5 2-3 2-5 0-2.5-2-5-5-5z"/><path d="M8 15h0M7 18h2"/></svg>教学反思</span><svg class="lp-chevron" width="14" height="14" viewBox="0 0 20 20" style="stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;"><path d="M5 8l5 5 5-5"/></svg></div>
+                    <div class="lp-section-body"><textarea class="lp-textarea">预期难点：学生对家庭变故部分可能感到枯燥；青春期学生对父子深情主题有距离感&#10;应急方案：播放《父亲》MV渲染情感；出示明确讨论任务单&#10;改进方向：布置亲情主题大作文；开展对比阅读和分享会</textarea></div>
+                </div>
+            </div>
+            <div class="tpl-actions">
+                <button class="wb-btn" onclick="handleSaveDraft()">保存草稿</button>
+                <button class="wb-btn primary" onclick="handleAIGenerate()">AI 完善</button>
+            </div>
+        </div>
+
+        <!-- COMMAND MODE -->
+        <div class="lp-mode-panel" id="panel-cmd">
+            <div class="cmd-panel-body">
+                <div style="font-size:0.72rem;color:var(--text-muted);">选择快捷指令或添加自定义操作：</div>
+                <div class="cmd-cat-tabs" id="cmdCatTabs">
+                    <span class="cmd-cat-tab active" data-cat="all" onclick="switchCmdCat('all',this)">全部</span>
+                    <span class="cmd-cat-tab" data-cat="polish" onclick="switchCmdCat('polish',this)">润色</span>
+                    <span class="cmd-cat-tab" data-cat="adapt" onclick="switchCmdCat('adapt',this)">适配</span>
+                    <span class="cmd-cat-tab" data-cat="generate" onclick="switchCmdCat('generate',this)">生成</span>
+                    <span class="cmd-cat-tab" data-cat="export" onclick="switchCmdCat('export',this)">导出</span>
+                    <span class="cmd-cat-tab" data-cat="custom" onclick="switchCmdCat('custom',this)">自定义</span>
+                </div>
+                <div class="cmd-grid" id="cmdGrid"></div>
+                <div class="cmd-custom-list" id="cmdCustomList"></div>
+            </div>
+            <div class="cmd-add-row">
+                <input class="cmd-add-input" id="cmdAddInput" placeholder="输入自定义指令名称…" onkeydown="if(event.key==='Enter')addCustomCmd()">
+                <button class="cmd-add-btn" onclick="addCustomCmd()">+ 添加</button>
+            </div>
+        </div>
+    </div>
+</aside>
+
+<!-- ====== RESIZER ====== -->
+<div class="resizer" id="resizer"></div>
+
+<!-- ====== RIGHT: DISPLAY AREA ====== -->
+<section class="display-area" id="displayArea">
+    <div class="display-header">
+        <span class="display-title"><span class="dot"></span>教案预览 · 实时同步</span>
+        <div class="display-actions">
+            <button class="da-btn active" onclick="switchDisplayMode('preview',this)">完整预览<span class="da-tip">查看完整教案</span></button>
+            <button class="da-btn" onclick="switchDisplayMode('board',this)">板书模式<span class="da-tip">仅展示板书设计</span></button>
+            <button class="da-btn" onclick="switchDisplayMode('class',this)">课堂模式<span class="da-tip">适合投影展示</span></button>
+            <button class="da-btn" id="btnEdit" onclick="toggleEditMode()">编辑<span class="da-tip">直接修改教案内容</span></button>
+            <button class="da-btn" onclick="handleExport()">导出 PDF<span class="da-tip">下载打印版本</span></button>
+        </div>
+    </div>
+    <div class="display-body doc-content" id="displayBody">
+
+<h1>教案：《背影》</h1>
+<h2>基本信息</h2>
+
+<table>
+<tr><th>项目</th><th>内容</th></tr>
+<tr><td>学科</td><td>语文</td></tr>
+<tr><td>年级</td><td>八年级（上册）</td></tr>
+<tr><td>课题</td><td>《背影》——朱自清</td></tr>
+<tr><td>课时</td><td>2课时（共90分钟）</td></tr>
+<tr><td>教材版本</td><td>部编版（人教版）语文八年级上册</td></tr>
+</table>
+
+<hr>
+
+<h2>教学目标</h2>
+
+<h3>知识目标</h3>
+<ol>
+<li>了解朱自清的生平及本文的写作背景（1925年，祖母去世、父亲失业的家庭变故）</li>
+<li>掌握课文中重点字词：交卸、狼藉、簌簌、蹒跚、颓唐、琐屑等</li>
+<li>理清文章的叙事线索和结构层次（点题——回忆——别后思念）</li>
+</ol>
+
+<h3>能力目标</h3>
+<ol>
+<li>学习本文以"背影"为线索组织材料、<strong>以小见大</strong>的写作手法</li>
+<li>品味文中朴素而饱含深情的语言，体会细节描写对表达情感的作用</li>
+<li>能够运用细节描写手法进行片段写作，刻画人物形象</li>
+</ol>
+
+<h3>素养目标</h3>
+<ol>
+<li>感受父子之间的深挚亲情，理解中国式父爱的含蓄与深沉</li>
+<li>学会体察生活中被忽略的亲情细节，培养感恩意识</li>
+<li>在审美鉴赏中提升对散文语言美的感受力</li>
+</ol>
+
+<hr>
+
+<h2>教学重难点</h2>
+
+<h3>重点</h3>
+<ol>
+<li>品读"望父买橘"等经典段落，体会细节描写中蕴含的深情</li>
+<li>分析"背影"作为全文线索的结构作用和象征意义</li>
+<li>理解文章四次写"背影"、四次写"流泪"的不同含义</li>
+</ol>
+
+<h3>难点</h3>
+<ol>
+<li>体会作者在朴素文字背后复杂的父子情感（既有深情又有愧疚）</li>
+<li>理解文章前半部分家庭变故的叙述与后半部分情感抒发之间的内在关联</li>
+</ol>
+
+<h3>突破策略</h3>
+<ol>
+<li><strong>朗读感悟法</strong>：通过反复朗读关键段落，让学生在声音中感受情感的温度</li>
+<li><strong>情境还原法</strong>：借助图片、视频或角色代入，帮助学生想象"望父买橘"的场景</li>
+<li><strong>对比分析法</strong>：将文中四次"背影"和四次"流泪"进行对比，引导学生发现情感层次的变化</li>
+<li><strong>问题链驱动</strong>：设计层层递进的问题，引导学生从表面走向深层理解</li>
+</ol>
+
+<hr>
+
+<h2>教学过程</h2>
+
+<h3>第一课时：整体感知与情感初探（45分钟）</h3>
+
+<h4>一、导入环节（5分钟）</h4>
+<p><strong>情境创设：</strong></p>
+<p>教师播放一段短视频或展示一组照片——父亲接送孩子、雨中撑伞、车站送别等日常场景（可配以舒缓音乐）。</p>
+<blockquote>教师引导语："同学们，在你的记忆中，有没有哪一个关于父亲的画面，让你至今难以忘怀？也许是一个背影、一个动作、一句话……今天，我们一起来学习朱自清先生的散文名篇《背影》，看看他记忆中最深刻的那个画面是什么。"</blockquote>
+<p><strong>设计意图：</strong>以生活化的情境导入，唤醒学生对亲情的感受，为课文学习建立情感共鸣的基础。</p>
+
+<h4>二、新授环节（30分钟）</h4>
+<p><strong>环节1：初读课文，扫清障碍（8分钟）</strong></p>
+<ul>
+<li><strong>教师活动：</strong>范读或播放名家朗读音频（建议选用濮存昕等名家版本），要求学生标注生字词读音；板书重点字词并正音：交卸（xiè）、狼藉（jí）、簌簌（sù）、踌躇（chóu chú）、蹒跚（pán shān）、颓唐（tuí）、琐屑（suǒ xiè）</li>
+<li><strong>学生活动：</strong>听读课文，标注字音；自由朗读一遍，初步感受文章情感基调</li>
+</ul>
+<p><strong>设计意图：</strong>扫清阅读障碍，初步感知课文内容和情感基调。</p>
+
+<p><strong>环节2：整体感知，理清结构（10分钟）</strong></p>
+<blockquote>文章写了一件什么事？发生在什么背景下？（祖母去世、父亲失业、家境衰败）<br>全文的线索是什么？（背影）<br>文章可以分为几个部分？请用小标题概括。</blockquote>
+<table>
+<tr><th>段落</th><th>内容概括</th><th>作用</th></tr>
+<tr><td>第1段</td><td>开篇点题"背影"</td><td>总领全文，奠定感情基调</td></tr>
+<tr><td>第2-6段</td><td>回忆浦口送别（家境、送行、买橘）</td><td>核心事件，详写"望父买橘"</td></tr>
+<tr><td>第7段</td><td>别后思念，再现"背影"</td><td>收束全文，深化主题</td></tr>
+</table>
+
+<p><strong>环节3：聚焦"背影"，精读品味（12分钟）</strong></p>
+<blockquote>请圈画出描写父亲买橘子过程中的动词（走、探、穿、爬、攀、缩、倾……）<br>这些动词写出了父亲怎样的状态？（年迈、肥胖、行动不便）<br>作者看到这一幕为什么流泪了？</blockquote>
+<p>教师重点品析：</p>
+<blockquote>"他用两手攀着上面，两脚再向上缩；他肥胖的身子向左微倾，显出努力的样子。"</blockquote>
+<p>引导学生关注：动作的艰难 → 父亲身体的衰老与笨拙 → 深沉的父爱</p>
+<p><strong>设计意图：</strong>以"望父买橘"为精读核心，通过动词品味引导学生体会细节描写的力量，这是本课教学重点的核心突破。</p>
+
+<h4>三、练习环节（7分钟）</h4>
+<p><strong>基础练习：</strong></p>
+<ol>
+<li>文中四次写到"背影"，请分别找出，并说明每次出现时作者的情感状态。</li>
+</ol>
+<blockquote>参考答案：第①次（第1段）：开篇点题——惦念；第②次（第6段）：望父买橘——感动、心疼；第③次（第6段）：离别时——惜别、不舍；第④次（第7段）：读信思父——思念、愧疚</blockquote>
+<ol start="2"><li>文中四次写到"我"流泪，每次流泪的原因分别是什么？</li></ol>
+<p><strong>拓展练习（选做）：</strong>仿照"望父买橘"的写法，用3-5个动词写一段话，描写你印象中父亲（或母亲）的一个动作片段。（80字左右）</p>
+
+<h4>四、总结环节（3分钟）</h4>
+<ul>
+<li>本节课我们理清了文章的结构层次：开篇点题 → 回忆送别 → 别后思念</li>
+<li>重点品读了"望父买橘"段落，感受到细节描写对表达情感的重要作用</li>
+<li>"背影"既是叙事线索，也是父爱的象征</li>
+</ul>
+<p><strong>作业布置：</strong>必做：熟读课文，背诵第6段"望父买橘"；选做：采访家人，了解父亲（或母亲）为家庭默默付出的一个故事，下节课分享</p>
+
+<hr>
+
+<h3>第二课时：深入探究与拓展提升（45分钟）</h3>
+
+<h4>一、导入环节（5分钟）</h4>
+<p><strong>温故知新：</strong></p>
+<blockquote>"上节课我们品读了'望父买橘'的经典段落。谁来背诵一下？"<br>"今天我们继续深入探讨：朱自清为什么选择'背影'而不是'面孔'来写父亲？文章中还有哪些值得品味的细节？"</blockquote>
+<p><strong>设计意图：</strong>以背诵检查衔接两课时内容，自然过渡到深层探究。</p>
+
+<h4>二、新授环节（25分钟）</h4>
+<p><strong>环节1：探究"背影"的深层意蕴（10分钟）</strong></p>
+<blockquote>朱自清为什么选取"背影"作为写作对象，而不写父亲的正面、眼神、微笑？<br>"背影"除了是父亲的背影，还可以象征什么？<br>文章前半部分写了家庭的变故和父亲的絮叨，这些内容与"背影"有什么关系？</blockquote>
+
+<div class="highlight-box">
+<p><strong>教师引导总结：</strong></p>
+<ul>
+<li><strong>背影的特点：</strong>不善言辞的中国式父亲，爱不在言语中，而在行动里。"背影"恰恰是父亲转身离去时的样子，含蓄、沉默、不回头——这就是深沉的父爱</li>
+<li><strong>叙事的蓄势：</strong>前半部分的家庭变故为后文的"背影"提供了情感铺垫——正因为家境艰难，父亲仍执意送行、买橘，这份爱才更令人动容</li>
+<li><strong>象征意义：</strong>背影既是具体形象，也是父爱的象征，更是时光流逝、父亲老去的隐喻</li>
+</ul>
+</div>
+
+<p><strong>环节2：品味语言特色（8分钟）</strong></p>
+<blockquote><strong>语句1：</strong>"我那时真是聪明过分，总觉他说话不大漂亮。" —— 反语，"聪明"实为"自以为是"。<br><br><strong>语句2：</strong>"他少年出外谋生，独立支持，做了许多大事。哪知老境却如此颓唐！" —— 短句与感叹，饱含对父亲命运的感慨与心疼。<br><br><strong>语句3：</strong>"我读到此处，在晶莹的泪光中，又看见那肥胖的、青布棉袍黑布马褂的背影。" —— "晶莹的泪光"与前文朴素描写形成呼应。</blockquote>
+<p>教师总结语言特色：<strong>朴素自然、不事雕琢，却字字含情</strong>——这就是朱自清散文"真挚"的美学风格。</p>
+
+<p><strong>环节3：理解父子关系的复杂性（7分钟）</strong></p>
+<blockquote>开头："我与父亲不相见已二年余了"——平淡中藏着距离感<br>中间：嫌父亲说话"不大漂亮"、觉得父亲"迂"——年少时的不理解<br>后来：看到背影流泪——长大后的理解与心疼<br>结尾：读信流泪——深深的思念与愧疚</blockquote>
+<p>教师追问："这种情感变化，说明了什么？"</p>
+<p>引导理解：<strong>成长就是一个从'不理解父亲'到'理解父亲'的过程</strong>。这也是本文跨越近百年仍然打动读者的原因。</p>
+
+<h4>三、练习环节（10分钟）</h4>
+<p><strong>基础练习：</strong></p>
+<ol>
+<li>选择题：下列对课文理解不正确的一项是（&nbsp;&nbsp;）<br>A. 文章以"背影"为线索，贯穿全文<br>B. "望父买橘"一段运用了外貌描写和动作描写<br>C. 文章四次写"背影"，其中详写的是第1次和第4次<br>D. 文章语言朴素自然，于平淡中蕴含着真情<br><strong>参考答案：C</strong>（详写的是第2次——望父买橘）</li>
+<li>简答题：文章为什么要详细描写父亲买橘子的过程？请从内容和结构两个角度作答。（4分）</li>
+</ol>
+<blockquote>参考答案：内容上——通过一系列动词细致描写父亲年迈肥胖、行动艰难却仍坚持为儿子买橘子的过程，表现了深沉无私的爱。（2分）结构上——这是"背影"出现的核心段落，是全文情感的高潮。（2分）</blockquote>
+<p><strong>拓展练习（选做）：</strong>写作片段练习——《那一刻，我读懂了你》。要求：选择一个生活场景，通过细节描写（动作、语言、外貌等）刻画父母形象，200字左右。</p>
+
+<h4>四、总结环节（5分钟）</h4>
+<p><strong>作业布置：</strong>必做：完成课后"思考探究"第2、3题；选做：阅读朱自清《荷塘月色》或《春》，写一段100字的阅读感受，体会朱自清散文的语言风格。</p>
+
+<hr>
+
+<!-- ====== 知识框架树 ====== -->
+<h2>知识框架</h2>
+
+<div class="knowledge-tree">
+    <div class="tree-root">
+        <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>
+        《背影》知识体系
+    </div>
+    <div class="tree-branches">
+        <div class="tree-branch">
+            <div class="tree-card">
+                <div class="tree-card-title">
+                    <svg viewBox="0 0 20 20"><circle cx="7" cy="7" r="2"/><circle cx="13" cy="13" r="2"/><path d="M8.5 8l3 3"/></svg>
+                    结构线索
+                </div>
+                <div class="tree-card-body">
+                    <div class="tcl">以"背影"为线索</div>
+                    <div class="tcl">点题 → 回忆 → 思念</div>
+                </div>
+                <div class="tree-card-sub">四次背影 · 情感递进</div>
+            </div>
+        </div>
+        <div class="tree-branch">
+            <div class="tree-card">
+                <div class="tree-card-title">
+                    <svg viewBox="0 0 20 20"><path d="M13 2L4 11l-1 4 4-1 9-9-3-3z"/></svg>
+                    写作手法
+                </div>
+                <div class="tree-card-body">
+                    <div class="tcl">以小见大（买橘→父爱）</div>
+                    <div class="tcl">细节描写（攀·缩·倾…）</div>
+                    <div class="tcl">铺垫蓄势 / 朴素语言</div>
+                </div>
+                <div class="tree-card-sub">真挚美学的典范</div>
+            </div>
+        </div>
+        <div class="tree-branch">
+            <div class="tree-card">
+                <div class="tree-card-title">
+                    <svg viewBox="0 0 20 20"><path d="M10 4a4 4 0 0 0-4 4v1a3 3 0 0 0 0 6h8a3 3 0 0 0 0-6v-1a4 4 0 0 0-4-4z"/></svg>
+                    主题思想
+                </div>
+                <div class="tree-card-body">
+                    <div class="tcl">父子深情</div>
+                    <div class="tcl">成长中的理解与愧疚</div>
+                </div>
+                <div class="tree-card-sub">跨越时代的共情力量</div>
+            </div>
+        </div>
+        <div class="tree-branch">
+            <div class="tree-card">
+                <div class="tree-card-title">
+                    <svg viewBox="0 0 20 20"><polygon points="10,3 12,8 17,9 13,13 14,18 10,15 6,18 7,13 3,9 8,8"/></svg>
+                    文学价值
+                </div>
+                <div class="tree-card-body">
+                    <div class="tcl">中国现代散文典范</div>
+                    <div class="tcl">真挚情感 + 语言美学</div>
+                </div>
+                <div class="tree-card-sub">朴素自然 · 字字含情</div>
+            </div>
+        </div>
+        <div class="tree-branch">
+            <div class="tree-card">
+                <div class="tree-card-title">
+                    <svg viewBox="0 0 20 20"><path d="M10 17c-4-3-8-5-8-9 0-2.5 2-4.5 4.5-4.5C8.5 3.5 10 5 10 5s1.5-1.5 3.5-1.5C16 3.5 18 5.5 18 8c0 4-4 6-8 9z"/></svg>
+                    情感线索
+                </div>
+                <div class="tree-card-body">
+                    <div class="tcl">惦念 → 感动</div>
+                    <div class="tcl">→ 惜别 → 思念</div>
+                </div>
+                <div class="tree-card-sub">从"不理解"到"理解"</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr>
+
+<!-- ====== 板书设计 ====== -->
+<h2>板书设计</h2>
+
+<div class="chalkboard">
+    <div class="board-frame">
+        <div class="board-inner">
+            <div class="board-corner tl"></div>
+            <div class="board-corner br"></div>
+
+            <div class="board-title">《背影》——朱自清</div>
+
+            <div class="board-section">
+                <div class="board-section-title">叙事线索 · 背影的四次出现</div>
+                <div class="board-flow">
+                    <div class="board-box"><div class="board-box-title">开篇点题</div><ul><li>第1段</li><li>惦念之情</li></ul></div>
+                    <div class="board-arrow">→</div>
+                    <div class="board-box central"><div class="board-box-title">望父买橘</div><ul><li class="hl">核心段落 · 详写</li><li>动词：攀·缩·倾</li><li>感动 · 心疼</li></ul></div>
+                    <div class="board-arrow">→</div>
+                    <div class="board-box"><div class="board-box-title">离别时刻</div><ul><li>第6段末</li><li>惜别 · 不舍</li></ul></div>
+                    <div class="board-arrow">→</div>
+                    <div class="board-box"><div class="board-box-title">读信思父</div><ul><li>第7段</li><li>思念 · 愧疚</li></ul></div>
+                </div>
+            </div>
+
+            <div class="board-section" style="display:flex;gap:16px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:160px;">
+                    <div class="board-section-title">背景铺垫</div>
+                    <div class="board-box" style="text-align:left;"><ul><li>祖母去世 ┐</li><li>父亲失业 ├─ 家境艰难</li><li>典当还债 ┘</li></ul><div style="text-align:center;margin-top:6px;opacity:0.5;font-size:0.72rem;">↓ 蓄势 ↓</div><div style="text-align:center;">父爱更显珍贵</div></div>
+                </div>
+                <div style="flex:1;min-width:160px;">
+                    <div class="board-section-title">写作手法</div>
+                    <div class="board-box" style="text-align:left;"><ul><li>以小见大</li><li>细节描写</li><li>铺垫蓄势</li><li>朴素语言</li></ul></div>
+                </div>
+                <div style="flex:1;min-width:150px;">
+                    <div class="board-section-title">主题思想</div>
+                    <div class="board-box" style="text-align:center;"><div style="font-size:0.84rem;font-weight:700;margin-bottom:4px;">父子深情</div><div style="opacity:0.7;font-size:0.72rem;">+ 成长中的<br>理解与愧疚</div></div>
+                </div>
+            </div>
+
+            <div class="board-footer"><span>四次流泪：惦念 → 感动 → 惜别 → 思念</span><span>|</span><span>真挚情感 · 散文美学典范</span></div>
+            <div class="chalk-dust"></div>
+        </div>
+    </div>
+    <div class="board-tray"></div>
+</div>
+
+<hr>
+
+<h2>教学反思预设</h2>
+<ul>
+<li><strong>预期难点：</strong>学生可能对文中"家庭变故"的叙述部分感到枯燥，需通过设计问题保持阅读兴趣；八年级学生正处于青春期，可能对"父子深情"主题有距离感，需要创设情境拉近心理距离；对"背影"象征意义的理解可能停留在表面，需要教师追问引导</li>
+<li><strong>应急方案：</strong>若学生对课文情感感受不深，可补充播放"筷子兄弟《父亲》"MV片段，用音乐辅助情感渲染；若小组讨论偏离主题，及时出示明确的讨论任务单，聚焦问题；若课堂时间紧张，可将第二课时"品味语言特色"环节中的自主旁批改为教师示范旁批</li>
+<li><strong>改进方向：</strong>后续可结合本课布置"写我的父亲/母亲"大作文，将阅读中习得的细节描写技法迁移到写作中；可与本单元其他散文（如《白杨礼赞》《散文二篇》）进行对比阅读，归纳散文的共性特征；可开展"亲情故事分享会"语文实践活动，让学生讲述自己的亲情故事，深化主题理解</li>
+</ul>
+
+    </div>
+</section>
+
+</div><!-- end main-area -->
+
+<!-- ====== BOTTOM WIDGET BAR ====== -->
+<div class="widget-bar" style="position:relative;" id="widgetBar">
+    <span class="widget-pill active" data-widget="signals" onclick="toggleWidgetPopup('signals')"><span class="pill-dot" style="background:var(--accent);"></span>教案列表</span>
+    <span class="widget-pill" data-widget="gauge" onclick="toggleWidgetPopup('gauge')"><span class="pill-dot" style="background:var(--green);"></span>备课进度</span>
+    <span class="widget-pill" data-widget="fitlist" onclick="toggleWidgetPopup('fitlist')"><span class="pill-dot" style="background:var(--accent-teal);"></span>推荐资源</span>
+    <span class="widget-pill" data-widget="grading" onclick="toggleWidgetPopup('grading')"><span class="pill-dot" style="background:var(--accent-amber);"></span>最近批改</span>
+    <span class="widget-pill" data-widget="alerts" onclick="toggleWidgetPopup('alerts')"><span class="pill-dot" style="background:var(--red);"></span>学情预警</span>
+    <span class="widget-pill" data-widget="progress" onclick="toggleWidgetPopup('progress')"><span class="pill-dot" style="background:var(--accent-sky);"></span>学生进步</span>
+    <span style="margin-left:auto;font-size:0.66rem;color:var(--text-muted);padding-right:4px;">点击切换面板</span>
+
+    <div class="widget-popup" id="popup-signals">
+        <div class="sig-r active"><div class="sig-l"><span class="sdot g"></span><div><div class="sname">《背影》阅读教学</div><div class="sdesc">八语·上册 · 已发布</div></div></div><span class="spct st">已发布</span></div>
+        <div class="sig-r"><div class="sig-l"><span class="sdot p"></span><div><div class="sname">议论文写作结构训练</div><div class="sdesc">八语·第5单元 · 编辑中</div></div></div><span class="spct st">编辑中</span></div>
+        <div class="sig-r"><div class="sig-l"><span class="sdot a"></span><div><div class="sname">英语定语从句精讲</div><div class="sdesc">高二英语·第4单元 · 待审核</div></div></div><span class="spct st">待审核</span></div>
+    </div>
+    <div class="widget-popup" id="popup-gauge">
+        <div class="gauge-wrap">
+            <svg class="gauge-svg" viewBox="0 0 100 70"><defs><linearGradient id="gGrad" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#7B5CFF"/><stop offset="100%" stop-color="#D4C0FF"/></linearGradient></defs><path d="M7,49 A40 40 0 0,1 87,49" class="g-track"/><path d="M7,49 A40 40 0 0,1 87,49" class="g-fill"/><circle cx="87" cy="49" r="4.5" class="g-endpoint"/><circle cx="87" cy="49" r="2" fill="#7B5CFF"/></svg>
+            <div><div class="g-val">78%</div><div class="g-lbl">整体备课进度</div><div class="g-stats"><div class="gs-item"><div class="gs-val" style="color:var(--accent);">12</div><div class="gs-lbl">已完成</div></div><div class="gs-item"><div class="gs-val" style="color:var(--accent-amber);">3</div><div class="gs-lbl">进行中</div></div><div class="gs-item"><div class="gs-val" style="color:var(--text-muted);">2</div><div class="gs-lbl">未开始</div></div></div></div>
+        </div>
+    </div>
+    <div class="widget-popup" id="popup-fitlist">
+        <div class="fit-i selected"><div class="fit-bar" style="background:#7B5CFF;"></div><div><div class="fit-name">大单元教学设计模板</div><div class="fit-sub">教研组 · 328次下载</div></div><span class="fit-sc" style="color:#7B5CFF;">热门</span></div>
+        <div class="fit-i"><div class="fit-bar" style="background:#5CCFCF;"></div><div><div class="fit-name">PBL项目式学习案例集</div><div class="fit-sub">校级资源 · 215次下载</div></div><span class="fit-sc" style="color:#5CCFCF;">推荐</span></div>
+        <div class="fit-i"><div class="fit-bar" style="background:#F0A050;"></div><div><div class="fit-name">分层作业设计指南</div><div class="fit-sub">区教研室 · 189次下载</div></div><span class="fit-sc" style="color:#F0A050;">精选</span></div>
+    </div>
+    <div class="widget-popup" id="popup-grading">
+        <div class="stat-grid">
+            <div class="stat-box"><div class="stat-num">186</div><div class="stat-lbl">已批改</div></div>
+            <div class="stat-box"><div class="stat-num" style="color:var(--accent-amber);">14</div><div class="stat-lbl">待批改</div></div>
+            <div class="stat-box"><div class="stat-num" style="color:var(--green);">92.3</div><div class="stat-lbl">平均分</div></div>
+            <div class="stat-box"><div class="stat-num" style="color:var(--accent-teal);">87%</div><div class="stat-lbl">及格率</div></div>
+        </div>
+        <div class="sig-r"><div class="sig-l"><span class="sdot r"></span><div><div class="sname">第7题 · 函数综合</div><div class="sdesc">得分率 42% · 需重点讲解</div></div></div><span class="spct dn">42%</span></div>
+    </div>
+    <div class="widget-popup" id="popup-alerts">
+        <div class="alert-row" style="background:rgba(240,68,56,0.04);"><span class="alert-dot" style="background:var(--red);box-shadow:0 0 6px rgba(240,68,56,0.5);"></span><div><div class="alert-name" style="color:var(--red);">成绩下滑预警</div><div class="alert-sub">陈小明 · 连续3次下降 92→78→65</div></div></div>
+        <div class="alert-row" style="background:rgba(245,158,11,0.04);"><span class="alert-dot" style="background:var(--accent-amber);box-shadow:0 0 6px rgba(245,158,11,0.5);"></span><div><div class="alert-name" style="color:var(--accent-amber);">作业缺交预警</div><div class="alert-sub">刘小华 · 近两周缺交4次</div></div></div>
+        <div class="alert-row" style="background:rgba(240,68,56,0.04);"><span class="alert-dot" style="background:var(--red);box-shadow:0 0 6px rgba(240,68,56,0.5);"></span><div><div class="alert-name" style="color:var(--red);">课堂参与度低</div><div class="alert-sub">张小红 · 本月主动发言仅2次</div></div></div>
+    </div>
+    <div class="widget-popup" id="popup-progress">
+        <div class="sig-r active"><div class="sig-l"><span class="sdot g"></span><div><div class="sname">林小燕</div><div class="sdesc">数学 · 65→82</div></div></div><span class="spct up">+17</span></div>
+        <div class="sig-r"><div class="sig-l"><span class="sdot g"></span><div><div class="sname">周小刚</div><div class="sdesc">英语 · 70→84</div></div></div><span class="spct up">+14</span></div>
+        <div class="sig-r"><div class="sig-l"><span class="sdot g"></span><div><div class="sname">吴小美</div><div class="sdesc">物理 · 58→71</div></div></div><span class="spct up">+13</span></div>
+    </div>
+</div>
+
+</div><!-- end app-shell -->
+
+<script>
+(function(){
+    // ====== Theme ======
+    const body = document.body; let isDark = false;
+    document.getElementById('themeToggle').addEventListener('click', function(){
+        isDark = !isDark; body.classList.toggle('dark', isDark);
+        this.innerHTML = isDark
+            ? '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"/><path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.5 4.5l1.5 1.5m8 8l1.5 1.5M4.5 15.5l1.5-1.5m8-8l1.5-1.5"/></svg>'
+            : '<svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 1 0 0 16 7 7 0 0 1 0-14"/></svg>';
+    });
+
+    // ====== Nav tabs ======
+    document.querySelectorAll('.nav-tab').forEach(tab => { tab.addEventListener('click', function(){ document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active')); this.classList.add('active'); }); });
+
+    // ====== Left panel mode switch ======
+    window.switchLeftMode = function(mode) {
+        document.querySelectorAll('.lp-mode-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.lp-mode-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector(`.lp-mode-tab[data-mode="${mode}"]`).classList.add('active');
+        document.getElementById(`panel-${mode}`).classList.add('active');
+        if (mode === 'chat') scrollChat();
+    };
+
+    // ====== Chat ======
+    function appendMessage(role, text) {
+        const container = document.getElementById('chatMessages');
+        const time = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
+        const isSys = role === 'sys';
+        const div = document.createElement('div');
+        div.className = `chat-msg ${role}`;
+        div.innerHTML = `<div class="msg-avatar">${isSys ? '?' : (role === 'user' ? '师' : 'AI')}</div><div><div class="msg-bubble">${text}</div><div class="msg-time">${time}</div></div>`;
+        const typing = document.getElementById('typingIndicator');
+        container.insertBefore(div, typing);
+    }
+    function scrollChat() { const c = document.getElementById('chatMessages'); c.scrollTop = c.scrollHeight; }
+
+    window.sendMessage = function() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim(); if (!text) return;
+        appendMessage('user', text);
+        input.value = ''; input.style.height = 'auto';
+        const typing = document.getElementById('typingIndicator');
+        typing.classList.add('show'); scrollChat();
+        setTimeout(() => { typing.classList.remove('show'); appendMessage('ai', '好的，正在为您处理...请在右侧预览查看效果。'); scrollChat(); }, 1200 + Math.random() * 800);
+    };
+
+    window.sendQuickCmd = function(cmd) {
+        const map = { polish: ['请帮我润色当前教案的语言表达','语言润色任务已完成！'], adapt: ['请帮我调整教案难度，分别给出基础版和提高版','难度适配完成！'], evaluate: ['请评估当前教案的质量，给出改进建议','评估报告已生成！'], export: ['请帮我导出教案为可打印格式','已准备导出！'] };
+        const [ut, at] = map[cmd] || ['执行快捷指令','指令完成'];
+        appendMessage('user', ut); const typing = document.getElementById('typingIndicator');
+        typing.classList.add('show'); scrollChat();
+        setTimeout(() => { typing.classList.remove('show'); appendMessage('ai', at); scrollChat(); }, 1500);
+    };
+
+    window.handleChatKey = function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+    const chatInput = document.getElementById('chatInput');
+    chatInput.addEventListener('input', function(){ this.style.height = 'auto'; this.style.height = Math.min(this.scrollHeight, 100) + 'px'; });
+
+    // ====== Template ======
+    window.handleSaveDraft = function() {
+        const btns = document.querySelectorAll('#panel-tpl .wb-btn');
+        btns.forEach(b => { if (b.textContent.includes('保存草稿')) { const o = b.innerHTML; b.innerHTML = '已保存'; b.style.color = 'var(--green)'; b.style.borderColor = 'var(--green)'; setTimeout(() => { b.innerHTML = o; b.style.color = ''; b.style.borderColor = ''; }, 2000); } });
+    };
+    window.handleAIGenerate = function() {
+        const btn = document.querySelector('#panel-tpl .wb-btn.primary');
+        if (!btn) return; const o = btn.innerHTML; btn.innerHTML = '生成中...'; btn.style.opacity = '0.7';
+        setTimeout(() => { btn.innerHTML = '完成'; btn.style.opacity = '1'; setTimeout(() => { btn.innerHTML = o; }, 2000); }, 1500);
+    };
+
+    // ====== Command mode ======
+    const cmdIcons = {
+        '语言润色':'<svg viewBox="0 0 20 20"><path d="M13 2L4 11l-1 4 4-1 9-9-3-3z"/><path d="M4 11l3 3"/></svg>',
+        '难度适配':'<svg viewBox="0 0 20 20"><path d="M2 18L10 2l3 5 5 3-8 8z"/></svg>',
+        '生成板书':'<svg viewBox="0 0 20 20"><rect x="3" y="2" width="14" height="16" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg>',
+        '智能评估':'<svg viewBox="0 0 20 20"><rect x="3" y="12" width="3" height="6" rx="0.5"/><rect x="8.5" y="7" width="3" height="11" rx="0.5"/><rect x="14" y="3" width="3" height="15" rx="0.5"/></svg>',
+        '导出PDF':'<svg viewBox="0 0 20 20"><path d="M10 3v10M6 9l4 4 4-4M3 15v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg>',
+        '扩写活动':'<svg viewBox="0 0 20 20"><path d="M10 3v14M3 10h14"/></svg>',
+        '对标课标':'<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M7 10l2 2 4-4"/></svg>',
+        '补充阅读':'<svg viewBox="0 0 20 20"><path d="M2 6h4l3-4 3 4h4v12H2z"/></svg>',
+        '分层设计':'<svg viewBox="0 0 20 20"><path d="M3 4h14M3 8h10M3 12h6M3 16h12"/></svg>',
+        '设计提问链':'<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M9 9a1 1 0 0 1 2 0c0 1.5-2 2-2 3"/><circle cx="10" cy="14" r="0.5"/></svg>',
+    };
+    const presetCmds = {
+        all: [
+            {icon:'语言润色',name:'语言润色',desc:'优化教学语言表达',cat:'polish'},
+            {icon:'难度适配',name:'难度适配',desc:'生成基础版+提高版',cat:'adapt'},
+            {icon:'生成板书',name:'生成板书',desc:'设计精美板书',cat:'generate'},
+            {icon:'智能评估',name:'智能评估',desc:'评估教案质量',cat:'polish'},
+            {icon:'扩写活动',name:'扩写活动',desc:'补充课堂互动',cat:'generate'},
+            {icon:'导出PDF',name:'导出PDF',desc:'导出打印版本',cat:'export'},
+            {icon:'对标课标',name:'对标课标',desc:'检查课标符合度',cat:'polish'},
+            {icon:'补充阅读',name:'补充阅读',desc:'推荐相关阅读材料',cat:'generate'},
+            {icon:'分层设计',name:'分层设计',desc:'快班/慢班分别设计',cat:'adapt'},
+            {icon:'设计提问链',name:'设计提问链',desc:'生成递进式问题',cat:'generate'},
+        ]
+    };
+    let customCmds = [];
+    let activeCmdCat = 'all';
+
+    function renderCmdGrid() {
+        const grid = document.getElementById('cmdGrid');
+        const list = document.getElementById('cmdCustomList');
+        let cmds = activeCmdCat === 'custom' ? [] : presetCmds.all.filter(c => activeCmdCat === 'all' || c.cat === activeCmdCat);
+        grid.innerHTML = cmds.map(c => `<div class="cmd-card" data-cat="${c.cat}" onclick="executeCmd('${c.name}')"><div class="cmd-icon">${cmdIcons[c.icon]||''}</div><div class="cmd-name">${c.name}</div><div class="cmd-desc">${c.desc}</div></div>`).join('');
+        if (activeCmdCat === 'custom' || activeCmdCat === 'all') {
+            list.innerHTML = customCmds.length ? `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">自定义指令：</div>` + customCmds.map((c,i) => `<div class="cmd-custom-item"><span style="cursor:pointer;" onclick="executeCmd('${c}')">${c}</span><span class="cmd-custom-del" onclick="removeCustomCmd(${i})">×</span></div>`).join('') : '';
+        } else { list.innerHTML = ''; }
+    }
+    window.switchCmdCat = function(cat, el) { activeCmdCat = cat; document.querySelectorAll('.cmd-cat-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); renderCmdGrid(); };
+    window.executeCmd = function(name) {
+        appendMessage('user', `执行：${name}`);
+        const typing = document.getElementById('typingIndicator');
+        typing.classList.add('show'); scrollChat();
+        setTimeout(() => { typing.classList.remove('show'); appendMessage('ai', `「${name}」已完成！请在右侧查看效果。`); scrollChat(); }, 1200);
+        switchLeftMode('chat');
+    };
+    window.addCustomCmd = function() {
+        const input = document.getElementById('cmdAddInput');
+        const val = input.value.trim(); if (!val) return;
+        customCmds.push(val); input.value = ''; renderCmdGrid();
+    };
+    window.removeCustomCmd = function(i) { customCmds.splice(i, 1); renderCmdGrid(); };
+    renderCmdGrid();
+
+    // ====== Resizer ======
+    (function(){
+        const resizer = document.getElementById('resizer');
+        const left = document.getElementById('leftPanel');
+        const main = document.getElementById('mainArea');
+        let startX, startW;
+        resizer.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            startX = e.clientX; startW = left.getBoundingClientRect().width;
+            resizer.classList.add('active'); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+            function onMove(e) {
+                const dx = e.clientX - startX; const newW = startW + dx;
+                const totalW = main.getBoundingClientRect().width;
+                const pct = (newW / totalW) * 100;
+                if (pct > 20 && pct < 60) { left.style.width = pct + '%'; left.style.minWidth = '0'; }
+            }
+            function onUp() {
+                resizer.classList.remove('active'); document.body.style.cursor = ''; document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp);
+            }
+            document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+        });
+    })();
+
+    // ====== Display modes ======
+    window.switchDisplayMode = function(mode, btn) {
+        document.querySelectorAll('.da-btn').forEach(b => { if (!b.id || b.id !== 'btnEdit') b.classList.remove('active'); });
+        if (btn) btn.classList.add('active');
+        const body = document.getElementById('displayBody');
+        body.classList.remove('board-mode', 'class-mode');
+        body.style.fontSize = ''; body.style.padding = ''; body.style.maxWidth = ''; body.style.margin = '';
+        if (mode === 'board') { body.classList.add('board-mode'); }
+        else if (mode === 'class') { body.style.fontSize = '1.05rem'; body.style.padding = '32px 48px'; body.style.maxWidth = '900px'; body.style.margin = '0 auto'; }
+    };
+
+    // ====== Edit toggle ======
+    let isEditing = false;
+    window.toggleEditMode = function() {
+        isEditing = !isEditing;
+        const btn = document.getElementById('btnEdit');
+        const body = document.getElementById('displayBody');
+        if (isEditing) {
+            btn.classList.add('editing'); btn.textContent = '锁定'; btn.title = '点击锁定，退出编辑';
+            body.setAttribute('contenteditable', 'true');
+            body.style.outline = '2px dashed var(--accent-light)'; body.style.outlineOffset = '-8px'; body.style.borderRadius = '8px';
+        } else {
+            btn.classList.remove('editing'); btn.textContent = '编辑'; btn.title = '点击编辑教案内容';
+            body.setAttribute('contenteditable', 'false');
+            body.style.outline = ''; body.style.outlineOffset = ''; body.style.borderRadius = '';
+        }
+    };
+
+    // ====== Export ======
+    window.handleExport = function() {
+        const btn = document.querySelector('.da-btn:last-child');
+        if (!btn) return; const o = btn.textContent;
+        btn.textContent = '导出中...'; btn.style.opacity = '0.7';
+        setTimeout(() => { btn.textContent = '已导出'; btn.style.opacity = '1'; setTimeout(() => { btn.textContent = o; }, 2000); }, 1000);
+    };
+
+    // ====== Widget popups ======
+    window.toggleWidgetPopup = function(name) {
+        const popup = document.getElementById(`popup-${name}`);
+        const isShowing = popup.classList.contains('show');
+        document.querySelectorAll('.widget-popup').forEach(p => p.classList.remove('show'));
+        document.querySelectorAll('.widget-pill').forEach(p => p.classList.remove('active'));
+        if (!isShowing) { popup.classList.add('show'); const pill = document.querySelector(`.widget-pill[data-widget="${name}"]`); if (pill) pill.classList.add('active'); }
+    };
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.widget-pill') && !e.target.closest('.widget-popup')) {
+            document.querySelectorAll('.widget-popup').forEach(p => p.classList.remove('show'));
+            document.querySelectorAll('.widget-pill').forEach(p => p.classList.remove('active'));
+        }
+    });
+    document.addEventListener('click', function(e) {
+        const sig = e.target.closest('.sig-r'); if (sig) { const p = sig.parentElement; if (p) p.querySelectorAll('.sig-r').forEach(x => x.classList.remove('active')); sig.classList.add('active'); }
+        const fit = e.target.closest('.fit-i'); if (fit) { const p = fit.parentElement; if (p) p.querySelectorAll('.fit-i').forEach(x => x.classList.remove('selected')); fit.classList.add('selected'); }
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); handleSaveDraft(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'e') { e.preventDefault(); toggleEditMode(); }
+    });
+
+    scrollChat();
+})();
+</script>
+</body>
+</html>
