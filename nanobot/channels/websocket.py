@@ -35,6 +35,7 @@ from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 from nanobot.storage.storage_wrapper import StorageWrapper
+from nanobot.storage.factory import auto_init_storage
 from nanobot.utils.helpers import safe_filename
 from nanobot.utils.media_decode import (
     FileSizeExceeded,
@@ -429,6 +430,20 @@ class WebSocketChannel(BaseChannel):
             self._storage = StorageWrapper()
         return self._storage
 
+    async def _ensure_storage(self) -> StorageWrapper:
+        """Ensure storage backend is initialized (async)."""
+        from nanobot.storage.factory import get_storage, is_database_configured
+        from nanobot.storage.database_storage import DatabaseStorage
+
+        # Check if we need to initialize database
+        if is_database_configured():
+            storage = get_storage()
+            if not isinstance(storage, DatabaseStorage):
+                # Need to switch to database storage
+                await auto_init_storage()
+                self._storage = StorageWrapper()  # Reset wrapper
+        return self.storage
+
     def _attach(self, connection: Any, chat_id: str) -> None:
         """Idempotently subscribe *connection* to *chat_id*."""
         self._subs.setdefault(chat_id, set()).add(connection)
@@ -533,6 +548,9 @@ class WebSocketChannel(BaseChannel):
 
     async def _dispatch_http(self, connection: Any, request: WsRequest) -> Any:
         """Route an inbound HTTP request to a handler or to the WS upgrade path."""
+        # Ensure storage is initialized for API requests
+        await self._ensure_storage()
+
         got, query = _parse_request_path(request.path)
 
         # 1. Token issue endpoint (legacy, optional, gated by configured secret).

@@ -69,6 +69,29 @@ def get_storage() -> BaseStorage:
     return _storage
 
 
+def is_database_configured() -> bool:
+    """Check if DATABASE_URL is configured."""
+    import os
+    return bool(os.environ.get("DATABASE_URL", ""))
+
+
+async def auto_init_storage() -> None:
+    """
+    Auto-initialize storage based on DATABASE_URL environment variable.
+    If DATABASE_URL is set, use database storage. Otherwise, use file storage.
+    """
+    if is_database_configured():
+        try:
+            await init_storage("database")
+            logger.info("Auto-initialized database storage")
+        except Exception as e:
+            logger.warning(f"Failed to init database: {e}, falling back to file storage")
+            await init_storage("file")
+    else:
+        await init_storage("file")
+        logger.info("Auto-initialized file storage (no DATABASE_URL)")
+
+
 async def close_storage() -> None:
     """Close the storage backend and cleanup resources."""
     global _storage
