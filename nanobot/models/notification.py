@@ -20,38 +20,34 @@ class Notification(Base):
     """
 
     __tablename__ = "notifications"
-    __table_args__ = (
-        Index("idx_notifications_user", "user_id"),
-    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(String(50), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
-    type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    notification_type: Mapped[str] = mapped_column(String(50), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
-    is_read: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
-    read_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    link: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    related_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_extra: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    user: Mapped["User"] = relationship(back_populates="notifications")
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert notification to dictionary."""
         return {
             "id": self.id,
             "user_id": self.user_id,
-            "type": self.type,
+            "user_role": self.user_role,
+            "notification_type": self.notification_type,
             "title": self.title,
             "content": self.content,
+            "related_type": self.related_type,
+            "related_id": self.related_id,
             "is_read": self.is_read,
-            "read_at": self.read_at.isoformat() if self.read_at else None,
-            "link": self.link,
-            "metadata": self.extra_data,
+            "metadata": self.metadata_extra,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
     def __repr__(self) -> str:
-        return f"<Notification(id={self.id}, type={self.type}, is_read={self.is_read})>"
+        return f"<Notification(id={self.id}, notification_type={self.notification_type}, is_read={self.is_read})>"

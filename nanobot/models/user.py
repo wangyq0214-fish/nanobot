@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Any, Dict
 
 from sqlalchemy import String, DateTime, Boolean, Text
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 
@@ -17,42 +17,56 @@ class User(Base):
     User model.
 
     Stores user information including authentication credentials.
+    Uses composite primary key (role, user_id).
     """
 
     __tablename__ = "users"
 
-    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
-    role: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    preferences: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Composite primary key
+    role: Mapped[str] = mapped_column(String(20), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
 
-    # Relationships
-    course_memberships: Mapped[list["CourseMember"]] = relationship(back_populates="user")
-    submissions: Mapped[list["Submission"]] = relationship(back_populates="student")
-    notifications: Mapped[list["Notification"]] = relationship(back_populates="user")
-    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
+    # Basic info
+    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Authentication
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_salt: Mapped[str] = mapped_column(String(64), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    # Security
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    login_attempts: Mapped[int] = mapped_column(default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Extended data
+    profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Timestamps
+    registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert user to dictionary."""
         return {
             "user_id": self.user_id,
-            "username": self.username,
+            "role": self.role,
             "display_name": self.display_name,
             "email": self.email,
-            "role": self.role,
-            "avatar_url": self.avatar_url,
-            "preferences": self.preferences,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "profile": self.profile,
+            "settings": self.settings,
+            "is_active": self.is_active,
+            "is_verified": self.is_verified,
+            "registered_at": self.registered_at.isoformat() if self.registered_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "last_login": self.last_login.isoformat() if self.last_login else None,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
         }
 
     def __repr__(self) -> str:
-        return f"<User(user_id={self.user_id}, username={self.username}, role={self.role})>"
+        return f"<User(user_id={self.user_id}, role={self.role}, display_name={self.display_name})>"

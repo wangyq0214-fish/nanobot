@@ -100,16 +100,14 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             # Use session for database operations
             await session.execute(...)
     """
-    factory = get_session_factory()
-    async with factory() as session:
+    engine = get_engine()
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         try:
             yield session
             await session.commit()
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 
 async def check_database_health() -> dict:

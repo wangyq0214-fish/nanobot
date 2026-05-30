@@ -5,6 +5,7 @@ Implements the BaseStorage interface using PostgreSQL with SQLAlchemy.
 """
 
 import logging
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -60,12 +61,9 @@ class DatabaseStorage(BaseStorage):
 
     async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Get user by username. Returns None if not found."""
-        async with get_session() as session:
-            result = await session.execute(
-                select(User).where(User.username == username)
-            )
-            user = result.scalar_one_or_none()
-            return user.to_dict() if user else None
+        # Note: Database schema doesn't have username column
+        # This method is kept for interface compatibility
+        return None
 
     async def update_user(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update user data. Returns updated user data."""
@@ -153,10 +151,18 @@ class DatabaseStorage(BaseStorage):
     async def add_course_member(self, course_id: str, user_id: str, role: str = "student") -> Dict[str, Any]:
         """Add a member to a course. Returns membership data."""
         async with get_session() as session:
+            # Get user display name
+            user_result = await session.execute(
+                select(User).where(User.user_id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            display_name = user.display_name if user else user_id
+
             member = CourseMember(
                 course_id=course_id,
                 user_id=user_id,
-                role=role,
+                user_role=role,
+                display_name=display_name,
             )
             session.add(member)
             await session.flush()
@@ -243,7 +249,7 @@ class DatabaseStorage(BaseStorage):
             result = await session.execute(
                 select(CourseLesson)
                 .where(CourseLesson.course_id == course_id)
-                .order_by(CourseLesson.order_index)
+                .order_by(CourseLesson.order)
             )
             lessons = result.scalars().all()
             return [lesson.to_dict() for lesson in lessons]
@@ -256,14 +262,14 @@ class DatabaseStorage(BaseStorage):
             session.add(homework)
             await session.flush()
             await session.refresh(homework)
-            logger.info(f"Created homework: {homework.id}")
+            logger.info(f"Created homework: {homework.hw_id}")
             return homework.to_dict()
 
     async def get_homework(self, homework_id: int) -> Optional[Dict[str, Any]]:
         """Get homework by ID. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(Homework).where(Homework.id == homework_id)
+                select(Homework).where(Homework.hw_id == str(homework_id))
             )
             homework = result.scalar_one_or_none()
             return homework.to_dict() if homework else None
@@ -271,9 +277,8 @@ class DatabaseStorage(BaseStorage):
     async def update_homework(self, homework_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update homework data. Returns updated homework data."""
         async with get_session() as session:
-            data["updated_at"] = datetime.utcnow()
             await session.execute(
-                update(Homework).where(Homework.id == homework_id).values(**data)
+                update(Homework).where(Homework.hw_id == str(homework_id)).values(**data)
             )
             await session.flush()
             return await self.get_homework(homework_id)
@@ -282,7 +287,7 @@ class DatabaseStorage(BaseStorage):
         """Delete homework. Returns True if successful."""
         async with get_session() as session:
             result = await session.execute(
-                delete(Homework).where(Homework.id == homework_id)
+                delete(Homework).where(Homework.hw_id == str(homework_id))
             )
             return result.rowcount > 0
 
@@ -320,7 +325,6 @@ class DatabaseStorage(BaseStorage):
     async def update_submission(self, submission_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update submission data. Returns updated submission data."""
         async with get_session() as session:
-            data["updated_at"] = datetime.utcnow()
             await session.execute(
                 update(Submission).where(Submission.id == submission_id).values(**data)
             )
@@ -330,7 +334,7 @@ class DatabaseStorage(BaseStorage):
     async def list_submissions(self, homework_id: int, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
         async with get_session() as session:
-            query = select(Submission).where(Submission.homework_id == homework_id)
+            query = select(Submission).where(Submission.hw_id == str(homework_id))
             if student_id:
                 query = query.where(Submission.student_id == student_id)
             query = query.order_by(Submission.submitted_at.desc())
@@ -346,14 +350,14 @@ class DatabaseStorage(BaseStorage):
             session.add(lesson)
             await session.flush()
             await session.refresh(lesson)
-            logger.info(f"Created teacher lesson: {lesson.id}")
+            logger.info(f"Created teacher lesson: {lesson.lesson_id}")
             return lesson.to_dict()
 
     async def get_teacher_lesson(self, lesson_id: int) -> Optional[Dict[str, Any]]:
         """Get teacher lesson by ID. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(TeacherLesson).where(TeacherLesson.id == lesson_id)
+                select(TeacherLesson).where(TeacherLesson.lesson_id == str(lesson_id))
             )
             lesson = result.scalar_one_or_none()
             return lesson.to_dict() if lesson else None
@@ -363,7 +367,7 @@ class DatabaseStorage(BaseStorage):
         async with get_session() as session:
             data["updated_at"] = datetime.utcnow()
             await session.execute(
-                update(TeacherLesson).where(TeacherLesson.id == lesson_id).values(**data)
+                update(TeacherLesson).where(TeacherLesson.lesson_id == str(lesson_id)).values(**data)
             )
             await session.flush()
             return await self.get_teacher_lesson(lesson_id)
@@ -372,7 +376,7 @@ class DatabaseStorage(BaseStorage):
         """Delete teacher lesson. Returns True if successful."""
         async with get_session() as session:
             result = await session.execute(
-                delete(TeacherLesson).where(TeacherLesson.id == lesson_id)
+                delete(TeacherLesson).where(TeacherLesson.lesson_id == str(lesson_id))
             )
             return result.rowcount > 0
 
@@ -412,7 +416,7 @@ class DatabaseStorage(BaseStorage):
             await session.execute(
                 update(Notification)
                 .where(Notification.id == notification_id)
-                .values(is_read=True, read_at=datetime.utcnow())
+                .values(is_read=True)
             )
             return True
 
@@ -435,7 +439,7 @@ class DatabaseStorage(BaseStorage):
             result = await session.execute(
                 select(LearningProgress).where(
                     and_(
-                        LearningProgress.user_id == user_id,
+                        LearningProgress.student_id == user_id,
                         LearningProgress.lesson_id == lesson_id,
                     )
                 )
@@ -446,11 +450,11 @@ class DatabaseStorage(BaseStorage):
                 # Update existing progress
                 for key, value in progress_data.items():
                     setattr(progress, key, value)
-                progress.updated_at = datetime.utcnow()
+                progress.last_accessed = datetime.utcnow()
             else:
                 # Create new progress
                 progress = LearningProgress(
-                    user_id=user_id,
+                    student_id=user_id,
                     lesson_id=lesson_id,
                     **progress_data,
                 )
@@ -466,7 +470,7 @@ class DatabaseStorage(BaseStorage):
             result = await session.execute(
                 select(LearningProgress).where(
                     and_(
-                        LearningProgress.user_id == user_id,
+                        LearningProgress.student_id == user_id,
                         LearningProgress.lesson_id == lesson_id,
                     )
                 )
@@ -479,11 +483,10 @@ class DatabaseStorage(BaseStorage):
         async with get_session() as session:
             result = await session.execute(
                 select(LearningProgress)
-                .join(CourseLesson, LearningProgress.lesson_id == CourseLesson.id)
                 .where(
                     and_(
-                        LearningProgress.user_id == user_id,
-                        CourseLesson.course_id == course_id,
+                        LearningProgress.student_id == user_id,
+                        LearningProgress.course_id == course_id,
                     )
                 )
             )
