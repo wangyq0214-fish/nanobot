@@ -226,12 +226,15 @@ export function useGateway() {
     }
   }
 
-  /** Send a message — fire and forget. Responses arrive via onChat handlers. */
-  function sendMessage(content) {
+  /** Send a message — fire and forget. Responses arrive via onChat handlers.
+   *  Pass optional `meta` object to attach metadata (e.g. { _skill: "lesson-plan" }). */
+  function sendMessage(content, meta) {
     if (!socket || socket.readyState !== WS_OPEN) {
       throw new Error('未连接到 Gateway')
     }
-    socket.send(JSON.stringify({ type: 'message', chat_id: chatId, content }))
+    const envelope = { type: 'message', chat_id: chatId, content }
+    if (meta && Object.keys(meta).length) envelope.meta = meta
+    socket.send(JSON.stringify(envelope))
   }
 
   /** Ask the server to create a new chat session. Returns Promise<string> with the new chat_id. */

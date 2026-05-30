@@ -239,6 +239,15 @@ class ToolsConfig(Base):
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
 
 
+class DatabaseConfig(Base):
+    """Database configuration."""
+
+    url: str = "postgresql+asyncpg://nanobot:nanobot@localhost:5432/nanobot"
+    echo: bool = False  # Set to True for SQL debugging
+    pool_size: int = 5
+    max_overflow: int = 10
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -248,6 +257,7 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
 
     @property
     def workspace_path(self) -> Path:

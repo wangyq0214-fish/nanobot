@@ -8,6 +8,8 @@ export function useSource() {
     const params = new URLSearchParams()
     if (role) params.set('role', role)
     if (userId) params.set('user_id', userId)
+    // Pass token as query param too — some reverse proxies drop Authorization headers
+    if (token) params.set('token', token)
     const qs = params.toString()
     const headers = {}
     if (token) headers['Authorization'] = `Bearer ${token}`
@@ -23,6 +25,7 @@ export function useSource() {
     const params = new URLSearchParams()
     if (role) params.set('role', role)
     if (userId) params.set('user_id', userId)
+    if (token) params.set('token', token)
     const qs = params.toString()
     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/')
     const url = `/api/source/${encodedPath}${qs ? '?' + qs : ''}`

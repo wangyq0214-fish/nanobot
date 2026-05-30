@@ -574,6 +574,47 @@ class WebSocketChannel(BaseChannel):
         if m:
             return self._handle_source_file(request, m.group(1))
 
+        # Course endpoints
+        if got == "/api/courses":
+            return self._handle_courses_list(request)
+        if got == "/api/courses/create":
+            return self._handle_courses_create(request)
+        if got == "/api/courses/join":
+            return self._handle_courses_join(request)
+        m = re.match(r"^/api/courses/([^/]+)/members$", got)
+        if m:
+            return self._handle_course_members(request, m.group(1))
+        m = re.match(r"^/api/courses/([^/]+)/lessons/([^/]+)$", got)
+        if m:
+            return self._handle_lesson_detail(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/lessons$", got)
+        if m:
+            return self._handle_lessons_list(request, m.group(1))
+        m = re.match(r"^/api/courses/([^/]+)/homework/create$", got)
+        if m:
+            return self._handle_homework_create(request, m.group(1))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submit$", got)
+        if m:
+            return self._handle_homework_submit(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions/([^/]+)$", got)
+        if m:
+            return self._handle_submission_detail(request, m.group(1), m.group(2), m.group(3))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions$", got)
+        if m:
+            return self._handle_homework_submissions(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/grade$", got)
+        if m:
+            return self._handle_homework_grade(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)$", got)
+        if m:
+            return self._handle_homework_detail(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/homework$", got)
+        if m:
+            return self._handle_homework_list(request, m.group(1))
+        m = re.match(r"^/api/courses/([^/]+)$", got)
+        if m:
+            return self._handle_course_detail(request, m.group(1))
+
         # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
         # payload decodes to a path inside :func:`get_media_dir`. See
         # :meth:`_sign_media_path` for the inverse direction used to build
@@ -694,7 +735,12 @@ class WebSocketChannel(BaseChannel):
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _create_user_workspace(self, role: str, user_id: str) -> None:
-        """Create user workspace by copying template files."""
+        """Create user workspace with USER.md and directory structure.
+
+        AGENTS.md / SOUL.md / TOOLS.md are read directly from the role
+        template directory by ContextBuilder, so we do NOT copy them into
+        per-user workspaces.
+        """
         templates_dir = Path.home() / ".nanobot" / "templates" / role
         if not templates_dir.is_dir():
             logger.warning("Template directory not found: {}", templates_dir)
@@ -704,11 +750,174 @@ class WebSocketChannel(BaseChannel):
         if users_dir.exists():
             return
 
-        # Copy entire template directory structure
-        shutil.copytree(templates_dir, users_dir, dirs_exist_ok=True)
-        # Ensure sessions directory exists (may not be in template)
+        users_dir.mkdir(parents=True, exist_ok=True)
+        # Only copy USER.md (per-user profile); the other bootstrap files
+        # (AGENTS.md, SOUL.md, TOOLS.md) stay in the role template dir.
+        user_md = templates_dir / "USER.md"
+        if user_md.is_file():
+            shutil.copy2(user_md, users_dir / "USER.md")
+        # Ensure required subdirectories exist
         (users_dir / "sessions").mkdir(exist_ok=True)
+        (users_dir / "source").mkdir(exist_ok=True)
+        (users_dir / "memory").mkdir(exist_ok=True)
         logger.info("Created workspace for user: {} (role={})", user_id, role)
+
+    # -- Course storage helpers ------------------------------------------------
+
+    @property
+    def _courses_dir(self) -> Path:
+        return Path.home() / ".nanobot" / "courses"
+
+    @property
+    def _courses_index_file(self) -> Path:
+        return self._courses_dir / "index.json"
+
+    def _load_courses_index(self) -> dict[str, Any]:
+        path = self._courses_index_file
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+    def _save_courses_index(self, data: dict[str, Any]) -> None:
+        path = self._courses_index_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _load_course(self, course_id: str) -> dict[str, Any] | None:
+        path = self._courses_dir / course_id / "course.json"
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _save_course(self, course_id: str, data: dict[str, Any]) -> None:
+        path = self._courses_dir / course_id / "course.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _load_members(self, course_id: str) -> list[dict[str, Any]]:
+        path = self._courses_dir / course_id / "members.json"
+        if not path.exists():
+            return []
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def _save_members(self, course_id: str, members: list[dict[str, Any]]) -> None:
+        path = self._courses_dir / course_id / "members.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(members, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _load_homework(self, course_id: str, hw_id: str) -> dict[str, Any] | None:
+        path = self._courses_dir / course_id / "homework" / f"{hw_id}.json"
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _list_homework(self, course_id: str) -> list[dict[str, Any]]:
+        hw_dir = self._courses_dir / course_id / "homework"
+        if not hw_dir.is_dir():
+            return []
+        result = []
+        for f in sorted(hw_dir.glob("*.json")):
+            try:
+                result.append(json.loads(f.read_text(encoding="utf-8")))
+            except (json.JSONDecodeError, OSError):
+                continue
+        return result
+
+    def _save_homework(self, course_id: str, hw_id: str, data: dict[str, Any]) -> None:
+        path = self._courses_dir / course_id / "homework" / f"{hw_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _load_submission(self, course_id: str, hw_id: str, student_id: str) -> dict[str, Any] | None:
+        path = self._courses_dir / course_id / "homework" / "submissions" / f"{student_id}.json"
+        if not path.exists():
+            return None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("hwId") == hw_id:
+                return data
+            return None
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _save_submission(self, course_id: str, hw_id: str, student_id: str, data: dict[str, Any]) -> None:
+        path = self._courses_dir / course_id / "homework" / "submissions" / f"{student_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _list_submissions(self, course_id: str, hw_id: str) -> list[dict[str, Any]]:
+        sub_dir = self._courses_dir / course_id / "homework" / "submissions"
+        if not sub_dir.is_dir():
+            return []
+        result = []
+        for f in sorted(sub_dir.glob("*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                if data.get("hwId") == hw_id:
+                    result.append(data)
+            except (json.JSONDecodeError, OSError):
+                continue
+        return result
+
+    def _load_lessons(self, course_id: str) -> list[dict[str, Any]]:
+        lessons_dir = self._courses_dir / course_id / "lessons"
+        if not lessons_dir.is_dir():
+            return []
+        result = []
+        for d in sorted(lessons_dir.iterdir()):
+            if d.is_dir():
+                lesson_file = d / "lesson.json"
+                if lesson_file.exists():
+                    try:
+                        result.append(json.loads(lesson_file.read_text(encoding="utf-8")))
+                    except (json.JSONDecodeError, OSError):
+                        continue
+        return result
+
+    def _save_lesson(self, course_id: str, lesson_id: str, data: dict[str, Any]) -> None:
+        path = self._courses_dir / course_id / "lessons" / lesson_id / "lesson.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _save_lesson_plan(self, course_id: str, lesson_id: str, content: str) -> None:
+        path = self._courses_dir / course_id / "lessons" / lesson_id / "plan.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    def _generate_join_code(self) -> str:
+        index = self._load_courses_index()
+        existing = {c.get("joinCode") for c in index.values()}
+        while True:
+            code = f"{secrets.randbelow(1_000_000):06d}"
+            if code not in existing:
+                return code
+
+    def _generate_id(self) -> str:
+        return uuid.uuid4().hex[:12]
+
+    def _parse_mutation_data(self, query: dict[str, list[str]]) -> dict[str, Any] | Response:
+        raw = _query_first(query, "data")
+        if not raw:
+            return _http_error(400, "missing data parameter")
+        try:
+            payload = json.loads(unquote(raw))
+        except (json.JSONDecodeError, TypeError):
+            return _http_error(400, "invalid JSON in data parameter")
+        if not isinstance(payload, dict):
+            return _http_error(400, "data must be a JSON object")
+        return payload
 
     # -- User management HTTP handlers ----------------------------------------
 
@@ -1166,6 +1375,301 @@ class WebSocketChannel(BaseChannel):
             content_type=ctype,
             extra_headers=[("Cache-Control", cache)],
         )
+
+    # -- Course HTTP handlers -------------------------------------------------
+
+    def _handle_courses_list(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        index = self._load_courses_index()
+        courses = []
+        for c in index.values():
+            if role == "teacher" and c.get("teacherId") == user_id:
+                courses.append(c)
+            elif role == "student":
+                if c.get("isPublic"):
+                    courses.append(c)
+                else:
+                    members = self._load_members(c["courseId"])
+                    if any(m.get("userId") == user_id for m in members):
+                        courses.append(c)
+            elif not role:
+                if c.get("isPublic"):
+                    courses.append(c)
+        return _http_json_response({"courses": courses})
+
+    def _handle_courses_create(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        logger.info("[courses_create] role={!r} user_id={!r}", role, user_id)
+        if role != "teacher":
+            return _http_error(403, "Only teachers can create courses")
+        payload = self._parse_mutation_data(query)
+        if isinstance(payload, Response):
+            return payload
+        course_name = payload.get("courseName", "").strip()
+        subject = payload.get("subject", "").strip()
+        grade = payload.get("grade", "").strip()
+        if not course_name:
+            return _http_error(400, "courseName is required")
+        course_id = self._generate_id()
+        join_code = self._generate_join_code()
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        display_name = payload.get("teacherName") or user_id
+        course_data = {
+            "courseId": course_id,
+            "courseName": course_name,
+            "subject": subject,
+            "grade": grade,
+            "description": payload.get("description", ""),
+            "teacherId": user_id,
+            "teacherName": display_name,
+            "joinCode": join_code,
+            "isPublic": payload.get("isPublic", True),
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        self._save_course(course_id, course_data)
+        self._save_members(course_id, [])
+        # Update index
+        index = self._load_courses_index()
+        index[course_id] = {
+            "courseId": course_id,
+            "courseName": course_name,
+            "subject": subject,
+            "grade": grade,
+            "teacherId": user_id,
+            "teacherName": display_name,
+            "joinCode": join_code,
+            "isPublic": course_data["isPublic"],
+            "createdAt": now,
+            "memberCount": 0,
+        }
+        self._save_courses_index(index)
+        logger.info("Course created: {} ({}) by {}", course_name, course_id, user_id)
+        return _http_json_response({"ok": True, "course": course_data})
+
+    def _handle_courses_join(self, request: WsRequest) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        if role != "student":
+            return _http_error(403, "Only students can join courses")
+        payload = self._parse_mutation_data(query)
+        if isinstance(payload, Response):
+            return payload
+        join_code = payload.get("joinCode", "").strip()
+        if not join_code:
+            return _http_error(400, "joinCode is required")
+        index = self._load_courses_index()
+        target = None
+        for c in index.values():
+            if c.get("joinCode") == join_code:
+                target = c
+                break
+        if not target:
+            return _http_error(404, "Invalid join code")
+        course_id = target["courseId"]
+        members = self._load_members(course_id)
+        if any(m.get("userId") == user_id for m in members):
+            return _http_json_response({"ok": True, "course": target, "message": "Already a member"})
+        display_name = payload.get("displayName") or user_id
+        members.append({
+            "userId": user_id,
+            "displayName": display_name,
+            "joinedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        })
+        self._save_members(course_id, members)
+        target["memberCount"] = len(members)
+        index[course_id] = target
+        self._save_courses_index(index)
+        logger.info("Student {} joined course {} ({})", user_id, target["courseName"], course_id)
+        return _http_json_response({"ok": True, "course": target})
+
+    def _handle_course_detail(self, request: WsRequest, course_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        return _http_json_response({"course": course})
+
+    def _handle_course_members(self, request: WsRequest, course_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        members = self._load_members(course_id)
+        return _http_json_response({"members": members})
+
+    def _handle_lessons_list(self, request: WsRequest, course_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        lessons = self._load_lessons(course_id)
+        return _http_json_response({"lessons": lessons})
+
+    def _handle_lesson_detail(self, request: WsRequest, course_id: str, lesson_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        lesson_dir = self._courses_dir / course_id / "lessons" / lesson_id
+        lesson_file = lesson_dir / "lesson.json"
+        if not lesson_file.exists():
+            return _http_error(404, "Lesson not found")
+        try:
+            lesson = json.loads(lesson_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return _http_error(500, "Failed to read lesson")
+        plan_file = lesson_dir / "plan.md"
+        if plan_file.exists():
+            lesson["planContent"] = plan_file.read_text(encoding="utf-8")
+        return _http_json_response({"lesson": lesson})
+
+    def _handle_homework_list(self, request: WsRequest, course_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        homework = self._list_homework(course_id)
+        return _http_json_response({"homework": homework})
+
+    def _handle_homework_create(self, request: WsRequest, course_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        logger.info("[homework_create] role={!r} user_id={!r} course_id={!r}", role, user_id, course_id)
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        logger.info("[homework_create] course.teacherId={!r}", course.get("teacherId"))
+        if course.get("teacherId") != user_id:
+            return _http_error(403, "Only the course owner can create homework")
+        payload = self._parse_mutation_data(query)
+        if isinstance(payload, Response):
+            return payload
+        title = payload.get("title", "").strip()
+        if not title:
+            return _http_error(400, "title is required")
+        hw_id = f"hw{self._generate_id()}"
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        hw_data = {
+            "hwId": hw_id,
+            "courseId": course_id,
+            "title": title,
+            "description": payload.get("description", ""),
+            "questions": payload.get("questions", []),
+            "totalPoints": payload.get("totalPoints", 0),
+            "deadline": payload.get("deadline", ""),
+            "createdAt": now,
+            "createdBy": user_id,
+        }
+        self._save_homework(course_id, hw_id, hw_data)
+        logger.info("Homework created: {} in course {} by {}", title, course_id, user_id)
+        return _http_json_response({"ok": True, "homework": hw_data})
+
+    def _handle_homework_detail(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        hw = self._load_homework(course_id, hw_id)
+        if not hw:
+            return _http_error(404, "Homework not found")
+        return _http_json_response({"homework": hw})
+
+    def _handle_homework_submit(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        role = _query_first(query, "role") or ""
+        user_id = _query_first(query, "user_id") or ""
+        if role != "student":
+            return _http_error(403, "Only students can submit homework")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        hw = self._load_homework(course_id, hw_id)
+        if not hw:
+            return _http_error(404, "Homework not found")
+        payload = self._parse_mutation_data(query)
+        if isinstance(payload, Response):
+            return payload
+        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        submission = {
+            "hwId": hw_id,
+            "studentId": user_id,
+            "answers": payload.get("answers", {}),
+            "submittedAt": now,
+            "status": "submitted",
+            "score": 0,
+            "feedback": {},
+            "totalScore": hw.get("totalPoints", 0),
+            "gradedAt": None,
+            "gradedBy": None,
+        }
+        self._save_submission(course_id, hw_id, user_id, submission)
+        logger.info("Homework {} submitted by student {} in course {}", hw_id, user_id, course_id)
+        return _http_json_response({"ok": True})
+
+    def _handle_homework_submissions(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        submissions = self._list_submissions(course_id, hw_id)
+        return _http_json_response({"submissions": submissions})
+
+    def _handle_submission_detail(self, request: WsRequest, course_id: str, hw_id: str, student_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        submission = self._load_submission(course_id, hw_id, student_id)
+        if not submission:
+            return _http_error(404, "Submission not found")
+        return _http_json_response({"submission": submission})
+
+    def _handle_homework_grade(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        user_id = _query_first(query, "user_id") or ""
+        course = self._load_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        if course.get("teacherId") != user_id:
+            return _http_error(403, "Only the course owner can grade")
+        payload = self._parse_mutation_data(query)
+        if isinstance(payload, Response):
+            return payload
+        student_id = payload.get("studentId", "").strip()
+        if not student_id:
+            return _http_error(400, "studentId is required")
+        submission = self._load_submission(course_id, hw_id, student_id)
+        if not submission:
+            return _http_error(404, "Submission not found")
+        submission["status"] = "graded"
+        submission["score"] = payload.get("score", 0)
+        submission["feedback"] = payload.get("feedback", {})
+        submission["gradedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        submission["gradedBy"] = user_id
+        self._save_submission(course_id, hw_id, student_id, submission)
+        logger.info("Homework {} graded for student {} in course {}", hw_id, student_id, course_id)
+        return _http_json_response({"ok": True, "submission": submission})
 
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
         supplied = _query_first(query, "token")

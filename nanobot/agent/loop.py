@@ -673,16 +673,18 @@ class AgentLoop:
         users_dir = self._templates_dir.parent / "users"
         user_ws = users_dir / role / user_id
 
-        # First access: copy template files to user workspace
+        # First access: create user workspace with required subdirectories.
+        # AGENTS.md / SOUL.md / TOOLS.md are read from template_dir (role_workspace),
+        # so we do NOT copy them into per-user workspaces.
         if not user_ws.exists():
-            import shutil
             user_ws.mkdir(parents=True, exist_ok=True)
-            for f in template_dir.iterdir():
-                if f.is_file():
-                    shutil.copy2(f, user_ws / f.name)
-            # Create subdirectories
+            import shutil
+            user_md = template_dir / "USER.md"
+            if user_md.is_file():
+                shutil.copy2(user_md, user_ws / "USER.md")
             (user_ws / "memory").mkdir(exist_ok=True)
             (user_ws / "sessions").mkdir(exist_ok=True)
+            (user_ws / "source").mkdir(exist_ok=True)
             logger.info("Created user workspace: {}", user_ws)
 
         # Build per-user ContextBuilder with role workspace for shared files
@@ -872,9 +874,19 @@ class AgentLoop:
         # Temporarily swap to per-user context/sessions when available
         _orig_context = self.context
         _orig_sessions = self.sessions
+        _orig_tool_workspaces: list[tuple[Any, Path | None, Path | None]] = []
         if user_ctx_sessions:
             self.context, self.sessions = user_ctx_sessions
-            logger.debug("Using user workspace: {}", self.context.workspace)
+            # Update filesystem tools to use the per-user workspace
+            user_ws = self.context.workspace
+            user_allowed = user_ws if (self.restrict_to_workspace or self.exec_config.sandbox) else None
+            for tool in self.tools._tools.values():
+                if hasattr(tool, '_workspace'):
+                    _orig_tool_workspaces.append((tool, tool._workspace, tool._allowed_dir))
+                    tool._workspace = user_ws
+                    if user_allowed is not None:
+                        tool._allowed_dir = user_allowed
+            logger.debug("Using user workspace: {}", user_ws)
         try:
             return await self._process_message_inner(
                 msg, session_key=session_key,
@@ -882,6 +894,10 @@ class AgentLoop:
                 on_stream_end=on_stream_end, pending_queue=pending_queue,
             )
         finally:
+            # Restore original tool workspaces
+            for tool, orig_ws, orig_allowed in _orig_tool_workspaces:
+                tool._workspace = orig_ws
+                tool._allowed_dir = orig_allowed
             self.context = _orig_context
             self.sessions = _orig_sessions
 

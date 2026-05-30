@@ -1,46 +1,46 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为 Claude Code (claude.ai/code) 在此代码库中工作提供指导。
 
-## Project Overview
+## 项目概述
 
-**nanobot** (`nanobot-ai` on PyPI) is a lightweight Python 3.11+ AI agent framework that connects LLMs to chat channels (Telegram, Slack, Discord, Feishu, DingTalk, WhatsApp, etc.) with tool execution, memory, skills, and scheduling. It also includes a React/TypeScript WebUI and a WhatsApp bridge.
+**nanobot** (PyPI 包名: `nanobot-ai`) 是一个轻量级 Python 3.11+ AI Agent 框架，可将 LLM 连接到各种聊天平台（Telegram、Slack、Discord、飞书、钉钉、WhatsApp 等），支持工具执行、记忆、技能和定时任务。项目还包含 React/TypeScript WebUI 和 WhatsApp bridge。
 
-## Branching Strategy
+## 分支策略
 
-Two-branch model. When in doubt, target `nightly`.
+采用双分支模型。不确定时，提交到 `nightly`。
 
-| Your Change | Target Branch |
-|-------------|---------------|
-| New feature / refactoring | `nightly` |
-| Bug fix / docs | `main` |
+| 变更类型 | 目标分支 |
+|---------|---------|
+| 新功能 / 重构 | `nightly` |
+| Bug 修复 / 文档 | `main` |
 
-Nightly features are cherry-picked into `main` PRs ~weekly.
+Nightly 分支的功能会每周 cherry-pick 到 `main` 的 PR 中。
 
-## Common Commands
+## 常用命令
 
-### Python (core)
+### Python (核心)
 ```bash
-pip install -e ".[dev]"        # Install with dev dependencies
-uv sync --all-extras           # Alternative using uv (preferred)
-pytest                         # Run all tests (asyncio_mode = "auto")
-pytest tests/test_foo.py       # Run a single test file
-pytest -k test_name            # Run a single test by name
-ruff check nanobot/            # Lint
-ruff format nanobot/           # Format
+pip install -e ".[dev]"        # 安装开发依赖
+uv sync --all-extras           # 使用 uv 安装（推荐）
+pytest                         # 运行所有测试 (asyncio_mode = "auto")
+pytest tests/test_foo.py       # 运行单个测试文件
+pytest -k test_name            # 按名称运行单个测试
+ruff check nanobot/            # 代码检查
+ruff format nanobot/           # 代码格式化
 ```
 
-Optional dependency groups: `api`, `wecom`, `weixin`, `msteams`, `matrix`, `discord`, `langsmith`, `pdf`. Install with `pip install -e ".[group]"`.
+可选依赖组：`api`、`wecom`、`weixin`、`msteams`、`matrix`、`discord`、`langsmith`、`pdf`。通过 `pip install -e ".[group]"` 安装。
 
-CI runs on Ubuntu + Windows across Python 3.11–3.14. Ruff in CI only checks F401/F841.
+CI 在 Ubuntu + Windows 上测试 Python 3.11–3.14。Ruff 在 CI 中仅检查 F401/F841。
 
 ### WebUI (webui/)
 ```bash
-cd webui && bun install        # Install
-bun run dev                    # Dev server
-bun run build                  # Production build (tsc + vite)
-bun run test                   # Tests (vitest)
-bun run lint                   # Lint (eslint)
+cd webui && bun install        # 安装依赖
+bun run dev                    # 开发服务器
+bun run build                  # 生产构建 (tsc + vite)
+bun run test                   # 测试 (vitest)
+bun run lint                   # 代码检查 (eslint)
 ```
 
 ### Bridge (bridge/)
@@ -48,64 +48,64 @@ bun run lint                   # Lint (eslint)
 cd bridge && npm install && npm run build
 ```
 
-## Architecture
+## 架构
 
-### Core Message Flow
+### 核心消息流
 
 ```
-Chat Channels → MessageBus (async queues) → AgentLoop → LLM Provider → Tool execution → Response → MessageBus → Channels
+聊天平台 → MessageBus (异步队列) → AgentLoop → LLM Provider → 工具执行 → 响应 → MessageBus → 平台
 ```
 
-### Key Modules (nanobot/)
+### 核心模块 (nanobot/)
 
-| Module | Role |
-|--------|------|
-| `agent/loop.py` | Core agent loop — receives messages, builds context, calls LLM, executes tools |
-| `agent/runner.py` | Shared execution loop for tool-using agents (iteration, retry, micro-compaction) |
-| `agent/context.py` | `ContextBuilder` — assembles system prompt from templates, memory, skills |
-| `agent/memory.py` | File-based memory: `MEMORY.md`, `history.jsonl`, `SOUL.md`, `USER.md`; consolidation + dream |
-| `agent/skills.py` | Loads `SKILL.md` files (YAML frontmatter + markdown) from workspace/builtin dirs |
-| `agent/hook.py` | Lifecycle hooks: `before_iteration`, `before_execute_tools`, `after_iteration`, `on_stream`, `finalize_content` |
-| `agent/subagent.py` | Background subagent task execution |
-| `agent/tools/` | Built-in tools: filesystem, shell, search, web, cron, ask, message, notebook, spawn, MCP |
-| `agent/manager.py` | `SimpleAgentManager` — multi-agent persona orchestration |
-| `providers/` | LLM provider abstraction (`LLMProvider` ABC). 25+ providers via `ProviderSpec` registry |
-| `channels/` | Chat platform integrations extending `BaseChannel`. Auto-discovered via `pkgutil` + entry_points |
-| `bus/` | `MessageBus` with `InboundMessage`/`OutboundMessage` async queues |
-| `session/` | `SessionManager` — conversation history persistence (JSON files) |
-| `config/` | Pydantic config schema (accepts camelCase and snake_case), env var interpolation (`${VAR}`) |
-| `command/` | Slash command routing (priority → exact → prefix → interceptors) |
-| `cron/` | Scheduled tasks: "at" (one-shot), "every" (interval), "cron" (expression) |
-| `api/` | OpenAI-compatible HTTP API (`/v1/chat/completions`, `/v1/models`) |
-| `cli/` | Typer CLI: `nanobot agent`, `nanobot gateway`, `nanobot serve`, `nanobot onboard`, `nanobot status` |
+| 模块 | 职责 |
+|------|------|
+| `agent/loop.py` | 核心 Agent 循环 — 接收消息、构建上下文、调用 LLM、执行工具 |
+| `agent/runner.py` | 工具执行共享循环（迭代、重试、微压缩） |
+| `agent/context.py` | `ContextBuilder` — 从模板、记忆、技能组装系统提示词 |
+| `agent/memory.py` | 基于文件的记忆：`MEMORY.md`、`history.jsonl`、`SOUL.md`、`USER.md`；整合 + dream |
+| `agent/skills.py` | 从工作区/内置目录加载 `SKILL.md` 文件（YAML frontmatter + markdown） |
+| `agent/hook.py` | 生命周期钩子：`before_iteration`、`before_execute_tools`、`after_iteration`、`on_stream`、`finalize_content` |
+| `agent/subagent.py` | 后台子 Agent 任务执行 |
+| `agent/tools/` | 内置工具：文件系统、Shell、搜索、Web、定时任务、ask、消息、notebook、spawn、MCP |
+| `agent/manager.py` | `SimpleAgentManager` — 多 Agent 人格编排 |
+| `providers/` | LLM Provider 抽象 (`LLMProvider` ABC)。25+ 提供商通过 `ProviderSpec` 注册表自动匹配 |
+| `channels/` | 聊天平台集成，继承 `BaseChannel`。通过 `pkgutil` + entry_points 自动发现 |
+| `bus/` | `MessageBus`，包含 `InboundMessage`/`OutboundMessage` 异步队列 |
+| `session/` | `SessionManager` — 会话历史持久化（JSON 文件） |
+| `config/` | Pydantic 配置模式（支持 camelCase 和 snake_case），环境变量插值 (`${VAR}`) |
+| `command/` | 斜杠命令路由（priority → exact → prefix → interceptors） |
+| `cron/` | 定时任务："at"（一次性）、"every"（间隔）、"cron"（表达式） |
+| `api/` | OpenAI 兼容 HTTP API (`/v1/chat/completions`、`/v1/models`) |
+| `cli/` | Typer CLI：`nanobot agent`、`nanobot gateway`、`nanobot serve`、`nanobot onboard`、`nanobot status` |
 
-### Key Patterns
+### 关键设计模式
 
-- **MessageBus**: Async queues decouple channels from the agent core
-- **Provider registry**: `ProviderSpec` in `providers/registry.py` — add new providers in 2 steps. Auto-matching by model keywords, API key prefix, or base URL
-- **Tool system**: `Tool` ABC with JSON Schema validation, `ToolRegistry` for dynamic registration
-- **Plugin channels**: Auto-discovered via `pkgutil` scanning + `entry_points("nanobot.channels")`
-- **Config**: Pydantic models in `config/schema.py`, loaded from `~/.nanobot/config.json`. Supports `${ENV_VAR}` interpolation and `_migrate_config()` for schema evolution
-- **Skills**: Directory-based with `SKILL.md` files. Progressive loading — summary first, full content on demand
-- **Templates**: `nanobot/templates/` — Jinja2 templates (`SOUL.md`, `USER.md`, `TOOLS.md`, `AGENTS.md`) assembled into system prompts by `ContextBuilder`
+- **MessageBus**：异步队列解耦聊天平台与 Agent 核心
+- **Provider 注册表**：`providers/registry.py` 中的 `ProviderSpec` — 两步添加新 Provider，通过模型关键字、API key 前缀或 base URL 自动匹配
+- **Tool 系统**：`Tool` ABC + JSON Schema 验证，`ToolRegistry` 动态注册
+- **插件式 Channel**：通过 `pkgutil` 扫描 + `entry_points("nanobot.channels")` 自动发现
+- **配置**：`config/schema.py` 中的 Pydantic 模型，从 `~/.nanobot/config.json` 加载，支持 `${ENV_VAR}` 插值和 `_migrate_config()` 模式演进
+- **Skills**：基于目录的 `SKILL.md` 文件，渐进式加载 — 先加载摘要，按需加载完整内容
+- **模板**：`nanobot/templates/` — Jinja2 模板（`SOUL.md`、`USER.md`、`TOOLS.md`、`AGENTS.md`）由 `ContextBuilder` 组装成系统提示词
 
-### Entry Points
+### 入口点
 
-- **CLI**: `nanobot` command → `nanobot/cli/commands.py` (Typer app)
-- **SDK**: `Nanobot.from_config()` in `nanobot/nanobot.py` → `await bot.run("message")` → `RunResult`
-- **Module**: `python -m nanobot` → same Typer app
+- **CLI**：`nanobot` 命令 → `nanobot/cli/commands.py`（Typer 应用）
+- **SDK**：`nanobot/nanobot.py` 中的 `Nanobot.from_config()` → `await bot.run("message")` → `RunResult`
+- **模块**：`python -m nanobot` → 同一 Typer 应用
 
-### Tests
+### 测试
 
-Tests in `tests/` mirror the source package structure (`tests/agent/`, `tests/providers/`, `tests/channels/`, etc.). Root-level tests are integration tests.
+`tests/` 中的测试镜像源码包结构（`tests/agent/`、`tests/providers/`、`tests/channels/` 等）。根目录下的测试是集成测试。
 
-### Docs
+### 文档
 
-Detailed documentation in `docs/`: configuration, deployment, SDK usage, channel setup, channel plugin guide.
+详细文档位于 `docs/`：配置、部署、SDK 用法、Channel 设置、Channel 插件指南。
 
-## Code Style
+## 代码风格
 
-- Python 3.11+, line length 100, `ruff` rules E/F/I/N/W (E501 ignored)
-- Async-first (`asyncio` throughout), tests use `asyncio_mode = "auto"`
-- Prefer small, focused changes over broad rewrites
-- Prefer readable code over clever abstractions
+- Python 3.11+，行宽 100，`ruff` 规则 E/F/I/N/W（忽略 E501）
+- 异步优先（全程使用 `asyncio`），测试使用 `asyncio_mode = "auto"`
+- 优先小而专注的改动，而非大范围重写
+- 优先可读性，避免过度抽象

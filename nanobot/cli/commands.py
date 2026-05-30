@@ -1542,6 +1542,55 @@ def _login_github_copilot() -> None:
 
 
 @app.command()
+def migrate_db(
+    action: str = typer.Argument("run", help="Action: run, status, reset"),
+    database_url: str = typer.Option(None, "--db-url", help="Database URL (default: postgresql+asyncpg://nanobot:nanobot@localhost:5432/nanobot)"),
+    nanobot_dir: str = typer.Option(None, "--nanobot-dir", help="Path to ~/.nanobot directory"),
+):
+    """Migrate data from file-based storage to PostgreSQL database."""
+    import asyncio
+    from nanobot.config.database import db_manager, DatabaseManager
+    from nanobot.migrations.file_to_db import migrate_file_to_database
+
+    async def _run_migration():
+        # Initialize database
+        manager = DatabaseManager(database_url) if database_url else db_manager
+        await manager.initialize()
+        await manager.create_tables()
+
+        async for session in manager.get_session():
+            if action == "run":
+                nanobot_path = Path(nanobot_dir) if nanobot_dir else None
+                results = await migrate_file_to_database(session, nanobot_path)
+                console.print("\n[green]✓ Migration completed![/green]\n")
+                console.print("Migrated entities:")
+                for entity, count in results.items():
+                    console.print(f"  {entity}: {count}")
+            elif action == "status":
+                from sqlalchemy import text
+                result = await session.execute(text("SELECT COUNT(*) FROM users"))
+                user_count = result.scalar()
+                result = await session.execute(text("SELECT COUNT(*) FROM courses"))
+                course_count = result.scalar()
+                console.print(f"\n[bold cyan]Database Status:[/bold cyan]")
+                console.print(f"  Users: {user_count}")
+                console.print(f"  Courses: {course_count}")
+            elif action == "reset":
+                if typer.confirm("This will drop ALL tables. Are you sure?"):
+                    await manager.drop_tables()
+                    await manager.create_tables()
+                    console.print("[green]✓ Database reset completed![/green]")
+            else:
+                console.print(f"[red]Unknown action: {action}[/red]")
+                console.print("\nAvailable actions: run, status, reset")
+                raise typer.Exit(1)
+
+        await manager.close()
+
+    asyncio.run(_run_migration())
+
+
+@app.command()
 def agents(
     config: str = typer.Option(None, "-c", "--config", help="Config file path"),
     action: str = typer.Argument("list", help="Action: list, switch, current"),
