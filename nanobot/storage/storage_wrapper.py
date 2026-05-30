@@ -26,6 +26,29 @@ class StorageWrapper:
         """Initialize with optional storage backend."""
         self._storage = storage
 
+    @staticmethod
+    def _normalize_course(course: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert snake_case to camelCase for frontend compatibility."""
+        if not course:
+            return course
+        return {
+            "courseId": course.get("course_id", ""),
+            "courseName": course.get("course_name", ""),
+            "subject": course.get("subject", ""),
+            "grade": course.get("grade", ""),
+            "description": course.get("description", ""),
+            "teacherId": course.get("teacher_id", ""),
+            "teacherRole": course.get("teacher_role", ""),
+            "teacherName": course.get("teacher_name", ""),
+            "joinCode": course.get("join_code", ""),
+            "isPublic": course.get("is_public", False),
+            "memberCount": course.get("member_count", 0),
+            "metadata": course.get("metadata", {}),
+            "settings": course.get("settings", {}),
+            "createdAt": course.get("created_at", ""),
+            "updatedAt": course.get("updated_at", ""),
+        }
+
     @property
     def storage(self) -> BaseStorage:
         """Get the storage backend."""
@@ -79,7 +102,8 @@ class StorageWrapper:
 
     async def get_course(self, course_id: str) -> Optional[Dict[str, Any]]:
         """Get course by ID. Alias for load_course."""
-        return await self.storage.get_course(course_id)
+        course = await self.storage.get_course(course_id)
+        return self._normalize_course(course) if course else None
 
     async def save_course(self, course_id: str, data: Dict[str, Any]) -> None:
         """Save course data."""
@@ -95,19 +119,23 @@ class StorageWrapper:
 
     async def list_courses(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all courses, optionally filtered by user membership."""
-        return await self.storage.list_courses(user_id)
+        courses = await self.storage.list_courses(user_id)
+        return [self._normalize_course(c) for c in courses]
 
     async def get_teacher_courses(self, teacher_id: str) -> List[Dict[str, Any]]:
         """Get all courses for a specific teacher."""
-        return await self.storage.get_teacher_courses(teacher_id)
+        courses = await self.storage.get_teacher_courses(teacher_id)
+        return [self._normalize_course(c) for c in courses]
 
     async def get_student_courses(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all courses a student is enrolled in."""
-        return await self.storage.get_student_courses(user_id)
+        courses = await self.storage.get_student_courses(user_id)
+        return [self._normalize_course(c) for c in courses]
 
     async def get_course_by_join_code(self, join_code: str) -> Optional[Dict[str, Any]]:
         """Find a course by its join code."""
-        return await self.storage.get_course_by_join_code(join_code)
+        course = await self.storage.get_course_by_join_code(join_code)
+        return self._normalize_course(course) if course else None
 
     # Course member operations
     async def load_members(self, course_id: str) -> List[Dict[str, Any]]:
