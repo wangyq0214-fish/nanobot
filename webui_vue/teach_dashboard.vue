@@ -14,8 +14,9 @@
         </button>
       </div>
       <input class="login-input" v-model="loginUserId" placeholder="输入用户名" @keydown.enter="handleLogin" autofocus />
+      <input class="login-input" v-model="loginPassword" type="password" placeholder="输入密码" @keydown.enter="handleLogin" />
       <p v-if="loginError" class="login-error">{{ loginError }}</p>
-      <button class="login-submit" @click="handleLogin" :disabled="!loginRole || !loginUserId.trim() || loginLoading">
+      <button class="login-submit" @click="handleLogin" :disabled="!loginRole || !loginUserId.trim() || !loginPassword.trim() || loginLoading">
         {{ loginLoading ? '连接中...' : (authMode === 'login' ? '登录' : '注册') }}
       </button>
       <button class="login-toggle" @click="toggleAuthMode">
@@ -326,6 +327,7 @@ const user = ref(null)
 const authMode = ref('login') // 'login' | 'register'
 const loginRole = ref('teacher')
 const loginUserId = ref('')
+const loginPassword = ref('')
 const loginError = ref('')
 const loginLoading = ref(false)
 
@@ -343,13 +345,15 @@ function clearUser() { localStorage.removeItem(USER_KEY) }
 
 async function handleLogin() {
   const trimmed = loginUserId.value.trim()
-  if (!loginRole.value || !trimmed) return
+  const password = loginPassword.value.trim()
+  if (!loginRole.value || !trimmed || !password) return
   if (trimmed.length > 64) { loginError.value = '用户名过长'; return }
+  if (password.length < 6) { loginError.value = '密码至少6位'; return }
   loginError.value = ''
   loginLoading.value = true
   try {
     // Validate or register via API
-    const params = new URLSearchParams({ role: loginRole.value, user_id: trimmed })
+    const params = new URLSearchParams({ role: loginRole.value, user_id: trimmed, password: password })
     const endpoint = authMode.value === 'register'
       ? `/api/users/register?${params}&display_name=${encodeURIComponent(trimmed)}`
       : `/api/users/validate?${params}`
@@ -358,6 +362,7 @@ async function handleLogin() {
     if (!data.ok) {
       if (data.error === 'User not found') loginError.value = '用户不存在，请先注册'
       else if (data.error === 'User already exists') loginError.value = '用户已存在，请直接登录'
+      else if (data.error === 'Invalid password') loginError.value = '密码错误'
       else loginError.value = data.error || '验证失败'
       return
     }
@@ -388,6 +393,7 @@ function handleLogout() {
   try { localStorage.removeItem('nanobot-webui.chatId') } catch {}
   user.value = null
   loginUserId.value = ''
+  loginPassword.value = ''
   loginRole.value = 'teacher'
   authMode.value = 'login'
 }
