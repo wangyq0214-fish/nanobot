@@ -77,6 +77,10 @@ class StorageWrapper:
         """Load course by ID."""
         return await self.storage.get_course(course_id)
 
+    async def get_course(self, course_id: str) -> Optional[Dict[str, Any]]:
+        """Get course by ID. Alias for load_course."""
+        return await self.storage.get_course(course_id)
+
     async def save_course(self, course_id: str, data: Dict[str, Any]) -> None:
         """Save course data."""
         await self.storage.update_course(course_id, data)
@@ -130,6 +134,14 @@ class StorageWrapper:
         """Check if user is a member of course."""
         return await self.storage.is_course_member(course_id, user_id)
 
+    async def is_course_member(self, course_id: str, user_id: str) -> bool:
+        """Check if user is a member of course. Alias for is_member."""
+        return await self.storage.is_course_member(course_id, user_id)
+
+    async def get_course_members(self, course_id: str) -> List[Dict[str, Any]]:
+        """Get all members of a course."""
+        return await self.storage.get_course_members(course_id)
+
     async def get_course_members_count(self, course_id: str) -> int:
         """Get the number of members in a course."""
         members = await self.storage.get_course_members(course_id)
@@ -152,6 +164,10 @@ class StorageWrapper:
         """Create a new lesson."""
         return await self.storage.create_lesson(lesson_data)
 
+    async def get_lesson(self, lesson_id: int) -> Optional[Dict[str, Any]]:
+        """Get lesson by ID."""
+        return await self.storage.get_lesson(lesson_id)
+
     async def delete_lesson(self, lesson_id: int) -> bool:
         """Delete a lesson."""
         return await self.storage.delete_lesson(lesson_id)
@@ -159,6 +175,10 @@ class StorageWrapper:
     # Homework operations
     async def load_homework(self, course_id: str, hw_id: str) -> Optional[Dict[str, Any]]:
         """Load homework by ID."""
+        return await self.storage.get_homework(hw_id)
+
+    async def get_homework(self, hw_id: str) -> Optional[Dict[str, Any]]:
+        """Get homework by ID."""
         return await self.storage.get_homework(hw_id)
 
     async def list_homework(self, course_id: str) -> List[Dict[str, Any]]:
