@@ -242,10 +242,16 @@ class ToolsConfig(Base):
 class DatabaseConfig(Base):
     """Database configuration."""
 
-    url: str = "postgresql+asyncpg://nanobot:nanobot@localhost:5432/nanobot"
+    url: str = ""  # Will be loaded from DATABASE_URL env var or use default
     echo: bool = False  # Set to True for SQL debugging
     pool_size: int = 5
     max_overflow: int = 10
+
+    def model_post_init(self, __context) -> None:
+        """Load URL from environment if not set."""
+        import os
+        if not self.url:
+            self.url = os.environ.get("DATABASE_URL", "postgresql+asyncpg://nanobot:nanobot@localhost:5432/nanobot")
 
 
 class Config(BaseSettings):
