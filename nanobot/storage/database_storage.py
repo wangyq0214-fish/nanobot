@@ -294,7 +294,16 @@ class DatabaseStorage(BaseStorage):
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework. Returns created homework data."""
         async with get_session() as session:
-            homework = Homework(**homework_data)
+            # Remove relationship fields that should not be passed to constructor
+            data = {k: v for k, v in homework_data.items() if k not in ('questions', 'submissions', 'course')}
+
+            # Store questions in settings if provided
+            if 'questions' in homework_data:
+                settings = data.get('settings') or {}
+                settings['questions'] = homework_data['questions']
+                data['settings'] = settings
+
+            homework = Homework(**data)
             session.add(homework)
             await session.flush()
             await session.refresh(homework)
