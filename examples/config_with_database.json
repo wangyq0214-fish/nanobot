@@ -1,0 +1,28 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.nanobot/workspace",
+      "model": "anthropic/claude-opus-4-5",
+      "provider": "auto",
+      "maxTokens": 8192,
+      "contextWindowTokens": 65536,
+      "temperature": 0.1,
+      "timezone": "Asia/Shanghai"
+    }
+  },
+  "channels": {
+    "sendProgress": true,
+    "sendToolHints": false
+  },
+  "providers": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}"
+    }
+  },
+  "database": {
+    "url": "postgresql+asyncpg://nanobot:nanobot@localhost:5432/nanobot",
+    "echo": false,
+    "poolSize": 5,
+    "maxOverflow": 10
+  }
+}

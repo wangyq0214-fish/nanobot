@@ -1,0 +1,43 @@
+# Development database services
+# Usage: docker-compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nanobot-postgres
+    environment:
+      POSTGRES_USER: nanobot
+      POSTGRES_PASSWORD: nanobot
+      POSTGRES_DB: nanobot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nanobot -d nanobot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: nanobot-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@nanobot.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_LISTEN_PORT: 5050
+    ports:
+      - "5050:5050"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    profiles:
+      - admin
+
+volumes:
+  postgres_data:
+  pgadmin_data:
