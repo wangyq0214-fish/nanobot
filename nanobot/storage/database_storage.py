@@ -293,10 +293,26 @@ class DatabaseStorage(BaseStorage):
     # Homework operations
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework. Returns created homework data."""
+        from datetime import datetime
+
         async with get_session() as session:
             # Only pass fields that Homework model supports
             valid_fields = {'hw_id', 'course_id', 'title', 'description', 'total_points', 'deadline', 'created_by', 'settings', 'created_at'}
             data = {k: v for k, v in homework_data.items() if k in valid_fields}
+
+            # Convert deadline string to datetime if needed
+            if 'deadline' in data and isinstance(data['deadline'], str):
+                try:
+                    data['deadline'] = datetime.fromisoformat(data['deadline'].replace('Z', '+00:00')).replace(tzinfo=None)
+                except:
+                    data['deadline'] = None
+
+            # Convert created_at string to datetime if needed
+            if 'created_at' in data and isinstance(data['created_at'], str):
+                try:
+                    data['created_at'] = datetime.fromisoformat(data['created_at'].replace('Z', '+00:00')).replace(tzinfo=None)
+                except:
+                    data['created_at'] = datetime.utcnow()
 
             # Store questions in settings if provided
             if 'questions' in homework_data:
