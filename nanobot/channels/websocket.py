@@ -1607,8 +1607,10 @@ class WebSocketChannel(BaseChannel):
         course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        logger.info("[homework_create] course.teacher_id={!r}", course.get("teacher_id"))
-        if course.get("teacher_id") != user_id:
+        # Support both camelCase and snake_case
+        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+        logger.info("[homework_create] teacher_id={!r}", teacher_id)
+        if teacher_id != user_id:
             return _http_error(403, "Only the course owner can create homework")
         payload = self._parse_mutation_data(query)
         if isinstance(payload, Response):
@@ -1705,7 +1707,9 @@ class WebSocketChannel(BaseChannel):
         course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        if course.get("teacher_id") != user_id:
+        # Support both camelCase and snake_case
+        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+        if teacher_id != user_id:
             return _http_error(403, "Only the course owner can grade")
         payload = self._parse_mutation_data(query)
         if isinstance(payload, Response):
