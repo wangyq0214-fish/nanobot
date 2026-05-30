@@ -52,6 +52,21 @@ class StorageWrapper:
             "updatedAt": course.get("updated_at", ""),
         }
 
+    @staticmethod
+    def _normalize_member(member: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert member data to camelCase for frontend compatibility."""
+        if not member:
+            return member
+        return {
+            "id": member.get("id"),
+            "courseId": member.get("course_id", ""),
+            "userId": member.get("user_id", ""),
+            "userRole": member.get("user_role", ""),
+            "displayName": member.get("display_name", ""),
+            "metadata": member.get("metadata", {}),
+            "joinedAt": member.get("joined_at", ""),
+        }
+
     @property
     def storage(self) -> BaseStorage:
         """Get the storage backend."""
@@ -171,7 +186,8 @@ class StorageWrapper:
 
     async def get_course_members(self, course_id: str) -> List[Dict[str, Any]]:
         """Get all members of a course."""
-        return await self.storage.get_course_members(course_id)
+        members = await self.storage.get_course_members(course_id)
+        return [self._normalize_member(m) for m in members]
 
     async def get_course_members_count(self, course_id: str) -> int:
         """Get the number of members in a course."""
