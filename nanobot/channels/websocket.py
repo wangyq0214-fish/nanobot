@@ -432,16 +432,27 @@ class WebSocketChannel(BaseChannel):
 
     async def _ensure_storage(self) -> StorageWrapper:
         """Ensure storage backend is initialized (async)."""
-        from nanobot.storage.factory import get_storage, is_database_configured
+        from nanobot.storage.factory import is_database_configured, get_storage
         from nanobot.storage.database_storage import DatabaseStorage
 
         # Check if we need to initialize database
         if is_database_configured():
-            storage = get_storage()
-            if not isinstance(storage, DatabaseStorage):
-                # Need to switch to database storage
+            # Check if storage is already initialized as database
+            try:
+                storage = get_storage()
+                if not isinstance(storage, DatabaseStorage):
+                    # Need to switch to database storage
+                    await auto_init_storage()
+                    self._storage = StorageWrapper()  # Reset wrapper
+            except Exception:
+                # Storage not initialized yet, initialize it
                 await auto_init_storage()
-                self._storage = StorageWrapper()  # Reset wrapper
+                self._storage = StorageWrapper()
+        elif self._storage is None:
+            # No database configured, initialize file storage
+            from nanobot.storage.factory import init_storage
+            await init_storage("file")
+            self._storage = StorageWrapper()
         return self.storage
 
     def _attach(self, connection: Any, chat_id: str) -> None:

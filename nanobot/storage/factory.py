@@ -87,8 +87,13 @@ def get_storage() -> BaseStorage:
     """
     global _storage
     if _storage is None:
-        # Default to file storage if not initialized
-        logger.warning("Storage not initialized, defaulting to file storage")
+        # Storage not initialized yet
+        # If DATABASE_URL is configured, return a temporary FileStorage
+        # The actual database initialization happens in auto_init_storage()
+        if is_database_configured():
+            logger.debug("DATABASE_URL set but storage not async-initialized yet. Using temporary file storage.")
+        else:
+            logger.debug("No DATABASE_URL, using file storage")
         _storage = FileStorage()
     return _storage
 
