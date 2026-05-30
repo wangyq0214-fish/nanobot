@@ -294,8 +294,9 @@ class DatabaseStorage(BaseStorage):
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework. Returns created homework data."""
         async with get_session() as session:
-            # Remove relationship fields that should not be passed to constructor
-            data = {k: v for k, v in homework_data.items() if k not in ('questions', 'submissions', 'course')}
+            # Only pass fields that Homework model supports
+            valid_fields = {'hw_id', 'course_id', 'title', 'description', 'total_points', 'deadline', 'created_by', 'settings', 'created_at'}
+            data = {k: v for k, v in homework_data.items() if k in valid_fields}
 
             # Store questions in settings if provided
             if 'questions' in homework_data:

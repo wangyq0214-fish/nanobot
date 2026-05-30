@@ -38,6 +38,7 @@ class Homework(Base):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert homework to dictionary."""
+        settings = self.settings or {}
         return {
             "hw_id": self.hw_id,
             "course_id": self.course_id,
@@ -46,7 +47,8 @@ class Homework(Base):
             "total_points": self.total_points,
             "deadline": self.deadline.isoformat() if self.deadline else None,
             "created_by": self.created_by,
-            "settings": self.settings,
+            "questions": settings.get("questions", []),
+            "settings": settings,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
