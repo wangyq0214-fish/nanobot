@@ -37,24 +37,31 @@ class StorageWrapper:
     async def load_users(self) -> Dict[str, Any]:
         """Load all users. Returns dict keyed by 'role:user_id'."""
         users = await self.storage.list_users()
-        return {f"{u['role']}:{u['user_id']}": u for u in users}
+        result = {}
+        for u in users:
+            # Support both camelCase and snake_case keys
+            role = u.get('role', '')
+            user_id = u.get('user_id') or u.get('userId', '')
+            if role and user_id:
+                result[f"{role}:{user_id}"] = u
+        return result
 
     async def save_users(self, data: Dict[str, Any]) -> None:
         """Save users data. Note: This is for compatibility only."""
         # In database mode, users are saved individually
         pass
 
-    async def get_user(self, user_id: str, role: str) -> Optional[Dict[str, Any]]:
-        """Get user by ID and role."""
-        return await self.storage.get_user(user_id)
+    async def get_user(self, role: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by role and user_id."""
+        return await self.storage.get_user(role, user_id)
 
     async def create_user(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new user."""
         return await self.storage.create_user(user_data)
 
-    async def update_user(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_user(self, role: str, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update user data."""
-        return await self.storage.update_user(user_id, data)
+        return await self.storage.update_user(role, user_id, data)
 
     # Course operations
     async def load_courses_index(self) -> Dict[str, Any]:
@@ -82,6 +89,22 @@ class StorageWrapper:
         """Delete a course."""
         return await self.storage.delete_course(course_id)
 
+    async def list_courses(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List all courses, optionally filtered by user membership."""
+        return await self.storage.list_courses(user_id)
+
+    async def get_teacher_courses(self, teacher_id: str) -> List[Dict[str, Any]]:
+        """Get all courses for a specific teacher."""
+        return await self.storage.get_teacher_courses(teacher_id)
+
+    async def get_student_courses(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all courses a student is enrolled in."""
+        return await self.storage.get_student_courses(user_id)
+
+    async def get_course_by_join_code(self, join_code: str) -> Optional[Dict[str, Any]]:
+        """Find a course by its join code."""
+        return await self.storage.get_course_by_join_code(join_code)
+
     # Course member operations
     async def load_members(self, course_id: str) -> List[Dict[str, Any]]:
         """Load course members."""
@@ -95,6 +118,10 @@ class StorageWrapper:
         """Add a member to a course."""
         return await self.storage.add_course_member(course_id, user_id, role)
 
+    async def add_course_member(self, course_id: str, user_id: str, role: str = "student", display_name: str = "") -> Dict[str, Any]:
+        """Add a member to a course with display name."""
+        return await self.storage.add_course_member(course_id, user_id, role, display_name)
+
     async def remove_member(self, course_id: str, user_id: str) -> bool:
         """Remove a member from a course."""
         return await self.storage.remove_course_member(course_id, user_id)
@@ -103,10 +130,19 @@ class StorageWrapper:
         """Check if user is a member of course."""
         return await self.storage.is_course_member(course_id, user_id)
 
+    async def get_course_members_count(self, course_id: str) -> int:
+        """Get the number of members in a course."""
+        members = await self.storage.get_course_members(course_id)
+        return len(members)
+
     # Lesson operations
     async def load_lessons(self, course_id: str) -> List[Dict[str, Any]]:
         """Load lessons for a course."""
         return await self.storage.list_lessons(course_id)
+
+    async def get_course_lessons(self, course_id: str) -> List[Dict[str, Any]]:
+        """Get all lessons for a course."""
+        return await self.storage.get_course_lessons(course_id)
 
     async def save_lesson(self, course_id: str, lesson_id: str, data: Dict[str, Any]) -> None:
         """Save lesson data."""
@@ -123,11 +159,15 @@ class StorageWrapper:
     # Homework operations
     async def load_homework(self, course_id: str, hw_id: str) -> Optional[Dict[str, Any]]:
         """Load homework by ID."""
-        return await self.storage.get_homework(int(hw_id))
+        return await self.storage.get_homework(hw_id)
 
     async def list_homework(self, course_id: str) -> List[Dict[str, Any]]:
         """List homework for a course."""
         return await self.storage.list_homework(course_id)
+
+    async def get_course_homework(self, course_id: str) -> List[Dict[str, Any]]:
+        """Get all homework for a course."""
+        return await self.storage.get_course_homework(course_id)
 
     async def save_homework(self, course_id: str, hw_id: str, data: Dict[str, Any]) -> None:
         """Save homework data."""
@@ -137,22 +177,25 @@ class StorageWrapper:
         """Create a new homework."""
         return await self.storage.create_homework(homework_data)
 
-    async def delete_homework(self, hw_id: int) -> bool:
+    async def delete_homework(self, hw_id: str) -> bool:
         """Delete homework."""
         return await self.storage.delete_homework(hw_id)
 
-    # Submission operations
-    async def load_submission(self, hw_id: int, student_id: str) -> Optional[Dict[str, Any]]:
-        """Load submission by homework and student."""
-        submissions = await self.storage.list_submissions(hw_id, student_id)
-        return submissions[0] if submissions else None
+    async def get_homework_submissions(self, hw_id: str) -> List[Dict[str, Any]]:
+        """Get all submissions for a homework assignment."""
+        return await self.storage.get_homework_submissions(hw_id)
 
-    async def list_submissions(self, hw_id: int, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    # Submission operations
+    async def get_submission(self, hw_id: str, student_id: str) -> Optional[Dict[str, Any]]:
+        """Load submission by homework and student."""
+        return await self.storage.get_submission(hw_id, student_id)
+
+    async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for homework."""
         return await self.storage.list_submissions(hw_id, student_id)
 
-    async def save_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Save submission data."""
+    async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create submission data."""
         return await self.storage.create_submission(submission_data)
 
     async def update_submission(self, submission_id: int, data: Dict[str, Any]) -> Dict[str, Any]:

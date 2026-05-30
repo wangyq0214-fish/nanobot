@@ -50,11 +50,13 @@ class DatabaseStorage(BaseStorage):
             logger.info(f"Created user: {user.user_id}")
             return user.to_dict()
 
-    async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get user by ID. Returns None if not found."""
+    async def get_user(self, role: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by role and user_id. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(User).where(User.user_id == user_id)
+                select(User).where(
+                    and_(User.role == role, User.user_id == user_id)
+                )
             )
             user = result.scalar_one_or_none()
             return user.to_dict() if user else None
@@ -65,21 +67,25 @@ class DatabaseStorage(BaseStorage):
         # This method is kept for interface compatibility
         return None
 
-    async def update_user(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_user(self, role: str, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update user data. Returns updated user data."""
         async with get_session() as session:
             data["updated_at"] = datetime.utcnow()
             await session.execute(
-                update(User).where(User.user_id == user_id).values(**data)
+                update(User).where(
+                    and_(User.role == role, User.user_id == user_id)
+                ).values(**data)
             )
             await session.flush()
-            return await self.get_user(user_id)
+            return await self.get_user(role, user_id)
 
-    async def delete_user(self, user_id: str) -> bool:
+    async def delete_user(self, role: str, user_id: str) -> bool:
         """Delete user. Returns True if successful."""
         async with get_session() as session:
             result = await session.execute(
-                delete(User).where(User.user_id == user_id)
+                delete(User).where(
+                    and_(User.role == role, User.user_id == user_id)
+                )
             )
             return result.rowcount > 0
 
@@ -147,16 +153,46 @@ class DatabaseStorage(BaseStorage):
             courses = result.scalars().all()
             return [course.to_dict() for course in courses]
 
+    async def get_teacher_courses(self, teacher_id: str) -> List[Dict[str, Any]]:
+        """Get all courses for a specific teacher."""
+        async with get_session() as session:
+            query = select(Course).where(Course.teacher_id == teacher_id)
+            result = await session.execute(query)
+            courses = result.scalars().all()
+            return [course.to_dict() for course in courses]
+
+    async def get_student_courses(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all courses a student is enrolled in."""
+        async with get_session() as session:
+            query = (
+                select(Course)
+                .join(CourseMember, Course.course_id == CourseMember.course_id)
+                .where(CourseMember.user_id == user_id)
+            )
+            result = await session.execute(query)
+            courses = result.scalars().all()
+            return [course.to_dict() for course in courses]
+
+    async def get_course_by_join_code(self, join_code: str) -> Optional[Dict[str, Any]]:
+        """Find a course by its join code."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(Course).where(Course.join_code == join_code)
+            )
+            course = result.scalar_one_or_none()
+            return course.to_dict() if course else None
+
     # Course member operations
-    async def add_course_member(self, course_id: str, user_id: str, role: str = "student") -> Dict[str, Any]:
+    async def add_course_member(self, course_id: str, user_id: str, role: str = "student", display_name: str = "") -> Dict[str, Any]:
         """Add a member to a course. Returns membership data."""
         async with get_session() as session:
-            # Get user display name
-            user_result = await session.execute(
-                select(User).where(User.user_id == user_id)
-            )
-            user = user_result.scalar_one_or_none()
-            display_name = user.display_name if user else user_id
+            # Get user display name if not provided
+            if not display_name:
+                user_result = await session.execute(
+                    select(User).where(User.user_id == user_id)
+                )
+                user = user_result.scalar_one_or_none()
+                display_name = user.display_name if user else user_id
 
             member = CourseMember(
                 course_id=course_id,
@@ -265,29 +301,29 @@ class DatabaseStorage(BaseStorage):
             logger.info(f"Created homework: {homework.hw_id}")
             return homework.to_dict()
 
-    async def get_homework(self, homework_id: int) -> Optional[Dict[str, Any]]:
+    async def get_homework(self, hw_id: str) -> Optional[Dict[str, Any]]:
         """Get homework by ID. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(Homework).where(Homework.hw_id == str(homework_id))
+                select(Homework).where(Homework.hw_id == hw_id)
             )
             homework = result.scalar_one_or_none()
             return homework.to_dict() if homework else None
 
-    async def update_homework(self, homework_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_homework(self, hw_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update homework data. Returns updated homework data."""
         async with get_session() as session:
             await session.execute(
-                update(Homework).where(Homework.hw_id == str(homework_id)).values(**data)
+                update(Homework).where(Homework.hw_id == hw_id).values(**data)
             )
             await session.flush()
-            return await self.get_homework(homework_id)
+            return await self.get_homework(hw_id)
 
-    async def delete_homework(self, homework_id: int) -> bool:
+    async def delete_homework(self, hw_id: str) -> bool:
         """Delete homework. Returns True if successful."""
         async with get_session() as session:
             result = await session.execute(
-                delete(Homework).where(Homework.hw_id == str(homework_id))
+                delete(Homework).where(Homework.hw_id == hw_id)
             )
             return result.rowcount > 0
 
@@ -313,11 +349,16 @@ class DatabaseStorage(BaseStorage):
             logger.info(f"Created submission: {submission.id}")
             return submission.to_dict()
 
-    async def get_submission(self, submission_id: int) -> Optional[Dict[str, Any]]:
-        """Get submission by ID. Returns None if not found."""
+    async def get_submission(self, hw_id: str, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get submission by homework ID and student ID. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(Submission).where(Submission.id == submission_id)
+                select(Submission).where(
+                    and_(
+                        Submission.hw_id == hw_id,
+                        Submission.student_id == student_id,
+                    )
+                )
             )
             submission = result.scalar_one_or_none()
             return submission.to_dict() if submission else None
@@ -329,12 +370,17 @@ class DatabaseStorage(BaseStorage):
                 update(Submission).where(Submission.id == submission_id).values(**data)
             )
             await session.flush()
-            return await self.get_submission(submission_id)
+            # Return the updated submission
+            result = await session.execute(
+                select(Submission).where(Submission.id == submission_id)
+            )
+            submission = result.scalar_one_or_none()
+            return submission.to_dict() if submission else None
 
-    async def list_submissions(self, homework_id: int, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
         async with get_session() as session:
-            query = select(Submission).where(Submission.hw_id == str(homework_id))
+            query = select(Submission).where(Submission.hw_id == hw_id)
             if student_id:
                 query = query.where(Submission.student_id == student_id)
             query = query.order_by(Submission.submitted_at.desc())

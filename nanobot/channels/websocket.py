@@ -34,6 +34,7 @@ from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
+from nanobot.storage.storage_wrapper import StorageWrapper
 from nanobot.utils.helpers import safe_filename
 from nanobot.utils.media_decode import (
     FileSizeExceeded,
@@ -416,8 +417,17 @@ class WebSocketChannel(BaseChannel):
         # file, nothing else. The secret regenerates on restart so links
         # become self-expiring (callers just refresh the session list).
         self._media_secret: bytes = secrets.token_bytes(32)
+        # Storage wrapper for database operations (lazy initialized)
+        self._storage: StorageWrapper | None = None
 
     # -- Subscription bookkeeping -------------------------------------------
+
+    @property
+    def storage(self) -> StorageWrapper:
+        """Lazy-initialized storage wrapper."""
+        if self._storage is None:
+            self._storage = StorageWrapper()
+        return self._storage
 
     def _attach(self, connection: Any, chat_id: str) -> None:
         """Idempotently subscribe *connection* to *chat_id*."""
@@ -537,10 +547,10 @@ class WebSocketChannel(BaseChannel):
 
         # 3. REST surface for the embedded UI.
         if got == "/api/users/register":
-            return self._handle_users_register(request)
+            return await self._handle_users_register(request)
 
         if got == "/api/users/validate":
-            return self._handle_users_validate(request)
+            return await self._handle_users_validate(request)
 
         if got == "/api/sessions":
             return self._handle_sessions_list(request)
@@ -576,44 +586,44 @@ class WebSocketChannel(BaseChannel):
 
         # Course endpoints
         if got == "/api/courses":
-            return self._handle_courses_list(request)
+            return await self._handle_courses_list(request)
         if got == "/api/courses/create":
-            return self._handle_courses_create(request)
+            return await self._handle_courses_create(request)
         if got == "/api/courses/join":
-            return self._handle_courses_join(request)
+            return await self._handle_courses_join(request)
         m = re.match(r"^/api/courses/([^/]+)/members$", got)
         if m:
-            return self._handle_course_members(request, m.group(1))
+            return await self._handle_course_members(request, m.group(1))
         m = re.match(r"^/api/courses/([^/]+)/lessons/([^/]+)$", got)
         if m:
-            return self._handle_lesson_detail(request, m.group(1), m.group(2))
+            return await self._handle_lesson_detail(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/lessons$", got)
         if m:
-            return self._handle_lessons_list(request, m.group(1))
+            return await self._handle_lessons_list(request, m.group(1))
         m = re.match(r"^/api/courses/([^/]+)/homework/create$", got)
         if m:
-            return self._handle_homework_create(request, m.group(1))
+            return await self._handle_homework_create(request, m.group(1))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submit$", got)
         if m:
-            return self._handle_homework_submit(request, m.group(1), m.group(2))
+            return await self._handle_homework_submit(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions/([^/]+)$", got)
         if m:
-            return self._handle_submission_detail(request, m.group(1), m.group(2), m.group(3))
+            return await self._handle_submission_detail(request, m.group(1), m.group(2), m.group(3))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions$", got)
         if m:
-            return self._handle_homework_submissions(request, m.group(1), m.group(2))
+            return await self._handle_homework_submissions(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/grade$", got)
         if m:
-            return self._handle_homework_grade(request, m.group(1), m.group(2))
+            return await self._handle_homework_grade(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)$", got)
         if m:
-            return self._handle_homework_detail(request, m.group(1), m.group(2))
+            return await self._handle_homework_detail(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/homework$", got)
         if m:
-            return self._handle_homework_list(request, m.group(1))
+            return await self._handle_homework_list(request, m.group(1))
         m = re.match(r"^/api/courses/([^/]+)$", got)
         if m:
-            return self._handle_course_detail(request, m.group(1))
+            return await self._handle_course_detail(request, m.group(1))
 
         # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
         # payload decodes to a path inside :func:`get_media_dir`. See
@@ -921,11 +931,12 @@ class WebSocketChannel(BaseChannel):
 
     # -- User management HTTP handlers ----------------------------------------
 
-    def _handle_users_register(self, request: WsRequest) -> Response:
+    async def _handle_users_register(self, request: WsRequest) -> Response:
         query = _parse_query(request.path)
         role = _query_first(query, "role") or ""
         user_id = _query_first(query, "user_id") or ""
         display_name = _query_first(query, "display_name") or user_id
+        password = _query_first(query, "password") or ""
 
         if not role or not user_id:
             return _http_error(400, "role and user_id are required")
@@ -933,39 +944,56 @@ class WebSocketChannel(BaseChannel):
             return _http_error(400, "Invalid role")
         if len(user_id) > 64:
             return _http_error(400, "user_id too long (max 64)")
+        if not password:
+            return _http_error(400, "password is required")
 
-        users = self._load_users()
-        key = f"{role}:{user_id}"
-        if key in users:
+        # Check if user already exists
+        existing = await self.storage.get_user(role, user_id)
+        if existing:
             return _http_error(409, "User already exists")
 
-        users[key] = {
+        # Hash password
+        import hashlib
+        import secrets as secrets_mod
+        salt = secrets_mod.token_hex(16)
+        password_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+
+        user_data = {
             "role": role,
-            "userId": user_id,
-            "displayName": display_name,
-            "registeredAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "user_id": user_id,
+            "display_name": display_name,
+            "password_hash": password_hash,
+            "password_salt": salt,
+            "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-        self._save_users(users)
+        user = await self.storage.create_user(user_data)
 
         # Create user workspace from templates
         self._create_user_workspace(role, user_id)
 
         logger.info("Registered user: {} (role={})", user_id, role)
-        return _http_json_response({"ok": True, "user": users[key]})
+        return _http_json_response({"ok": True, "user": user})
 
-    def _handle_users_validate(self, request: WsRequest) -> Response:
+    async def _handle_users_validate(self, request: WsRequest) -> Response:
         query = _parse_query(request.path)
         role = _query_first(query, "role") or ""
         user_id = _query_first(query, "user_id") or ""
+        password = _query_first(query, "password") or ""
 
         if not role or not user_id:
             return _http_error(400, "role and user_id are required")
 
-        users = self._load_users()
-        key = f"{role}:{user_id}"
-        user = users.get(key)
+        user = await self.storage.get_user(role, user_id)
         if not user:
             return _http_error(404, "User not found")
+
+        # Validate password if provided
+        if password and user.get("password_hash"):
+            import hashlib
+            salt = user.get("password_salt", "")
+            expected_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+            if expected_hash != user.get("password_hash"):
+                return _http_error(401, "Invalid password")
 
         return _http_json_response({"ok": True, "user": user})
 
@@ -1378,30 +1406,24 @@ class WebSocketChannel(BaseChannel):
 
     # -- Course HTTP handlers -------------------------------------------------
 
-    def _handle_courses_list(self, request: WsRequest) -> Response:
+    async def _handle_courses_list(self, request: WsRequest) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
         role = _query_first(query, "role") or ""
         user_id = _query_first(query, "user_id") or ""
-        index = self._load_courses_index()
-        courses = []
-        for c in index.values():
-            if role == "teacher" and c.get("teacherId") == user_id:
-                courses.append(c)
-            elif role == "student":
-                if c.get("isPublic"):
-                    courses.append(c)
-                else:
-                    members = self._load_members(c["courseId"])
-                    if any(m.get("userId") == user_id for m in members):
-                        courses.append(c)
-            elif not role:
-                if c.get("isPublic"):
-                    courses.append(c)
+
+        if role == "teacher":
+            courses = await self.storage.get_teacher_courses(user_id)
+        elif role == "student":
+            courses = await self.storage.get_student_courses(user_id)
+        else:
+            # Public courses only
+            all_courses = await self.storage.list_courses()
+            courses = [c for c in all_courses if c.get("is_public")]
         return _http_json_response({"courses": courses})
 
-    def _handle_courses_create(self, request: WsRequest) -> Response:
+    async def _handle_courses_create(self, request: WsRequest) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
@@ -1418,44 +1440,41 @@ class WebSocketChannel(BaseChannel):
         grade = payload.get("grade", "").strip()
         if not course_name:
             return _http_error(400, "courseName is required")
+
+        # Check course limit per teacher
+        teacher_courses = await self.storage.get_teacher_courses(user_id)
+        if len(teacher_courses) >= 100:
+            return _http_error(400, "Course limit reached (max 100)")
+
         course_id = self._generate_id()
         join_code = self._generate_join_code()
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         display_name = payload.get("teacherName") or user_id
+
         course_data = {
-            "courseId": course_id,
-            "courseName": course_name,
+            "course_id": course_id,
+            "course_name": course_name,
             "subject": subject,
             "grade": grade,
             "description": payload.get("description", ""),
-            "teacherId": user_id,
-            "teacherName": display_name,
-            "joinCode": join_code,
-            "isPublic": payload.get("isPublic", True),
-            "createdAt": now,
-            "updatedAt": now,
+            "teacher_id": user_id,
+            "teacher_role": "teacher",
+            "teacher_name": display_name,
+            "join_code": join_code,
+            "is_public": payload.get("isPublic", True),
+            "max_members": payload.get("maxMembers", 50),
+            "created_at": now,
+            "updated_at": now,
         }
-        self._save_course(course_id, course_data)
-        self._save_members(course_id, [])
-        # Update index
-        index = self._load_courses_index()
-        index[course_id] = {
-            "courseId": course_id,
-            "courseName": course_name,
-            "subject": subject,
-            "grade": grade,
-            "teacherId": user_id,
-            "teacherName": display_name,
-            "joinCode": join_code,
-            "isPublic": course_data["isPublic"],
-            "createdAt": now,
-            "memberCount": 0,
-        }
-        self._save_courses_index(index)
-        logger.info("Course created: {} ({}) by {}", course_name, course_id, user_id)
-        return _http_json_response({"ok": True, "course": course_data})
+        course = await self.storage.create_course(course_data)
 
-    def _handle_courses_join(self, request: WsRequest) -> Response:
+        # Add teacher as course member automatically
+        await self.storage.add_course_member(course_id, user_id, "teacher", display_name)
+
+        logger.info("Course created: {} ({}) by {}", course_name, course_id, user_id)
+        return _http_json_response({"ok": True, "course": course})
+
+    async def _handle_courses_join(self, request: WsRequest) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
@@ -1469,97 +1488,95 @@ class WebSocketChannel(BaseChannel):
         join_code = payload.get("joinCode", "").strip()
         if not join_code:
             return _http_error(400, "joinCode is required")
-        index = self._load_courses_index()
-        target = None
-        for c in index.values():
-            if c.get("joinCode") == join_code:
-                target = c
-                break
-        if not target:
-            return _http_error(404, "Invalid join code")
-        course_id = target["courseId"]
-        members = self._load_members(course_id)
-        if any(m.get("userId") == user_id for m in members):
-            return _http_json_response({"ok": True, "course": target, "message": "Already a member"})
-        display_name = payload.get("displayName") or user_id
-        members.append({
-            "userId": user_id,
-            "displayName": display_name,
-            "joinedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        })
-        self._save_members(course_id, members)
-        target["memberCount"] = len(members)
-        index[course_id] = target
-        self._save_courses_index(index)
-        logger.info("Student {} joined course {} ({})", user_id, target["courseName"], course_id)
-        return _http_json_response({"ok": True, "course": target})
 
-    def _handle_course_detail(self, request: WsRequest, course_id: str) -> Response:
+        # Find course by join code
+        course = await self.storage.get_course_by_join_code(join_code)
+        if not course:
+            return _http_error(404, "Invalid join code")
+
+        course_id = course["course_id"]
+
+        # Check if already a member
+        if await self.storage.is_course_member(course_id, user_id):
+            return _http_json_response({"ok": True, "course": course, "message": "Already a member"})
+
+        # Check member limit
+        members_count = await self.storage.get_course_members_count(course_id)
+        max_members = course.get("max_members", 50)
+        if members_count >= max_members:
+            return _http_error(400, "Course is full")
+
+        display_name = payload.get("displayName") or user_id
+        await self.storage.add_course_member(course_id, user_id, "student", display_name)
+
+        logger.info("Student {} joined course {} ({})", user_id, course.get("course_name"), course_id)
+        return _http_json_response({"ok": True, "course": course})
+
+    async def _handle_course_detail(self, request: WsRequest, course_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
         return _http_json_response({"course": course})
 
-    def _handle_course_members(self, request: WsRequest, course_id: str) -> Response:
+    async def _handle_course_members(self, request: WsRequest, course_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        members = self._load_members(course_id)
+        members = await self.storage.get_course_members(course_id)
         return _http_json_response({"members": members})
 
-    def _handle_lessons_list(self, request: WsRequest, course_id: str) -> Response:
+    async def _handle_lessons_list(self, request: WsRequest, course_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        lessons = self._load_lessons(course_id)
+        lessons = await self.storage.get_course_lessons(course_id)
         return _http_json_response({"lessons": lessons})
 
-    def _handle_lesson_detail(self, request: WsRequest, course_id: str, lesson_id: str) -> Response:
+    async def _handle_lesson_detail(self, request: WsRequest, course_id: str, lesson_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        lesson_dir = self._courses_dir / course_id / "lessons" / lesson_id
-        lesson_file = lesson_dir / "lesson.json"
-        if not lesson_file.exists():
-            return _http_error(404, "Lesson not found")
+
+        # Try to find lesson by ID (as integer) or by lesson_id string
         try:
-            lesson = json.loads(lesson_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return _http_error(500, "Failed to read lesson")
-        plan_file = lesson_dir / "plan.md"
-        if plan_file.exists():
-            lesson["planContent"] = plan_file.read_text(encoding="utf-8")
+            lesson_id_int = int(lesson_id)
+            lesson = await self.storage.get_lesson(lesson_id_int)
+        except ValueError:
+            return _http_error(400, "Invalid lesson ID")
+
+        if not lesson:
+            return _http_error(404, "Lesson not found")
         return _http_json_response({"lesson": lesson})
 
-    def _handle_homework_list(self, request: WsRequest, course_id: str) -> Response:
+    async def _handle_homework_list(self, request: WsRequest, course_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        homework = self._list_homework(course_id)
+        homework = await self.storage.get_course_homework(course_id)
         return _http_json_response({"homework": homework})
 
-    def _handle_homework_create(self, request: WsRequest, course_id: str) -> Response:
+    async def _handle_homework_create(self, request: WsRequest, course_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
         role = _query_first(query, "role") or ""
         user_id = _query_first(query, "user_id") or ""
         logger.info("[homework_create] role={!r} user_id={!r} course_id={!r}", role, user_id, course_id)
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        logger.info("[homework_create] course.teacherId={!r}", course.get("teacherId"))
-        if course.get("teacherId") != user_id:
+        logger.info("[homework_create] course.teacher_id={!r}", course.get("teacher_id"))
+        if course.get("teacher_id") != user_id:
             return _http_error(403, "Only the course owner can create homework")
         payload = self._parse_mutation_data(query)
         if isinstance(payload, Response):
@@ -1567,32 +1584,35 @@ class WebSocketChannel(BaseChannel):
         title = payload.get("title", "").strip()
         if not title:
             return _http_error(400, "title is required")
+
         hw_id = f"hw{self._generate_id()}"
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
         hw_data = {
-            "hwId": hw_id,
-            "courseId": course_id,
+            "hw_id": hw_id,
+            "course_id": course_id,
             "title": title,
             "description": payload.get("description", ""),
             "questions": payload.get("questions", []),
-            "totalPoints": payload.get("totalPoints", 0),
+            "total_points": payload.get("totalPoints", 0),
             "deadline": payload.get("deadline", ""),
-            "createdAt": now,
-            "createdBy": user_id,
+            "created_at": now,
+            "created_by": user_id,
+            "created_by_role": "teacher",
         }
-        self._save_homework(course_id, hw_id, hw_data)
+        homework = await self.storage.create_homework(hw_data)
         logger.info("Homework created: {} in course {} by {}", title, course_id, user_id)
-        return _http_json_response({"ok": True, "homework": hw_data})
+        return _http_json_response({"ok": True, "homework": homework})
 
-    def _handle_homework_detail(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+    async def _handle_homework_detail(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        hw = self._load_homework(course_id, hw_id)
+        hw = await self.storage.get_homework(hw_id)
         if not hw:
             return _http_error(404, "Homework not found")
         return _http_json_response({"homework": hw})
 
-    def _handle_homework_submit(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+    async def _handle_homework_submit(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
@@ -1600,58 +1620,60 @@ class WebSocketChannel(BaseChannel):
         user_id = _query_first(query, "user_id") or ""
         if role != "student":
             return _http_error(403, "Only students can submit homework")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        hw = self._load_homework(course_id, hw_id)
+        hw = await self.storage.get_homework(hw_id)
         if not hw:
             return _http_error(404, "Homework not found")
         payload = self._parse_mutation_data(query)
         if isinstance(payload, Response):
             return payload
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        submission = {
-            "hwId": hw_id,
-            "studentId": user_id,
+
+        submission_data = {
+            "hw_id": hw_id,
+            "student_id": user_id,
+            "student_role": "student",
             "answers": payload.get("answers", {}),
-            "submittedAt": now,
+            "submitted_at": now,
             "status": "submitted",
             "score": 0,
             "feedback": {},
-            "totalScore": hw.get("totalPoints", 0),
-            "gradedAt": None,
-            "gradedBy": None,
+            "total_score": hw.get("total_points", 0),
+            "graded_at": None,
+            "graded_by": None,
         }
-        self._save_submission(course_id, hw_id, user_id, submission)
+        await self.storage.create_submission(submission_data)
         logger.info("Homework {} submitted by student {} in course {}", hw_id, user_id, course_id)
         return _http_json_response({"ok": True})
 
-    def _handle_homework_submissions(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+    async def _handle_homework_submissions(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        submissions = self._list_submissions(course_id, hw_id)
+        submissions = await self.storage.get_homework_submissions(hw_id)
         return _http_json_response({"submissions": submissions})
 
-    def _handle_submission_detail(self, request: WsRequest, course_id: str, hw_id: str, student_id: str) -> Response:
+    async def _handle_submission_detail(self, request: WsRequest, course_id: str, hw_id: str, student_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
-        submission = self._load_submission(course_id, hw_id, student_id)
+        submission = await self.storage.get_submission(hw_id, student_id)
         if not submission:
             return _http_error(404, "Submission not found")
         return _http_json_response({"submission": submission})
 
-    def _handle_homework_grade(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+    async def _handle_homework_grade(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
         if not self._check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
         user_id = _query_first(query, "user_id") or ""
-        course = self._load_course(course_id)
+        course = await self.storage.get_course(course_id)
         if not course:
             return _http_error(404, "Course not found")
-        if course.get("teacherId") != user_id:
+        if course.get("teacher_id") != user_id:
             return _http_error(403, "Only the course owner can grade")
         payload = self._parse_mutation_data(query)
         if isinstance(payload, Response):
@@ -1659,17 +1681,21 @@ class WebSocketChannel(BaseChannel):
         student_id = payload.get("studentId", "").strip()
         if not student_id:
             return _http_error(400, "studentId is required")
-        submission = self._load_submission(course_id, hw_id, student_id)
+        submission = await self.storage.get_submission(hw_id, student_id)
         if not submission:
             return _http_error(404, "Submission not found")
-        submission["status"] = "graded"
-        submission["score"] = payload.get("score", 0)
-        submission["feedback"] = payload.get("feedback", {})
-        submission["gradedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        submission["gradedBy"] = user_id
-        self._save_submission(course_id, hw_id, student_id, submission)
+
+        submission_update = {
+            "status": "graded",
+            "score": payload.get("score", 0),
+            "feedback": payload.get("feedback", {}),
+            "graded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "graded_by": user_id,
+            "graded_by_role": "teacher",
+        }
+        updated = await self.storage.update_submission(submission["id"], submission_update)
         logger.info("Homework {} graded for student {} in course {}", hw_id, student_id, course_id)
-        return _http_json_response({"ok": True, "submission": submission})
+        return _http_json_response({"ok": True, "submission": updated})
 
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
         supplied = _query_first(query, "token")

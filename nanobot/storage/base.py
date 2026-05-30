@@ -23,8 +23,8 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get user by ID. Returns None if not found."""
+    async def get_user(self, role: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by role and user_id. Returns None if not found."""
         pass
 
     @abstractmethod
@@ -33,12 +33,12 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def update_user(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_user(self, role: str, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update user data. Returns updated user data."""
         pass
 
     @abstractmethod
-    async def delete_user(self, user_id: str) -> bool:
+    async def delete_user(self, role: str, user_id: str) -> bool:
         """Delete user. Returns True if successful."""
         pass
 
@@ -73,9 +73,24 @@ class BaseStorage(ABC):
         """List all courses, optionally filtered by user membership."""
         pass
 
+    @abstractmethod
+    async def get_teacher_courses(self, teacher_id: str) -> List[Dict[str, Any]]:
+        """Get all courses for a specific teacher."""
+        pass
+
+    @abstractmethod
+    async def get_student_courses(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all courses a student is enrolled in."""
+        pass
+
+    @abstractmethod
+    async def get_course_by_join_code(self, join_code: str) -> Optional[Dict[str, Any]]:
+        """Find a course by its join code."""
+        pass
+
     # Course member operations
     @abstractmethod
-    async def add_course_member(self, course_id: str, user_id: str, role: str = "student") -> Dict[str, Any]:
+    async def add_course_member(self, course_id: str, user_id: str, role: str = "student", display_name: str = "") -> Dict[str, Any]:
         """Add a member to a course. Returns membership data."""
         pass
 
@@ -120,6 +135,10 @@ class BaseStorage(ABC):
         """List all lessons in a course."""
         pass
 
+    async def get_course_lessons(self, course_id: str) -> List[Dict[str, Any]]:
+        """Get all lessons for a course. Default implementation calls list_lessons."""
+        return await self.list_lessons(course_id)
+
     # Homework operations
     @abstractmethod
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -127,17 +146,17 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def get_homework(self, homework_id: int) -> Optional[Dict[str, Any]]:
+    async def get_homework(self, hw_id: str) -> Optional[Dict[str, Any]]:
         """Get homework by ID. Returns None if not found."""
         pass
 
     @abstractmethod
-    async def update_homework(self, homework_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_homework(self, hw_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update homework data. Returns updated homework data."""
         pass
 
     @abstractmethod
-    async def delete_homework(self, homework_id: int) -> bool:
+    async def delete_homework(self, hw_id: str) -> bool:
         """Delete homework. Returns True if successful."""
         pass
 
@@ -146,6 +165,10 @@ class BaseStorage(ABC):
         """List all homework in a course."""
         pass
 
+    async def get_course_homework(self, course_id: str) -> List[Dict[str, Any]]:
+        """Get all homework for a course. Default implementation calls list_homework."""
+        return await self.list_homework(course_id)
+
     # Submission operations
     @abstractmethod
     async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -153,8 +176,8 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def get_submission(self, submission_id: int) -> Optional[Dict[str, Any]]:
-        """Get submission by ID. Returns None if not found."""
+    async def get_submission(self, hw_id: str, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get submission by homework ID and student ID. Returns None if not found."""
         pass
 
     @abstractmethod
@@ -163,9 +186,13 @@ class BaseStorage(ABC):
         pass
 
     @abstractmethod
-    async def list_submissions(self, homework_id: int, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
         pass
+
+    async def get_homework_submissions(self, hw_id: str) -> List[Dict[str, Any]]:
+        """Get all submissions for a homework. Default implementation calls list_submissions."""
+        return await self.list_submissions(hw_id)
 
     # Teacher lesson library operations
     @abstractmethod

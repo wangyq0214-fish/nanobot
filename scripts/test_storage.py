@@ -96,16 +96,16 @@ async def test_file_storage():
     user = await storage.create_user(user_data)
     print(f"[OK] Created user: {user['username']} ({user['user_id']})")
 
-    # Get user
-    retrieved_user = await storage.get_user("test_user_001")
-    print(f"[OK] Retrieved user: {retrieved_user['username']}")
+    # Get user (using composite key: role, user_id)
+    retrieved_user = await storage.get_user("student", "test_user_001")
+    print(f"[OK] Retrieved user: {retrieved_user.get('display_name') or retrieved_user.get('username', '')}")
 
     # Get user by username
     user_by_name = await storage.get_user_by_username("testuser")
     print(f"[OK] Retrieved user by username: {user_by_name['username']}")
 
     # Update user
-    updated_user = await storage.update_user("test_user_001", {"display_name": "Updated Test User"})
+    updated_user = await storage.update_user("student", "test_user_001", {"display_name": "Updated Test User"})
     print(f"[OK] Updated user display_name: {updated_user['display_name']}")
 
     # List users
@@ -299,17 +299,17 @@ async def test_database_storage():
 
         # Test health check
         health = await storage.health_check()
-        print(f"✓ Health check: {health['status']}")
+        print(f"[OK] Health check: {health['status']}")
 
         if health['status'] != 'healthy':
-            print("⚠ Database not available, skipping database tests")
+            print("[WARN] Database not available, skipping database tests")
             return
 
         # Run similar tests as file storage
         # (Abbreviated for brevity - same operations as above)
 
         print("\n" + "="*60)
-        print("✓ All database storage tests passed!")
+        print("[OK] All database storage tests passed!")
         print("="*60)
 
     except Exception as e:

@@ -84,13 +84,11 @@ class FileStorage(BaseStorage):
         logger.info(f"Created user: {user_id}")
         return user_data
 
-    async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get user by ID. Returns None if not found."""
+    async def get_user(self, role: str, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get user by role and user_id. Returns None if not found."""
         users = self._load_json(self.users_file) or {}
-        for key, user in users.items():
-            if user.get("user_id") == user_id:
-                return user
-        return None
+        key = f"{role}:{user_id}"
+        return users.get(key)
 
     async def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """Get user by username. Returns None if not found."""
@@ -100,25 +98,25 @@ class FileStorage(BaseStorage):
                 return user
         return None
 
-    async def update_user(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_user(self, role: str, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update user data. Returns updated user data."""
         users = self._load_json(self.users_file) or {}
-        for key, user in users.items():
-            if user.get("user_id") == user_id:
-                user.update(data)
-                user["updated_at"] = datetime.utcnow().isoformat()
-                self._save_json(self.users_file, users)
-                return user
-        raise ValueError(f"User not found: {user_id}")
+        key = f"{role}:{user_id}"
+        if key not in users:
+            raise ValueError(f"User not found: {key}")
+        users[key].update(data)
+        users[key]["updated_at"] = datetime.utcnow().isoformat()
+        self._save_json(self.users_file, users)
+        return users[key]
 
-    async def delete_user(self, user_id: str) -> bool:
+    async def delete_user(self, role: str, user_id: str) -> bool:
         """Delete user. Returns True if successful."""
         users = self._load_json(self.users_file) or {}
-        for key, user in users.items():
-            if user.get("user_id") == user_id:
-                del users[key]
-                self._save_json(self.users_file, users)
-                return True
+        key = f"{role}:{user_id}"
+        if key in users:
+            del users[key]
+            self._save_json(self.users_file, users)
+            return True
         return False
 
     async def list_users(self, role: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -211,6 +209,25 @@ class FileStorage(BaseStorage):
 
         return courses
 
+    async def get_teacher_courses(self, teacher_id: str) -> List[Dict[str, Any]]:
+        """Get all courses for a specific teacher."""
+        courses = await self.list_courses()
+        # Support both camelCase and snake_case keys
+        return [c for c in courses if c.get("teacher_id") == teacher_id or c.get("teacherId") == teacher_id]
+
+    async def get_student_courses(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all courses a student is enrolled in."""
+        return await self.list_courses(user_id=user_id)
+
+    async def get_course_by_join_code(self, join_code: str) -> Optional[Dict[str, Any]]:
+        """Find a course by its join code."""
+        courses = await self.list_courses()
+        for course in courses:
+            # Support both camelCase and snake_case keys
+            if course.get("join_code") == join_code or course.get("joinCode") == join_code:
+                return course
+        return None
+
     # Course member operations
     async def add_course_member(self, course_id: str, user_id: str, role: str = "student") -> Dict[str, Any]:
         """Add a member to a course. Returns membership data."""
@@ -254,6 +271,11 @@ class FileStorage(BaseStorage):
         """Check if a user is a member of a course."""
         members = await self.get_course_members(course_id)
         return any(m.get("user_id") == user_id for m in members)
+
+    async def get_course_members_count(self, course_id: str) -> int:
+        """Get the number of members in a course."""
+        members = await self.get_course_members(course_id)
+        return len(members)
 
     # Lesson operations
     async def create_lesson(self, lesson_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -375,42 +397,42 @@ class FileStorage(BaseStorage):
         logger.info(f"Created homework: {homework_id}")
         return homework_data
 
-    async def get_homework(self, homework_id: int) -> Optional[Dict[str, Any]]:
+    async def get_homework(self, hw_id: str) -> Optional[Dict[str, Any]]:
         """Get homework by ID. Returns None if not found."""
         # Search through all courses
         for course_dir in self.courses_path.iterdir():
             if course_dir.is_dir():
                 homework_dir = course_dir / "homework"
                 if homework_dir.exists():
-                    homework_file = homework_dir / f"{homework_id}.json"
+                    homework_file = homework_dir / f"{hw_id}.json"
                     if homework_file.exists():
                         return self._load_json(homework_file)
         return None
 
-    async def update_homework(self, homework_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+    async def update_homework(self, hw_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update homework data. Returns updated homework data."""
         # Search through all courses
         for course_dir in self.courses_path.iterdir():
             if course_dir.is_dir():
                 homework_dir = course_dir / "homework"
                 if homework_dir.exists():
-                    homework_file = homework_dir / f"{homework_id}.json"
+                    homework_file = homework_dir / f"{hw_id}.json"
                     if homework_file.exists():
                         homework = self._load_json(homework_file)
                         homework.update(data)
                         homework["updated_at"] = datetime.utcnow().isoformat()
                         self._save_json(homework_file, homework)
                         return homework
-        raise ValueError(f"Homework not found: {homework_id}")
+        raise ValueError(f"Homework not found: {hw_id}")
 
-    async def delete_homework(self, homework_id: int) -> bool:
+    async def delete_homework(self, hw_id: str) -> bool:
         """Delete homework. Returns True if successful."""
         # Search through all courses
         for course_dir in self.courses_path.iterdir():
             if course_dir.is_dir():
                 homework_dir = course_dir / "homework"
                 if homework_dir.exists():
-                    homework_file = homework_dir / f"{homework_id}.json"
+                    homework_file = homework_dir / f"{hw_id}.json"
                     if homework_file.exists():
                         homework_file.unlink()
                         return True
@@ -453,16 +475,17 @@ class FileStorage(BaseStorage):
         logger.info(f"Created submission: {submission_id}")
         return submission_data
 
-    async def get_submission(self, submission_id: int) -> Optional[Dict[str, Any]]:
-        """Get submission by ID. Returns None if not found."""
+    async def get_submission(self, hw_id: str, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get submission by homework ID and student ID. Returns None if not found."""
         # Search through all courses
         for course_dir in self.courses_path.iterdir():
             if course_dir.is_dir():
                 submissions_dir = course_dir / "homework" / "submissions"
                 if submissions_dir.exists():
-                    for submission_file in submissions_dir.glob("*.json"):
+                    submission_file = submissions_dir / f"{student_id}.json"
+                    if submission_file.exists():
                         submission = self._load_json(submission_file)
-                        if submission and submission.get("submission_id") == str(submission_id):
+                        if submission and submission.get("hw_id") == hw_id:
                             return submission
         return None
 
@@ -482,20 +505,22 @@ class FileStorage(BaseStorage):
                             return submission
         raise ValueError(f"Submission not found: {submission_id}")
 
-    async def list_submissions(self, homework_id: int, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
         # Search through all courses
         submissions = []
         for course_dir in self.courses_path.iterdir():
             if course_dir.is_dir():
-                submissions_dir = course_dir / "homework" / "submissions"
-                if submissions_dir.exists():
-                    for submission_file in submissions_dir.glob("*.json"):
-                        submission = self._load_json(submission_file)
-                        if submission:
-                            if submission.get("homework_id") == str(homework_id):
-                                if student_id is None or submission.get("student_id") == student_id:
-                                    submissions.append(submission)
+                homework_dir = course_dir / "homework"
+                if homework_dir.exists():
+                    submissions_dir = homework_dir / "submissions"
+                    if submissions_dir.exists():
+                        for submission_file in submissions_dir.glob("*.json"):
+                            submission = self._load_json(submission_file)
+                            if submission:
+                                if submission.get("hw_id") == hw_id:
+                                    if student_id is None or submission.get("student_id") == student_id:
+                                        submissions.append(submission)
 
         # Sort by submitted_at descending
         submissions.sort(key=lambda x: x.get("submitted_at", ""), reverse=True)
