@@ -26,11 +26,14 @@ class StorageWrapper:
         """Initialize with optional storage backend."""
         self._storage = storage
 
-    @staticmethod
-    def _normalize_course(course: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_course(self, course: Dict[str, Any]) -> Dict[str, Any]:
         """Convert snake_case to camelCase for frontend compatibility."""
         if not course:
             return course
+        # Get member count from cache or default
+        member_count = course.get("member_count", 0)
+        if member_count == 0 and hasattr(self, '_member_count_cache'):
+            member_count = self._member_count_cache.get(course.get("course_id", ""), 0)
         return {
             "courseId": course.get("course_id", ""),
             "courseName": course.get("course_name", ""),
@@ -42,7 +45,7 @@ class StorageWrapper:
             "teacherName": course.get("teacher_name", ""),
             "joinCode": course.get("join_code", ""),
             "isPublic": course.get("is_public", False),
-            "memberCount": course.get("member_count", 0),
+            "memberCount": member_count,
             "metadata": course.get("metadata", {}),
             "settings": course.get("settings", {}),
             "createdAt": course.get("created_at", ""),
