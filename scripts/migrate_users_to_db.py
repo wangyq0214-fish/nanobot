@@ -84,14 +84,12 @@ async def migrate_users():
                 "settings": user_data.get("settings", {}),
             }
 
-            # If user has no password hash, generate a random one (user will need to reset)
+            # If user has no password hash, set default password "123456"
             if not db_user["password_hash"]:
                 salt = secrets.token_hex(16)
-                # Use a random password that won't work - user must re-register or reset
-                random_pwd = secrets.token_hex(16)
-                db_user["password_hash"] = hashlib.sha256(f"{salt}{random_pwd}".encode()).hexdigest()
+                db_user["password_hash"] = hashlib.sha256(f"{salt}123456".encode()).hexdigest()
                 db_user["password_salt"] = salt
-                print(f"[WARN] User {key} has no password, generated random hash (user needs to re-register)")
+                print(f"[INFO] User {key} has no password, set default password: 123456")
 
             # Create user in database
             await storage.create_user(db_user)
