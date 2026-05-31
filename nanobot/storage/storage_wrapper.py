@@ -67,6 +67,27 @@ class StorageWrapper:
             "joinedAt": member.get("joined_at", ""),
         }
 
+    @staticmethod
+    def _normalize_homework(hw: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert homework data to camelCase for frontend compatibility."""
+        if not hw:
+            return hw
+        # Get questions from settings if available
+        settings = hw.get("settings", {}) or {}
+        questions = settings.get("questions", [])
+        return {
+            "hwId": hw.get("hw_id", ""),
+            "courseId": hw.get("course_id", ""),
+            "title": hw.get("title", ""),
+            "description": hw.get("description", ""),
+            "totalPoints": hw.get("total_points", 0),
+            "deadline": hw.get("deadline", ""),
+            "createdBy": hw.get("created_by", ""),
+            "questions": questions,
+            "settings": settings,
+            "createdAt": hw.get("created_at", ""),
+        }
+
     @property
     def storage(self) -> BaseStorage:
         """Get the storage backend."""
@@ -222,27 +243,32 @@ class StorageWrapper:
     # Homework operations
     async def load_homework(self, course_id: str, hw_id: str) -> Optional[Dict[str, Any]]:
         """Load homework by ID."""
-        return await self.storage.get_homework(hw_id)
+        hw = await self.storage.get_homework(hw_id)
+        return self._normalize_homework(hw) if hw else None
 
     async def get_homework(self, hw_id: str) -> Optional[Dict[str, Any]]:
         """Get homework by ID."""
-        return await self.storage.get_homework(hw_id)
+        hw = await self.storage.get_homework(hw_id)
+        return self._normalize_homework(hw) if hw else None
 
     async def list_homework(self, course_id: str) -> List[Dict[str, Any]]:
         """List homework for a course."""
-        return await self.storage.list_homework(course_id)
+        hw_list = await self.storage.list_homework(course_id)
+        return [self._normalize_homework(hw) for hw in hw_list]
 
     async def get_course_homework(self, course_id: str) -> List[Dict[str, Any]]:
         """Get all homework for a course."""
-        return await self.storage.get_course_homework(course_id)
+        hw_list = await self.storage.get_course_homework(course_id)
+        return [self._normalize_homework(hw) for hw in hw_list]
 
     async def save_homework(self, course_id: str, hw_id: str, data: Dict[str, Any]) -> None:
         """Save homework data."""
-        await self.storage.update_homework(int(hw_id), data)
+        await self.storage.update_homework(hw_id, data)
 
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework."""
-        return await self.storage.create_homework(homework_data)
+        hw = await self.storage.create_homework(homework_data)
+        return self._normalize_homework(hw)
 
     async def delete_homework(self, hw_id: str) -> bool:
         """Delete homework."""
