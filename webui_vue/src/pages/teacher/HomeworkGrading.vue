@@ -32,11 +32,8 @@
         <div class="hw-title">{{ hw.title }}</div>
         <div class="hw-meta">{{ hw.submissionCount || 0 }} 份提交 · {{ hw.gradedCount || 0 }} 已批</div>
       </div>
-      <div class="hw-actions-col">
-        <div class="hw-status" :class="{ done: hw.allGraded }">
-          {{ hw.allGraded ? '✓' : hw.pendingCount + '待批' }}
-        </div>
-        <button class="hw-delete-btn" @click.stop="handleDeleteHomework(hw)" title="删除作业">🗑</button>
+      <div class="hw-status" :class="{ done: hw.allGraded }">
+        {{ hw.allGraded ? '✓' : hw.pendingCount + '待批' }}
       </div>
     </div>
     <div v-if="homeworkItems.length === 0" class="pl-empty">该课程暂无作业</div>
@@ -356,7 +353,7 @@ function goToLessonPlan() { router.push('/teacher/lesson-plan') }
 function goToAnalytics() { router.push('/teacher/analytics') }
 
 // ====== Course API ======
-const { courses, fetchCourses: apiFetchCourses, fetchHomeworkList: apiFetchHomeworkList, fetchSubmissions: apiFetchSubmissions, fetchHomeworkDetail: apiFetchHomeworkDetail, deleteHomework: apiDeleteHomework } = useCourse()
+const { courses, fetchCourses: apiFetchCourses, fetchHomeworkList: apiFetchHomeworkList, fetchSubmissions: apiFetchSubmissions, fetchHomeworkDetail: apiFetchHomeworkDetail } = useCourse()
 const authToken = ref(loadToken())
 const selectedCourseId = ref('')
 const selectedHwId = ref('')
@@ -415,27 +412,6 @@ async function selectHomework(hw) {
     hw.allGraded = hw.submissionCount > 0 && hw.pendingCount === 0
   } catch (e) {
     console.error('Failed to load homework detail:', e)
-  }
-}
-
-async function handleDeleteHomework(hw) {
-  if (!confirm(`确定要删除作业"${hw.title}"吗？此操作不可恢复。`)) return
-  try {
-    const saved = loadUser()
-    if (!saved) return
-    await apiDeleteHomework(selectedCourseId.value, hw.hwId, saved.role, saved.userId, authToken.value)
-    // Remove from list
-    homeworkItems.value = homeworkItems.value.filter(h => h.hwId !== hw.hwId)
-    // Clear selection if deleted
-    if (selectedHwId.value === hw.hwId) {
-      selectedHwId.value = ''
-      submissions.value = []
-      currentHomework.value = null
-    }
-    alert('作业已删除')
-  } catch (e) {
-    console.error('Failed to delete homework:', e)
-    alert('删除失败: ' + (e.message || '未知错误'))
   }
 }
 
@@ -796,11 +772,8 @@ body {
 .hw-body { flex:1; min-width:0; }
 .hw-title { font-size:0.76rem; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hw-meta { font-size:0.64rem; color:var(--text-muted); margin-top:2px; }
-.hw-actions-col { display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0; }
-.hw-status { font-size:0.64rem; font-weight:600; color:var(--text-muted); }
+.hw-status { font-size:0.64rem; font-weight:600; color:var(--text-muted); flex-shrink:0; }
 .hw-status.done { color:var(--accent); }
-.hw-delete-btn { background:none; border:none; cursor:pointer; font-size:0.8rem; padding:2px 4px; border-radius:4px; opacity:0.5; transition:all 0.2s; }
-.hw-delete-btn:hover { opacity:1; background:rgba(231,76,60,0.1); }
 
 .pl-search { display:flex; align-items:center; gap:6px; margin:10px 14px; padding:7px 10px; background:var(--bg-input); border:1.8px solid var(--border-light); border-radius:10px; transition:all 0.25s; position:relative; z-index:2; }
 .pl-search:focus-within { border-color:var(--border-active); box-shadow:0 0 12px var(--accent-soft); }
