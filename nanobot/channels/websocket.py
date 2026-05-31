@@ -1027,7 +1027,13 @@ class WebSocketChannel(BaseChannel):
             if expected_hash != user.get("password_hash"):
                 return _http_error(401, "Invalid password")
 
-        return _http_json_response({"ok": True, "user": user})
+        # Generate API token for authenticated user
+        self._purge_expired_api_tokens()
+        token = f"nbwt_{secrets.token_urlsafe(32)}"
+        expiry = time.monotonic() + float(self.config.token_ttl_s)
+        self._api_tokens[token] = expiry
+
+        return _http_json_response({"ok": True, "user": user, "token": token})
 
     # -- Source file HTTP handlers -------------------------------------------
 

@@ -379,15 +379,28 @@ class DatabaseStorage(BaseStorage):
         """Get submission by homework ID and student ID. Returns None if not found."""
         async with get_session() as session:
             result = await session.execute(
-                select(Submission).where(
+                select(Submission, CourseMember.display_name)
+                .outerjoin(
+                    CourseMember,
+                    and_(
+                        Submission.student_id == CourseMember.user_id,
+                        Submission.course_id == CourseMember.course_id,
+                    ),
+                )
+                .where(
                     and_(
                         Submission.hw_id == hw_id,
                         Submission.student_id == student_id,
                     )
                 )
             )
-            submission = result.scalar_one_or_none()
-            return submission.to_dict() if submission else None
+            row = result.one_or_none()
+            if not row:
+                return None
+            sub, display_name = row
+            data = sub.to_dict()
+            data["student_name"] = display_name or sub.student_id
+            return data
 
     async def update_submission(self, submission_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update submission data. Returns updated submission data."""
@@ -406,13 +419,30 @@ class DatabaseStorage(BaseStorage):
     async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
         async with get_session() as session:
-            query = select(Submission).where(Submission.hw_id == hw_id)
+            # Join with course_members to get student display name
+            query = (
+                select(Submission, CourseMember.display_name)
+                .outerjoin(
+                    CourseMember,
+                    and_(
+                        Submission.student_id == CourseMember.user_id,
+                        Submission.course_id == CourseMember.course_id,
+                    ),
+                )
+                .where(Submission.hw_id == hw_id)
+            )
             if student_id:
                 query = query.where(Submission.student_id == student_id)
             query = query.order_by(Submission.submitted_at.desc())
             result = await session.execute(query)
-            submissions = result.scalars().all()
-            return [sub.to_dict() for sub in submissions]
+            rows = result.all()
+
+            submissions = []
+            for sub, display_name in rows:
+                data = sub.to_dict()
+                data["student_name"] = display_name or sub.student_id
+                submissions.append(data)
+            return submissions
 
     # Teacher lesson library operations
     async def create_teacher_lesson(self, lesson_data: Dict[str, Any]) -> Dict[str, Any]:

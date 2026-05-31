@@ -13,6 +13,7 @@
       </button>
     </div>
     <input class="login-input" v-model="loginUserId" placeholder="输入用户名" @keydown.enter="handleLogin" autofocus />
+    <input class="login-input" v-model="loginPassword" type="password" placeholder="输入密码" @keydown.enter="handleLogin" />
     <p v-if="loginError" class="login-error">{{ loginError }}</p>
     <button class="login-submit" @click="handleLogin" :disabled="!loginRole || !loginUserId.trim() || loginLoading">
       {{ loginLoading ? '连接中...' : (authMode === 'login' ? '登录' : '注册') }}
@@ -57,55 +58,84 @@
     <svg viewBox="0 0 16 16" width="14" height="14"><path d="M10 4L6 8l4 4" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
 
+  <!-- Course selector -->
   <div class="pl-header">
-    <span class="pl-title">提交列表</span>
-    <span class="pl-badge">{{ ungradedCount }} 待批</span>
+    <span class="pl-title">课程作业</span>
+    <span class="pl-badge">{{ totalSubmissions }} 份提交</span>
   </div>
-  <div class="pl-search">
-    <svg viewBox="0 0 20 20" class="pl-search-icon"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg>
-    <input v-model="searchQuery" placeholder="搜索学生或作业..." />
+  <div class="pl-courses">
+    <select v-model="selectedCourseId" class="course-select" @change="onCourseChange">
+      <option value="">选择课程...</option>
+      <option v-for="c in courses" :key="c.courseId" :value="c.courseId">{{ c.courseName }}</option>
+    </select>
   </div>
-  <div class="pl-filters">
-    <span class="pl-chip" :class="{ on: statusFilter === 'all' }" @click="statusFilter = 'all'">全部</span>
-    <span class="pl-chip" :class="{ on: statusFilter === 'pending' }" @click="statusFilter = 'pending'">待批改</span>
-    <span class="pl-chip" :class="{ on: statusFilter === 'graded' }" @click="statusFilter = 'graded'">已批改</span>
-  </div>
-  <div class="pl-list">
-    <div v-for="(sub, si) in filteredSubmissions" :key="sub.id"
-      class="submission-row" :class="{ active: activeId === sub.id }"
-      @click="selectSubmission(sub)" :style="{ animationDelay: si * 0.03 + 's' }">
-      <div class="sr-rank">{{ si + 1 }}</div>
-      <div class="sr-avatar">{{ sub.student[0] }}</div>
-      <div class="sr-body">
-        <div class="sr-name">{{ sub.student }}</div>
-        <div class="sr-desc">{{ sub.title }}</div>
+  <div v-if="selectedCourseId" class="pl-homework-list">
+    <div v-for="hw in homeworkItems" :key="hw.hwId"
+      class="homework-row" :class="{ active: selectedHwId === hw.hwId }"
+      @click="selectHomework(hw)">
+      <div class="hw-icon">📝</div>
+      <div class="hw-body">
+        <div class="hw-title">{{ hw.title }}</div>
+        <div class="hw-meta">{{ hw.submissionCount || 0 }} 份提交 · {{ hw.gradedCount || 0 }} 已批</div>
       </div>
-      <div class="sr-tail">
-        <span v-if="sub.status === 'graded'" class="sr-score">{{ sub.score }}</span>
-        <span v-else class="sr-dot"></span>
+      <div class="hw-status" :class="{ done: hw.allGraded }">
+        {{ hw.allGraded ? '✓' : hw.pendingCount + '待批' }}
       </div>
     </div>
-    <div v-if="filteredSubmissions.length === 0" class="pl-empty">暂无匹配项</div>
+    <div v-if="homeworkItems.length === 0" class="pl-empty">该课程暂无作业</div>
   </div>
-  <div class="pl-footer">
-    <div class="pl-stats-row">
-      <div class="pl-stat">
-        <div class="pl-stat-val">{{ submissions.length }}</div>
-        <div class="pl-stat-lbl">总提交</div>
-      </div>
-      <div class="pl-stat">
-        <div class="pl-stat-val">{{ gradedCount }}</div>
-        <div class="pl-stat-lbl">已批改</div>
-      </div>
-      <div class="pl-stat">
-        <div class="pl-stat-val">{{ avgScore }}</div>
-        <div class="pl-stat-lbl">平均分</div>
-      </div>
+  <div v-else class="pl-empty" style="flex:1; display:flex; align-items:center; justify-content:center;">
+    请先选择课程
+  </div>
+
+  <!-- Submissions list for selected homework -->
+  <template v-if="selectedHwId">
+    <div class="pl-search">
+      <svg viewBox="0 0 20 20" class="pl-search-icon"><circle cx="9" cy="9" r="5"/><path d="M13 13l4 4"/></svg>
+      <input v-model="searchQuery" placeholder="搜索学生..." />
     </div>
-    <button class="batch-btn" :disabled="ungradedCount === 0" @click="batchGradeAll">
-      一键批改 {{ ungradedCount }} 份
-    </button>
-  </div>
+    <div class="pl-filters">
+      <span class="pl-chip" :class="{ on: statusFilter === 'all' }" @click="statusFilter = 'all'">全部</span>
+      <span class="pl-chip" :class="{ on: statusFilter === 'pending' }" @click="statusFilter = 'pending'">待批改</span>
+      <span class="pl-chip" :class="{ on: statusFilter === 'graded' }" @click="statusFilter = 'graded'">已批改</span>
+    </div>
+    <div class="pl-list">
+      <div v-for="(sub, si) in filteredSubmissions" :key="sub.id"
+        class="submission-row" :class="{ active: activeId === sub.id }"
+        @click="selectSubmission(sub)" :style="{ animationDelay: si * 0.03 + 's' }">
+        <div class="sr-rank">{{ si + 1 }}</div>
+        <div class="sr-avatar">{{ (sub.studentName || sub.studentId || '?')[0] }}</div>
+        <div class="sr-body">
+          <div class="sr-name">{{ sub.studentName || sub.studentId }}</div>
+          <div class="sr-desc">{{ sub.status === 'graded' ? '已批改' : '待批改' }}</div>
+        </div>
+        <div class="sr-tail">
+          <span v-if="sub.status === 'graded'" class="sr-score">{{ sub.score }}</span>
+          <span v-else class="sr-dot"></span>
+        </div>
+      </div>
+      <div v-if="filteredSubmissions.length === 0" class="pl-empty">暂无匹配项</div>
+    </div>
+    <div class="pl-footer">
+      <div class="pl-stats-row">
+        <div class="pl-stat">
+          <div class="pl-stat-val">{{ submissions.length }}</div>
+          <div class="pl-stat-lbl">总提交</div>
+        </div>
+        <div class="pl-stat">
+          <div class="pl-stat-val">{{ gradedCount }}</div>
+          <div class="pl-stat-lbl">已批改</div>
+        </div>
+        <div class="pl-stat">
+          <div class="pl-stat-val">{{ avgScore }}</div>
+          <div class="pl-stat-lbl">平均分</div>
+        </div>
+      </div>
+      <button class="batch-btn" :disabled="ungradedCount === 0" @click="batchGradeAll">
+        一键批改 {{ ungradedCount }} 份
+      </button>
+    </div>
+  </template>
 </aside>
 
 <!-- ====== CENTER: QUESTION VIEWER ====== -->
@@ -345,27 +375,63 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useCourse } from '@/composables/useCourse.js'
 
 // ====== User ======
 const USER_KEY = 'nanobot-webui.user'
+const TOKEN_KEY = 'nanobot-webui.token'
 const roleOptions = [
   { role: 'teacher', icon: '👨‍🏫', label: '教师' },
   { role: 'student', icon: '📚', label: '学生' },
   { role: 'researcher', icon: '🔬', label: '研究员' },
 ]
 const user = ref(null)
+const authToken = ref('')
 const authMode = ref('login')
 const loginRole = ref('teacher')
 const loginUserId = ref('')
+const loginPassword = ref('')
 const loginError = ref('')
 const loginLoading = ref(false)
+
 function loadUser() { try { const r = localStorage.getItem(USER_KEY); if (!r) return null; const p = JSON.parse(r); return p?.role && p?.userId ? p : null } catch { return null } }
+function loadToken() { return localStorage.getItem(TOKEN_KEY) || '' }
 function saveUser(u) { localStorage.setItem(USER_KEY, JSON.stringify(u)) }
-function clearUser() { localStorage.removeItem(USER_KEY) }
-async function handleLogin() { const t = loginUserId.value.trim(); if (!loginRole.value || !t) return; loginError.value = ''; loginLoading.value = true; const u = { role: loginRole.value, userId: t }; saveUser(u); user.value = u; loginLoading.value = false }
+function saveToken(t) { localStorage.setItem(TOKEN_KEY, t) }
+function clearUser() { localStorage.removeItem(USER_KEY); localStorage.removeItem(TOKEN_KEY) }
+async function handleLogin() {
+  const t = loginUserId.value.trim()
+  if (!loginRole.value || !t) return
+  loginError.value = ''
+  loginLoading.value = true
+  try {
+    const resp = await fetch('/api/users/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: t, password: loginPassword.value, role: loginRole.value })
+    })
+    const data = await resp.json()
+    if (!resp.ok || !data.ok) {
+      loginError.value = data.error || '登录失败'
+      loginLoading.value = false
+      return
+    }
+    const u = { role: loginRole.value, userId: t }
+    saveUser(u)
+    if (data.token) {
+      authToken.value = data.token
+      saveToken(data.token)
+    }
+    user.value = u
+    await loadCourses()
+  } catch (e) {
+    loginError.value = '网络错误'
+  }
+  loginLoading.value = false
+}
 function toggleAuthMode() { authMode.value = authMode.value === 'login' ? 'register' : 'login'; loginError.value = '' }
-function handleLogout() { clearUser(); user.value = null; loginUserId.value = ''; loginRole.value = 'teacher'; authMode.value = 'login' }
+function handleLogout() { clearUser(); user.value = null; loginUserId.value = ''; loginPassword.value = ''; loginRole.value = 'teacher'; authMode.value = 'login' }
 
 // ====== Theme ======
 const isDark = ref(false)
@@ -373,75 +439,79 @@ function toggleTheme() { isDark.value = !isDark.value; document.body.classList.t
 function goToLessonPlan() { window.location.href = '/' }
 function goToAnalytics() { window.location.href = '/analytics.html' }
 
-// ====== Helpers ======
-let _qid = 0
-function Q(objType, stem, maxScore, extra = {}) {
-  return { id: ++_qid, label: '', objType, stem, maxScore, typeLabel: objType === 'choice' ? '选择题' : objType === 'tf' ? '判断题' : objType === 'fill' ? '填空题' : objType === 'short' ? '简答题' : '分析题', studentPick: '', studentAnswer: '', referenceAnswer: '', answerKey: '', options: null, graded: false, studentScore: 0, comment: '', ...extra }
+// ====== Course API ======
+const { courses, homeworkList, fetchCourses: apiFetchCourses, fetchHomeworkList: apiFetchHomeworkList, fetchSubmissions: apiFetchSubmissions, fetchHomeworkDetail: apiFetchHomeworkDetail } = useCourse()
+
+const selectedCourseId = ref('')
+const selectedHwId = ref('')
+const homeworkItems = ref([])
+const submissions = ref([])
+const currentHomework = ref(null)
+const loading = ref(false)
+
+// Stats
+const totalSubmissions = computed(() => submissions.value.length)
+const ungradedCount = computed(() => submissions.value.filter(s => s.status !== 'graded').length)
+const gradedCount = computed(() => submissions.value.filter(s => s.status === 'graded').length)
+const avgScore = computed(() => {
+  const g = submissions.value.filter(s => s.status === 'graded')
+  return g.length ? Math.round(g.reduce((a, b) => a + (b.score || 0), 0) / g.length) : '--'
+})
+
+async function loadCourses() {
+  if (!user.value) return
+  try {
+    await apiFetchCourses(user.value.role, user.value.userId, authToken.value)
+  } catch (e) {
+    console.error('Failed to load courses:', e)
+  }
 }
 
-// ====== Mock data ======
-const MOCK = [
-  { id: 's1', student: '陈小明', title: '《背影》课后练习', className: '八年级（3）班', date: '12.18', status: 'graded', score: 91,
-    questions: [
-      Q('choice', '《背影》的作者是谁？', 3, { options: [{ key:'A',text:'鲁迅' },{ key:'B',text:'朱自清' },{ key:'C',text:'老舍' },{ key:'D',text:'茅盾' }], answerKey:'B', studentPick:'B', graded:true, studentScore:3, comment:'正确' }),
-      Q('tf', '"背影"在文中指父亲爬月台买橘子时留下的背影。', 4, { answerKey:'对', studentPick:'对', graded:true, studentScore:4, comment:'正确' }),
-      Q('fill', '文中父亲为儿子买的食物是______。', 3, { answerKey:'橘子', studentPick:'橘子', graded:true, studentScore:3, comment:'正确' }),
-      Q('short', '请概括《背影》一文的主要内容。', 10, { studentAnswer:'本文通过描写父亲在车站送别儿子时的背影，表现了父亲对儿子深沉的爱。作者通过对父亲爬过月台买橘子的细节描写，刻画了父亲朴实、真挚的父爱形象，读来令人动容。', referenceAnswer:'通过描写父亲在车站为儿子买橘子、爬过月台时留下的背影，表现了父亲对儿子深沉的爱以及儿子对父爱的感悟。', graded:true, studentScore:9, comment:'概括准确，能抓住核心情节与主题。' }),
-      Q(null, '分析文中"背影"这个意象的多重作用。', 16, { studentAnswer:'背影是贯穿全文的行文线索，串联起离别前、离别时、离别后的完整叙事。同时，背影是父爱的视觉象征——父亲肥胖的身子、蹒跚的步伐，让无形的爱变得可见可感。最后，背影起到了情感凝结的作用，将作者复杂的情感浓缩在一个画面中，成为全文的情感爆发点。', referenceAnswer:'1. 线索作用——贯穿全文，串联叙事；2. 象征作用——象征父爱的深沉与无言；3. 情感凝结——将无形的爱意凝练为有形的画面，增强感染力。', graded:true, studentScore:14, comment:'分析透彻，三个维度都有深入展开，语言表达流畅。' }),
-    ],
-    rubric:[{ name:'基础知识', score:18, max:20 },{ name:'内容理解', score:18, max:20 },{ name:'分析深度', score:19, max:20 },{ name:'语言表达', score:17, max:20 },{ name:'文学鉴赏', score:14, max:15 },{ name:'创新思维', score:8, max:10 }],
-    feedback:'整体完成质量优秀。客观题全对，基础知识扎实。主观题文本理解深入，能准确把握情感脉络并展开有层次的分析。"背影"意象分析尤为出色，三个维度层层递进，语言流畅有感染力。继续保持。',
-    strengths:['客观题全对，基础扎实', '文本理解深入，能抓住核心情感', '分析层次分明，语言表达流畅'],
-    improvements:[{ title:'①深化论证', detail:'在现有基础上可引入"以背写爱"的独特视角——作者为何选择"背影"而非正面描写，这一选择有何深意。' },{ title:'②术语积累', detail:'适当运用"细节描写""情感线索""以小见大""留白"等专业术语可进一步提升答案的学术性。' }],
-  },
-  { id: 's2', student: '李雨桐', title: '《背影》课后练习', className: '八年级（3）班', date: '12.18', status: 'graded', score: 68,
-    questions: [
-      Q('choice', '《背影》的作者是谁？', 3, { options: [{ key:'A',text:'鲁迅' },{ key:'B',text:'朱自清' },{ key:'C',text:'老舍' },{ key:'D',text:'茅盾' }], answerKey:'B', studentPick:'B', graded:true, studentScore:3, comment:'正确' }),
-      Q('tf', '"背影"在文中指父亲爬月台买橘子时留下的背影。', 4, { answerKey:'对', studentPick:'错', graded:true, studentScore:0, comment:'判断有误，这是文中最核心的"背影"场景。' }),
-      Q('fill', '文中父亲为儿子买的食物是______。', 3, { answerKey:'橘子', studentPick:'水果', graded:true, studentScore:0, comment:'表述不准确，应为"橘子"。' }),
-      Q('short', '请概括《背影》一文的主要内容。', 10, { studentAnswer:'写父亲送作者去车站，给作者买橘子，作者看到父亲的背影很感动。', referenceAnswer:'通过描写父亲在车站为儿子买橘子、爬过月台时留下的背影，表现了父亲对儿子深沉的爱以及儿子对父爱的感悟。', graded:true, studentScore:5, comment:'基本内容正确，但过于简略，未提炼主题。' }),
-      Q(null, '分析文中"背影"这个意象的多重作用。', 16, { studentAnswer:'背影代表了父亲的爱，是文章的中心。作者用背影来表达情感，让读者感动。', referenceAnswer:'1. 线索——贯穿全文；2. 象征——父爱的深沉与无言；3. 情感凝结——将无形的爱意凝练为有形的画面。', graded:true, studentScore:6, comment:'方向正确但分析过于笼统，未展开论述。' }),
-    ],
-    rubric:[{ name:'基础知识', score:12, max:20 },{ name:'内容理解', score:11, max:20 },{ name:'分析深度', score:8, max:20 },{ name:'语言表达', score:9, max:20 },{ name:'文学鉴赏', score:6, max:15 },{ name:'创新思维', score:3, max:10 }],
-    feedback:'对课文有基本了解，但客观题存在审题不细的问题，判断题和填空题均有失分。主观题作答普遍偏简略，缺乏深入分析和展开。需重点提升答题深度和语言组织能力。',
-    strengths:['选择题正确', '对课文基本内容有了解'],
-    improvements:[{ title:'夯实客观题', detail:'判断题需仔细审题，填空题注意用词准确性，不能以笼统概念代替具体内容。' },{ title:'提升答题深度', detail:'10分以上简答题每个得分点需展开1-2句分析，结合原文语句作为论据。' },{ title:'构建答题框架', detail:'建议采用"观点提出→文本例证→分析阐述→小结回应"的四步答题结构。' }],
-  },
-  { id: 's3', student: '王浩然', title: '《背影》课后练习', className: '八年级（3）班', date: '12.19', status: 'pending', score: 0,
-    questions: [
-      Q('choice', '《背影》的作者是谁？', 3, { options: [{ key:'A',text:'鲁迅' },{ key:'B',text:'朱自清' },{ key:'C',text:'老舍' },{ key:'D',text:'茅盾' }], answerKey:'B', studentPick:'B' }),
-      Q('tf', '"背影"在文中指父亲爬月台买橘子时留下的背影。', 4, { answerKey:'对', studentPick:'对' }),
-      Q('fill', '文中父亲为儿子买的食物是______。', 3, { answerKey:'橘子', studentPick:'橘子' }),
-      Q('short', '请概括《背影》一文的主要内容。', 10, { studentAnswer:'这篇课文写的是朱自清回忆父亲在浦口火车站送他的情景。父亲身体很胖却坚持穿过铁路去对面月台给儿子买橘子，作者看到父亲的背影非常感动。多年后收到父亲的信，又想起那个背影。', referenceAnswer:'通过描写父亲在车站为儿子买橘子、爬过月台时留下的背影，表现了父亲对儿子深沉的爱以及儿子对父爱的感悟。' }),
-      Q(null, '分析文中"背影"这个意象的多重作用。', 16, { studentAnswer:'背影在文中多次出现，起到了贯穿全文的作用。父亲爬月台的背影是最重要的画面，是父亲形象的缩影。作者用背影而非正面写父亲，因为背影更能引起读者想象和共鸣。', referenceAnswer:'1. 线索——贯穿全文；2. 象征——父爱的深沉与无言；3. 情感凝结——将无形的爱意凝练为有形的画面。' }),
-    ],
-    rubric:[], feedback:'', strengths:[], improvements:[],
-  },
-  { id: 's4', student: '张思睿', title: '《背影》课后练习', className: '八年级（3）班', date: '12.19', status: 'graded', score: 84,
-    questions: [
-      Q('choice', '《背影》的作者是谁？', 3, { options: [{ key:'A',text:'鲁迅' },{ key:'B',text:'朱自清' },{ key:'C',text:'老舍' },{ key:'D',text:'茅盾' }], answerKey:'B', studentPick:'B', graded:true, studentScore:3, comment:'正确' }),
-      Q('tf', '"背影"在文中指父亲爬月台买橘子时留下的背影。', 4, { answerKey:'对', studentPick:'对', graded:true, studentScore:4, comment:'正确' }),
-      Q('fill', '文中父亲为儿子买的食物是______。', 3, { answerKey:'橘子', studentPick:'橘子', graded:true, studentScore:3, comment:'正确' }),
-      Q('short', '请概括《背影》一文的主要内容。', 10, { studentAnswer:'本文记述了作者在浦口火车站与父亲分别的情景，重点描写父亲穿过铁路爬上月台为儿子买橘子的过程。通过"背影"细节表现父亲深沉内敛的爱和儿子的领悟。', referenceAnswer:'通过描写父亲在车站为儿子买橘子、爬过月台时留下的背影，表现了父亲对儿子深沉的爱以及儿子对父爱的感悟。', graded:true, studentScore:8, comment:'概括完整，层次清晰。' }),
-      Q(null, '分析文中"背影"这个意象的多重作用。', 16, { studentAnswer:'背影是全文的叙事线索，串联起整个故事。背影是父爱的象征——父亲的体态和动作都是爱的具体展现。背影还起到情感凝结作用，将复杂情感浓缩在一个画面中，使文章具有强烈感染力。', referenceAnswer:'1. 线索——贯穿全文；2. 象征——父爱的深沉与无言；3. 情感凝结——将无形的爱意凝练为有形的画面。', graded:true, studentScore:12, comment:'分析全面，三个层面均涉及，有文本支撑。' }),
-    ],
-    rubric:[{ name:'基础知识', score:18, max:20 },{ name:'内容理解', score:17, max:20 },{ name:'分析深度', score:15, max:20 },{ name:'语言表达', score:14, max:20 },{ name:'文学鉴赏', score:12, max:15 },{ name:'创新思维', score:7, max:10 }],
-    feedback:'表现出色，客观题全对，主观题层次分明、有据可依。"背影"意象分析能将形式与内容结合讨论。语言流畅清晰，继续保持。',
-    strengths:['客观题全对', '答题结构清晰，层次分明', '能结合文本进行分析论证'],
-    improvements:[{ title:'术语规范', detail:'可多使用"细节描写""情感线索""以小见大"等专业术语。' },{ title:'深度拓展', detail:'探讨"以背写爱"这一独特写作视角——为何选择背影。' }],
-  },
-  { id: 's5', student: '赵小雅', title: '《背影》课后练习', className: '八年级（3）班', date: '12.20', status: 'pending', score: 0,
-    questions: [
-      Q('choice', '《背影》的作者是谁？', 3, { options: [{ key:'A',text:'鲁迅' },{ key:'B',text:'朱自清' },{ key:'C',text:'老舍' },{ key:'D',text:'茅盾' }], answerKey:'B', studentPick:'A' }),
-      Q('tf', '"背影"在文中指父亲爬月台买橘子时留下的背影。', 4, { answerKey:'对', studentPick:'错' }),
-      Q('fill', '文中父亲为儿子买的食物是______。', 3, { answerKey:'橘子', studentPick:'苹果' }),
-      Q('short', '请概括《背影》一文的主要内容。', 10, { studentAnswer:'这篇课文主要写了作者的父亲。父亲很爱他，在车站给他买橘子。作者看到父亲的背影感觉很心酸。后来作者也明白了父亲的爱。', referenceAnswer:'通过描写父亲在车站为儿子买橘子、爬过月台时留下的背影，表现了父亲对儿子深沉的爱以及儿子对父爱的感悟。' }),
-    ],
-    rubric:[], feedback:'', strengths:[], improvements:[],
-  },
-]
+async function onCourseChange() {
+  selectedHwId.value = ''
+  homeworkItems.value = []
+  submissions.value = []
+  currentHomework.value = null
+  if (!selectedCourseId.value) return
+  try {
+    const hwList = await apiFetchHomeworkList(selectedCourseId.value, authToken.value)
+    homeworkItems.value = hwList || []
+  } catch (e) {
+    console.error('Failed to load homework:', e)
+  }
+}
 
-const submissions = ref(JSON.parse(JSON.stringify(MOCK)))
+async function selectHomework(hw) {
+  selectedHwId.value = hw.hwId
+  activeId.value = null
+  submissions.value = []
+  currentHomework.value = null
+  try {
+    // Load homework detail
+    const hwDetail = await apiFetchHomeworkDetail(selectedCourseId.value, hw.hwId, authToken.value)
+    currentHomework.value = hwDetail
+
+    // Load submissions
+    const subs = await apiFetchSubmissions(selectedCourseId.value, hw.hwId, authToken.value)
+    submissions.value = (subs || []).map(s => ({
+      ...s,
+      id: s.id || `${s.hwId}-${s.studentId}`,
+      studentName: s.studentName || s.student_id || s.studentId,
+      studentId: s.studentId || s.student_id,
+      status: s.status || 'pending',
+      score: s.score || 0,
+    }))
+
+    // Update homework stats
+    hw.submissionCount = submissions.value.length
+    hw.gradedCount = submissions.value.filter(s => s.status === 'graded').length
+    hw.pendingCount = submissions.value.filter(s => s.status !== 'graded').length
+    hw.allGraded = hw.submissionCount > 0 && hw.pendingCount === 0
+  } catch (e) {
+    console.error('Failed to load homework detail:', e)
+  }
+}
+
 const activeId = ref(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
@@ -450,37 +520,91 @@ const gradingInProgress = ref(false)
 const gradeOptions = reactive({ detailed: true, rubric: true, suggestions: true })
 
 const activeSubmission = computed(() => submissions.value.find(s => s.id === activeId.value) || null)
+
+// Parse questions from homework or submission
 const displayQuestions = computed(() => {
   if (!activeSubmission.value) return []
-  let qs = activeSubmission.value.questions
-  if (questionType.value === 'subjective') qs = qs.filter(q => !q.objType)
-  if (questionType.value === 'objective') qs = qs.filter(q => q.objType)
-  return qs
+
+  // Try to get questions from homework detail
+  let questions = []
+  if (currentHomework.value?.questions) {
+    questions = currentHomework.value.questions
+  } else if (activeSubmission.value.answers) {
+    // Convert answers to question format for display
+    const answers = activeSubmission.value.answers
+    questions = Object.entries(answers).map(([qid, answer], idx) => ({
+      id: idx + 1,
+      stem: `题目 ${idx + 1}`,
+      studentAnswer: typeof answer === 'string' ? answer : JSON.stringify(answer),
+      maxScore: 10,
+      objType: null,
+      graded: activeSubmission.value.status === 'graded',
+      studentScore: 0,
+      comment: '',
+    }))
+  }
+
+  // Enrich with student answers from submission
+  if (activeSubmission.value.answers && questions.length > 0) {
+    const answers = activeSubmission.value.answers
+    questions = questions.map((q, idx) => ({
+      ...q,
+      studentAnswer: answers[q.id] || answers[`q${idx + 1}`] || answers[idx] || q.studentAnswer || '',
+      studentPick: answers[q.id] || answers[`q${idx + 1}`] || answers[idx] || q.studentPick || '',
+      graded: activeSubmission.value.status === 'graded',
+    }))
+  }
+
+  if (questionType.value === 'subjective') questions = questions.filter(q => !q.objType)
+  if (questionType.value === 'objective') questions = questions.filter(q => q.objType)
+  return questions
 })
+
 const filteredSubmissions = computed(() => {
   let list = submissions.value
-  if (statusFilter.value === 'pending') list = list.filter(s => s.status === 'pending')
+  if (statusFilter.value === 'pending') list = list.filter(s => s.status !== 'graded')
   if (statusFilter.value === 'graded') list = list.filter(s => s.status === 'graded')
-  if (searchQuery.value.trim()) { const q = searchQuery.value.trim().toLowerCase(); list = list.filter(s => s.student.toLowerCase().includes(q) || s.title.toLowerCase().includes(q)) }
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.trim().toLowerCase()
+    list = list.filter(s =>
+      (s.studentName || '').toLowerCase().includes(q) ||
+      (s.studentId || '').toLowerCase().includes(q)
+    )
+  }
   return list
 })
-const ungradedCount = computed(() => submissions.value.filter(s => s.status === 'pending').length)
-const gradedCount = computed(() => submissions.value.filter(s => s.status === 'graded').length)
-const avgScore = computed(() => { const g = submissions.value.filter(s => s.status === 'graded'); return g.length ? Math.round(g.reduce((a,b) => a + b.score, 0) / g.length) : '--' })
-const scoreWord = computed(() => { const s = activeSubmission.value?.score || 0; if (s >= 90) return '优秀'; if (s >= 80) return '良好'; if (s >= 70) return '中等'; if (s >= 60) return '及格'; return '待提升' })
-const scoreLevel = computed(() => { const s = activeSubmission.value?.score || 0; if (s >= 90) return 'lv-a'; if (s >= 80) return 'lv-b'; if (s >= 70) return 'lv-c'; if (s >= 60) return 'lv-d'; return 'lv-f' })
 
-// Histogram data
-const classAvg = 82; const classMax = 96; const classMin = 58
+const scoreWord = computed(() => { const s = activeSubmission.value?.score || 0; if (s >= 90) return '优秀'; if (s >= 80) return '良好'; if (s >= 70) return '中等'; if (s >= 60) return '及格'; return '待提升' })
+
+// Calculate real score distribution from submissions
 const scoreDist = computed(() => {
-  const ranges = ['0-59','60-69','70-79','80-89','90-100']
-  const counts = [1, 3, 7, 16, 9] // mock distribution for 36 students
-  const maxCount = Math.max(...counts)
+  const ranges = ['0-59', '60-69', '70-79', '80-89', '90-100']
+  const counts = [0, 0, 0, 0, 0]
+  const gradedSubs = submissions.value.filter(s => s.status === 'graded')
+  gradedSubs.forEach(s => {
+    const score = s.score || 0
+    if (score < 60) counts[0]++
+    else if (score < 70) counts[1]++
+    else if (score < 80) counts[2]++
+    else if (score < 90) counts[3]++
+    else counts[4]++
+  })
+  const maxCount = Math.max(...counts, 1)
   const curScore = activeSubmission.value?.score || 0
   return ranges.map((r, i) => {
     const [lo, hi] = r.split('-').map(Number)
     return { range: r, count: counts[i], pct: Math.round((counts[i] / maxCount) * 100), isCurrent: curScore >= lo && curScore <= hi }
   })
+})
+
+const classAvg = computed(() => avgScore.value)
+const classMax = computed(() => {
+  const g = submissions.value.filter(s => s.status === 'graded')
+  return g.length ? Math.max(...g.map(s => s.score || 0)) : '--'
+})
+const classMin = computed(() => {
+  const g = submissions.value.filter(s => s.status === 'graded')
+  return g.length ? Math.min(...g.map(s => s.score || 0)) : '--'
 })
 
 // ====== Radar chart ======
@@ -560,7 +684,20 @@ function batchGradeAll() {
 
 function exportReport(f) { alert(`导出 ${f.toUpperCase()}（Demo 模式暂不可用）`) }
 
-onMounted(() => { const saved = loadUser(); if (saved) user.value = saved; else { user.value = { role:'teacher', userId:'demo' }; saveUser(user.value) }; activeId.value = 's1' })
+onMounted(async () => {
+  const saved = loadUser()
+  if (saved) {
+    user.value = saved
+    authToken.value = loadToken()
+    // If no token, need to re-login
+    if (!authToken.value) {
+      clearUser()
+      user.value = null
+      return
+    }
+    await loadCourses()
+  }
+})
 </script>
 
 <style>
@@ -708,6 +845,25 @@ body {
 .pl-header { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:14px 14px 0; position:relative; z-index:2; }
 .pl-title { font-size:0.84rem; font-weight:700; color:var(--text-primary); }
 .pl-badge { font-size:0.66rem; color:var(--accent); background:var(--accent-soft); padding:2px 10px; border-radius:8px; font-weight:600; }
+
+/* Course selector */
+.pl-courses { padding:10px 14px; position:relative; z-index:2; }
+.course-select { width:100%; padding:8px 12px; border-radius:10px; border:1.5px solid var(--border-light); background:var(--bg-input); font-size:0.76rem; color:var(--text-primary); outline:none; cursor:pointer; }
+.course-select:focus { border-color:var(--border-active); box-shadow:0 0 12px var(--accent-soft); }
+
+/* Homework list */
+.pl-homework-list { flex:1; overflow-y:auto; padding:0 10px; position:relative; z-index:2; }
+.pl-homework-list::-webkit-scrollbar { width:3px; }
+.pl-homework-list::-webkit-scrollbar-thumb { background:var(--border-light); border-radius:2px; }
+.homework-row { display:flex; align-items:center; gap:8px; padding:10px 10px; border-radius:10px; cursor:pointer; transition:all 0.2s; border:1.5px solid transparent; margin-bottom:4px; }
+.homework-row:hover { background:var(--bg-card-hover); }
+.homework-row.active { border-color:var(--accent-light); background:var(--accent-soft); box-shadow:0 0 12px var(--accent-soft); }
+.hw-icon { font-size:1.1rem; flex-shrink:0; }
+.hw-body { flex:1; min-width:0; }
+.hw-title { font-size:0.76rem; font-weight:600; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hw-meta { font-size:0.64rem; color:var(--text-muted); margin-top:2px; }
+.hw-status { font-size:0.64rem; font-weight:600; color:var(--text-muted); flex-shrink:0; }
+.hw-status.done { color:var(--accent); }
 .pl-search { display:flex; align-items:center; gap:6px; margin:10px 14px; padding:7px 10px; background:var(--bg-input); border:1.8px solid var(--border-light); border-radius:10px; transition:all 0.25s; position:relative; z-index:2; }
 .pl-search:focus-within { border-color:var(--border-active); box-shadow:0 0 12px var(--accent-soft); }
 .pl-search-icon { width:13px; height:13px; stroke:var(--text-muted); fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
