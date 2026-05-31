@@ -54,7 +54,10 @@
                 <span class="hw-title">{{ hw.title }}</span>
                 <span class="hw-deadline" v-if="hw.deadline">截止: {{ formatDate(hw.deadline) }}</span>
               </div>
-              <span class="hw-questions">{{ hw.questions?.length || 0 }} 题 · {{ hw.totalPoints }} 分</span>
+              <div class="hw-meta-row">
+                <span class="hw-questions">{{ hw.questions?.length || 0 }} 题 · {{ hw.totalPoints }} 分</span>
+                <button class="btn-delete-hw" @click.stop="handleDeleteHomework(hw)" title="删除作业">🗑 删除</button>
+              </div>
             </div>
             <div v-if="expandedHw === hw.hwId" class="hw-body">
               <div v-for="(q, qi) in hw.questions" :key="q.id" class="hw-question">
@@ -138,7 +141,7 @@ const { connect: connectGateway, connected, getToken } = useGateway()
 const {
   currentCourse: course, members, lessons, homeworkList,
   fetchCourseDetail, fetchMembers, fetchLessons, fetchHomeworkList,
-  fetchLessonDetail, fetchSubmissions, gradeSubmission,
+  fetchLessonDetail, fetchSubmissions, gradeSubmission, deleteHomework,
 } = useCourse()
 
 const courseId = route.params.courseId
@@ -168,6 +171,22 @@ async function toggleLesson(lessonId) {
       const detail = await fetchLessonDetail(courseId, lessonId, getToken())
       lessonPlans[lessonId] = detail?.planContent || ''
     } catch { lessonPlans[lessonId] = '(加载失败)' }
+  }
+}
+
+async function handleDeleteHomework(hw) {
+  if (!confirm(`确定要删除作业"${hw.title}"吗？此操作不可恢复。`)) return
+  try {
+    const t = getToken()
+    const saved = user.value
+    if (!saved) return
+    await deleteHomework(courseId, hw.hwId, saved.role, saved.userId, t)
+    // Reload homework list
+    await fetchHomeworkList(courseId, t)
+    alert('作业已删除')
+  } catch (e) {
+    console.error('Failed to delete homework:', e)
+    alert('删除失败: ' + (e.message || '未知错误'))
   }
 }
 
@@ -297,7 +316,10 @@ onMounted(async () => {
 .hw-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .hw-title { font-weight: 600; font-size: 0.92rem; }
 .hw-deadline { font-size: 0.75rem; color: #e67e22; }
+.hw-meta-row { display: flex; justify-content: space-between; align-items: center; }
 .hw-questions { font-size: 0.78rem; color: #888; }
+.btn-delete-hw { background: none; border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+.btn-delete-hw:hover { background: #e74c3c; color: #fff; }
 .hw-body { padding: 0 18px 16px; border-top: 1px solid #f0ede8; }
 .hw-question { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #f0ede8; align-items: flex-start; }
 .hw-question:last-child { border-bottom: none; }
