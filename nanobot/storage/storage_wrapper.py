@@ -274,18 +274,48 @@ class StorageWrapper:
         """Delete homework."""
         return await self.storage.delete_homework(hw_id)
 
+    @staticmethod
+    def _normalize_submission(sub: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert submission data to camelCase for frontend compatibility."""
+        if not sub:
+            return sub
+        return {
+            "id": sub.get("id"),
+            "hwId": sub.get("hw_id", ""),
+            "studentId": sub.get("student_id", ""),
+            "studentName": sub.get("student_name", sub.get("student_id", "")),
+            "studentRole": sub.get("student_role", ""),
+            "courseId": sub.get("course_id", ""),
+            "attemptNumber": sub.get("attempt_number", 1),
+            "answers": sub.get("answers", {}),
+            "status": sub.get("status", "submitted"),
+            "score": sub.get("score", 0),
+            "feedback": sub.get("feedback", {}),
+            "submittedAt": sub.get("submitted_at", ""),
+            "gradedAt": sub.get("graded_at", ""),
+            "gradedBy": sub.get("graded_by", ""),
+        }
+
     async def get_homework_submissions(self, hw_id: str) -> List[Dict[str, Any]]:
         """Get all submissions for a homework assignment."""
-        return await self.storage.get_homework_submissions(hw_id)
+        subs = await self.storage.get_homework_submissions(hw_id)
+        return [self._normalize_submission(s) for s in subs]
 
     # Submission operations
     async def get_submission(self, hw_id: str, student_id: str) -> Optional[Dict[str, Any]]:
         """Load submission by homework and student."""
-        return await self.storage.get_submission(hw_id, student_id)
+        sub = await self.storage.get_submission(hw_id, student_id)
+        return self._normalize_submission(sub) if sub else None
 
     async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for homework."""
-        return await self.storage.list_submissions(hw_id, student_id)
+        subs = await self.storage.list_submissions(hw_id, student_id)
+        return [self._normalize_submission(s) for s in subs]
+
+    async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new submission."""
+        sub = await self.storage.create_submission(submission_data)
+        return self._normalize_submission(sub)
 
     async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create submission data."""
