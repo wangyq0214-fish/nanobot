@@ -368,7 +368,16 @@ class DatabaseStorage(BaseStorage):
     async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new submission. Returns created submission data."""
         async with get_session() as session:
-            submission = Submission(**submission_data)
+            # Filter to valid fields and convert date strings to datetime
+            valid_fields = {'hw_id', 'student_id', 'student_role', 'course_id', 'attempt_number', 'answers', 'status', 'score', 'feedback', 'submitted_at', 'graded_at', 'graded_by'}
+            data = {k: v for k, v in submission_data.items() if k in valid_fields}
+            for date_field in ('submitted_at', 'graded_at'):
+                if date_field in data and isinstance(data[date_field], str) and data[date_field]:
+                    try:
+                        data[date_field] = datetime.fromisoformat(data[date_field].replace('Z', '+00:00')).replace(tzinfo=None)
+                    except Exception:
+                        data[date_field] = None
+            submission = Submission(**data)
             session.add(submission)
             await session.flush()
             await session.refresh(submission)
