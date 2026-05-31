@@ -124,11 +124,15 @@ export function useCourse() {
     return _mutate(`/api/courses/${courseId}/homework/${hwId}/grade`, { studentId, score, feedback }, role, userId, token)
   }
 
+  async function deleteHomework(courseId, hwId, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/homework/${hwId}/delete`, {}, role, userId, token)
+  }
+
   return {
     courses, currentCourse, members, lessons, homeworkList,
     fetchCourses, createCourse, joinCourse, fetchCourseDetail,
     fetchMembers, fetchLessons, fetchLessonDetail,
     fetchHomeworkList, createHomework, fetchHomeworkDetail,
-    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission,
+    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission, deleteHomework,
   }
 }

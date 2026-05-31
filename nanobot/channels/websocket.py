@@ -647,6 +647,9 @@ class WebSocketChannel(BaseChannel):
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/grade$", got)
         if m:
             return await self._handle_homework_grade(request, m.group(1), m.group(2))
+        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/delete$", got)
+        if m:
+            return await self._handle_homework_delete(request, m.group(1), m.group(2))
         m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)$", got)
         if m:
             return await self._handle_homework_detail(request, m.group(1), m.group(2))
@@ -1738,6 +1741,27 @@ class WebSocketChannel(BaseChannel):
         updated = await self.storage.update_submission(submission["id"], submission_update)
         logger.info("Homework {} graded for student {} in course {}", hw_id, student_id, course_id)
         return _http_json_response({"ok": True, "submission": updated})
+
+    async def _handle_homework_delete(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
+        if not self._check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        user_id = _query_first(query, "user_id") or ""
+        course = await self.storage.get_course(course_id)
+        if not course:
+            return _http_error(404, "Course not found")
+        # Support both camelCase and snake_case
+        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+        if teacher_id != user_id:
+            return _http_error(403, "Only the course owner can delete homework")
+        hw = await self.storage.get_homework(hw_id)
+        if not hw:
+            return _http_error(404, "Homework not found")
+        success = await self.storage.delete_homework(hw_id)
+        if success:
+            logger.info("Homework {} deleted from course {} by {}", hw_id, course_id, user_id)
+            return _http_json_response({"ok": True})
+        return _http_error(500, "Failed to delete homework")
 
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
         supplied = _query_first(query, "token")
