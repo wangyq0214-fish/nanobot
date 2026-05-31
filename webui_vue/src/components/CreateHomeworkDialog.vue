@@ -20,15 +20,45 @@
         <div v-for="(q, qi) in form.questions" :key="qi" class="question-item">
           <div class="q-header">
             <span class="q-num">{{ qi + 1 }}</span>
-            <select v-model="q.type" class="q-type">
+            <select v-model="q.type" class="q-type" @change="onTypeChange(q)">
+              <option value="choice">选择题</option>
+              <option value="true_false">判断题</option>
+              <option value="fill">填空题</option>
               <option value="short_answer">简答题</option>
               <option value="essay">论述题</option>
-              <option value="fill">填空题</option>
             </select>
             <input v-model.number="q.points" type="number" min="1" class="q-points" placeholder="分值" />
             <button class="q-remove" @click="form.questions.splice(qi, 1)" title="删除">✕</button>
           </div>
           <textarea v-model="q.content" rows="2" placeholder="题目内容" class="q-content"></textarea>
+          <!-- 选择题选项 -->
+          <div v-if="q.type === 'choice'" class="q-options">
+            <div v-for="(opt, oi) in q.options" :key="oi" class="option-row">
+              <span class="opt-letter">{{ String.fromCharCode(65 + oi) }}.</span>
+              <input v-model="q.options[oi]" placeholder="选项内容" class="opt-input" />
+              <button class="opt-remove" @click="q.options.splice(oi, 1)">✕</button>
+            </div>
+            <button class="btn-add-opt" @click="q.options.push('')">+ 添加选项</button>
+            <div class="answer-row">
+              <label>正确答案:</label>
+              <select v-model="q.answer" class="answer-select">
+                <option v-for="(opt, oi) in q.options" :key="oi" :value="String.fromCharCode(65 + oi)">{{ String.fromCharCode(65 + oi) }}</option>
+              </select>
+            </div>
+          </div>
+          <!-- 判断题答案 -->
+          <div v-if="q.type === 'true_false'" class="q-tf-answer">
+            <label>正确答案:</label>
+            <select v-model="q.answer" class="answer-select">
+              <option value="true">正确</option>
+              <option value="false">错误</option>
+            </select>
+          </div>
+          <!-- 填空题答案 -->
+          <div v-if="q.type === 'fill'" class="q-fill-answer">
+            <label>参考答案:</label>
+            <input v-model="q.answer" placeholder="正确答案" class="answer-input" />
+          </div>
         </div>
         <button class="btn-add-q" @click="addQuestion">+ 添加题目</button>
       </div>
@@ -69,14 +99,30 @@ const form = reactive({
   description: '',
   deadline: '',
   questions: [
-    { type: 'short_answer', content: '', points: 10 },
+    { type: 'short_answer', content: '', points: 10, options: [], answer: '' },
   ],
 })
 
 const totalPoints = computed(() => form.questions.reduce((s, q) => s + (q.points || 0), 0))
 
 function addQuestion() {
-  form.questions.push({ type: 'short_answer', content: '', points: 10 })
+  form.questions.push({ type: 'short_answer', content: '', points: 10, options: [], answer: '' })
+}
+
+function onTypeChange(q) {
+  if (q.type === 'choice') {
+    q.options = ['', '']
+    q.answer = 'A'
+  } else if (q.type === 'true_false') {
+    q.options = []
+    q.answer = 'true'
+  } else if (q.type === 'fill') {
+    q.options = []
+    q.answer = ''
+  } else {
+    q.options = []
+    q.answer = ''
+  }
 }
 
 async function handleCreate() {
@@ -94,12 +140,31 @@ async function handleCreate() {
       title: form.title.trim(),
       description: form.description.trim(),
       deadline: form.deadline ? new Date(form.deadline).toISOString() : '',
-      questions: form.questions.map((q, i) => ({
-        id: `q${i + 1}`,
-        type: q.type,
-        content: q.content.trim(),
-        points: q.points || 10,
-      })),
+      questions: form.questions.map((q, i) => {
+        const base = {
+          id: `q${i + 1}`,
+          type: q.type,
+          content: q.content.trim(),
+          points: q.points || 10,
+        }
+        // Add options for choice questions
+        if (q.type === 'choice' && q.options) {
+          base.options = q.options.filter(o => o.trim()).map((o, idx) => ({
+            key: String.fromCharCode(65 + idx),
+            text: o.trim(),
+          }))
+          base.answer = q.answer || 'A'
+        }
+        // Add answer for true/false
+        if (q.type === 'true_false') {
+          base.answer = q.answer || 'true'
+        }
+        // Add answer for fill
+        if (q.type === 'fill') {
+          base.answer = q.answer || ''
+        }
+        return base
+      }),
       totalPoints: totalPoints.value,
     }, props.user.role, props.user.userId, token)
     emit('created')
@@ -136,6 +201,22 @@ async function handleCreate() {
 .q-content { width: 100%; padding: 8px; border: 1px solid #e0dcd5; border-radius: 6px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; font-family: inherit; }
 .btn-add-q { background: none; border: 1.5px dashed #ccc; border-radius: 8px; padding: 10px; width: 100%; cursor: pointer; font-size: 0.82rem; color: #888; }
 .btn-add-q:hover { border-color: #5b8def; color: #5b8def; }
+
+/* Question type specific styles */
+.q-options { margin-top: 8px; padding: 8px; background: #fff; border-radius: 6px; border: 1px solid #e8e4db; }
+.option-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.opt-letter { font-weight: 600; color: #5b8def; min-width: 20px; }
+.opt-input { flex: 1; padding: 6px 8px; border: 1px solid #e0dcd5; border-radius: 4px; font-size: 0.82rem; }
+.opt-remove { background: none; border: none; color: #ccc; cursor: pointer; font-size: 0.8rem; }
+.opt-remove:hover { color: #e74c3c; }
+.btn-add-opt { background: none; border: 1px dashed #ccc; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.78rem; color: #888; margin-top: 4px; }
+.btn-add-opt:hover { border-color: #5b8def; color: #5b8def; }
+.answer-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.answer-row label { font-size: 0.82rem; color: #555; }
+.answer-select { padding: 4px 8px; border: 1px solid #e0dcd5; border-radius: 4px; font-size: 0.82rem; }
+.q-tf-answer, .q-fill-answer { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.q-tf-answer label, .q-fill-answer label { font-size: 0.82rem; color: #555; }
+.answer-input { flex: 1; padding: 6px 8px; border: 1px solid #e0dcd5; border-radius: 4px; font-size: 0.82rem; }
 
 .total-row { text-align: right; font-size: 0.85rem; font-weight: 600; color: #555; margin: 8px 0; }
 .error-text { color: #e74c3c; font-size: 0.8rem; }
