@@ -65,6 +65,12 @@
 
             <div v-for="(q, qi) in hw.questions" :key="q.id" class="hw-question">
               <p class="q-label">{{ qi + 1 }}. {{ q.content }} <span class="q-points">({{ q.points }}分)</span></p>
+              <span v-if="q.type === 'choice'" class="q-type-badge">选择题</span>
+              <span v-else-if="q.type === 'true_false'" class="q-type-badge">判断题</span>
+              <span v-else-if="q.type === 'fill'" class="q-type-badge">填空题</span>
+              <span v-else-if="q.type === 'short_answer'" class="q-type-badge">简答题</span>
+              <span v-else-if="q.type === 'essay'" class="q-type-badge">论述题</span>
+
               <div v-if="getHwStatus(hw.hwId) === 'graded'" class="graded-answer">
                 <p class="answer-label">我的答案:</p>
                 <p class="answer-text">{{ getSubmission(hw.hwId)?.answers?.[q.id] || '未作答' }}</p>
@@ -72,7 +78,30 @@
                   评语: {{ getSubmission(hw.hwId).feedback[q.id] }}
                 </p>
               </div>
-              <textarea v-else v-model="answers[hw.hwId][q.id]" rows="3" placeholder="输入你的答案..." class="answer-input"></textarea>
+
+              <!-- 选择题 -->
+              <div v-else-if="q.type === 'choice'" class="choice-options">
+                <label v-for="opt in q.options" :key="opt.key" class="choice-option" :class="{ selected: answers[hw.hwId][q.id] === opt.key }">
+                  <input type="radio" :name="`${hw.hwId}-${q.id}`" :value="opt.key" v-model="answers[hw.hwId][q.id]" />
+                  <span class="opt-key">{{ opt.key }}.</span>
+                  <span class="opt-text">{{ opt.text }}</span>
+                </label>
+              </div>
+
+              <!-- 判断题 -->
+              <div v-else-if="q.type === 'true_false'" class="tf-options">
+                <label class="tf-option" :class="{ selected: answers[hw.hwId][q.id] === 'true' }">
+                  <input type="radio" :name="`${hw.hwId}-${q.id}`" value="true" v-model="answers[hw.hwId][q.id]" />
+                  <span>✓ 正确</span>
+                </label>
+                <label class="tf-option" :class="{ selected: answers[hw.hwId][q.id] === 'false' }">
+                  <input type="radio" :name="`${hw.hwId}-${q.id}`" value="false" v-model="answers[hw.hwId][q.id]" />
+                  <span>✕ 错误</span>
+                </label>
+              </div>
+
+              <!-- 填空题/简答题/论述题 -->
+              <textarea v-else v-model="answers[hw.hwId][q.id]" :rows="q.type === 'essay' ? 5 : 3" :placeholder="q.type === 'fill' ? '填写答案...' : '输入你的答案...'" class="answer-input"></textarea>
             </div>
 
             <div v-if="getHwStatus(hw.hwId) !== 'graded'" class="hw-actions">
@@ -277,8 +306,26 @@ onMounted(async () => {
 .hw-question { margin: 12px 0; }
 .q-label { font-size: 0.88rem; font-weight: 500; margin: 0 0 8px; }
 .q-points { font-size: 0.75rem; color: #999; }
+.q-type-badge { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; background: #e8f4fd; color: #5b8def; margin-bottom: 8px; }
 .answer-input { width: 100%; padding: 10px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.85rem; outline: none; resize: vertical; box-sizing: border-box; font-family: inherit; }
 .answer-input:focus { border-color: #5b8def; }
+
+/* Choice options */
+.choice-options { display: flex; flex-direction: column; gap: 8px; }
+.choice-option { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1.5px solid #e0dcd5; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.choice-option:hover { border-color: #5b8def; background: #f8f9ff; }
+.choice-option.selected { border-color: #5b8def; background: #e8f4fd; }
+.choice-option input[type="radio"] { display: none; }
+.opt-key { font-weight: 600; color: #5b8def; min-width: 20px; }
+.opt-text { font-size: 0.88rem; }
+
+/* True/False options */
+.tf-options { display: flex; gap: 12px; }
+.tf-option { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border: 1.5px solid #e0dcd5; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+.tf-option:hover { border-color: #5b8def; background: #f8f9ff; }
+.tf-option.selected { border-color: #5b8def; background: #e8f4fd; }
+.tf-option input[type="radio"] { display: none; }
+
 .graded-answer { background: #faf8f5; padding: 10px; border-radius: 8px; margin-top: 6px; }
 .answer-label { font-size: 0.78rem; color: #888; margin: 0 0 4px; }
 .answer-text { font-size: 0.85rem; margin: 0 0 6px; color: #333; }
