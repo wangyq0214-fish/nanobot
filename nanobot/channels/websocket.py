@@ -1678,12 +1678,12 @@ class WebSocketChannel(BaseChannel):
             "hw_id": hw_id,
             "student_id": user_id,
             "student_role": "student",
+            "course_id": course_id,
             "answers": payload.get("answers", {}),
             "submitted_at": now,
             "status": "submitted",
             "score": 0,
             "feedback": {},
-            "total_score": hw.get("total_points", 0),
             "graded_at": None,
             "graded_by": None,
         }
