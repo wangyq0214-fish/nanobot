@@ -83,6 +83,7 @@ class StorageWrapper:
             "totalPoints": hw.get("total_points", 0),
             "deadline": hw.get("deadline", ""),
             "createdBy": hw.get("created_by", ""),
+            "status": hw.get("status", "draft"),
             "questions": questions,
             "settings": settings,
             "createdAt": hw.get("created_at", ""),
@@ -265,6 +266,10 @@ class StorageWrapper:
         """Save homework data."""
         await self.storage.update_homework(hw_id, data)
 
+    async def update_homework(self, hw_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update homework fields (e.g. status)."""
+        return await self.storage.update_homework(hw_id, data)
+
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework."""
         hw = await self.storage.create_homework(homework_data)
@@ -317,13 +322,10 @@ class StorageWrapper:
         sub = await self.storage.create_submission(submission_data)
         return self._normalize_submission(sub)
 
-    async def create_submission(self, submission_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create submission data."""
-        return await self.storage.create_submission(submission_data)
-
     async def update_submission(self, submission_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update submission data."""
-        return await self.storage.update_submission(submission_id, data)
+        sub = await self.storage.update_submission(submission_id, data)
+        return self._normalize_submission(sub) if sub else None
 
     # Teacher lesson library operations
     async def list_teacher_lessons(self, teacher_id: str) -> List[Dict[str, Any]]:
@@ -374,3 +376,54 @@ class StorageWrapper:
         """Generate a 6-digit join code."""
         import secrets
         return f"{secrets.randbelow(1_000_000):06d}"
+
+    # Question Bank operations
+    @staticmethod
+    def _normalize_question_bank(q: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert question bank data to camelCase for frontend compatibility."""
+        if not q:
+            return q
+        return {
+            "id": q.get("id"),
+            "courseId": q.get("course_id", ""),
+            "questionId": q.get("question_id", ""),
+            "questionType": q.get("question_type", ""),
+            "content": q.get("content", ""),
+            "points": q.get("points", 10),
+            "answer": q.get("answer", ""),
+            "options": q.get("options", []),
+            "explanation": q.get("explanation", ""),
+            "tags": q.get("tags", []),
+            "source": q.get("source", ""),
+            "createdBy": q.get("created_by", ""),
+            "createdAt": q.get("created_at", ""),
+        }
+
+    async def add_to_question_bank(self, question_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a question to the question bank."""
+        q = await self.storage.add_to_question_bank(question_data)
+        return self._normalize_question_bank(q)
+
+    async def get_question_bank(self, question_id: int) -> Optional[Dict[str, Any]]:
+        """Get question from bank by ID."""
+        q = await self.storage.get_question_bank(question_id)
+        return self._normalize_question_bank(q) if q else None
+
+    async def list_question_bank(self, course_id: str, question_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List questions in the bank for a course."""
+        questions = await self.storage.list_question_bank(course_id, question_type)
+        return [self._normalize_question_bank(q) for q in questions]
+
+    async def delete_from_question_bank(self, question_id: int) -> bool:
+        """Delete question from bank."""
+        return await self.storage.delete_from_question_bank(question_id)
+
+    async def update_question_bank(self, question_id: int, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a question in the bank."""
+        q = await self.storage.update_question_bank(question_id, update_data)
+        return self._normalize_question_bank(q) if q else None
+
+    async def batch_add_to_question_bank(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Add multiple questions to the question bank."""
+        results = await self.storage.batch_add_to_question_bank(questions)
+        return [self._normalize_question_bank(q) for q in results]

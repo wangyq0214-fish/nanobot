@@ -157,9 +157,6 @@ async function handleCreate() {
 
 onMounted(async () => {
   if (!user.value) return
-  if (!connected.value) {
-    try { await connectGateway({ role: user.value.role, userId: user.value.userId }) } catch {}
-  }
   loadCourses()
 })
 </script>

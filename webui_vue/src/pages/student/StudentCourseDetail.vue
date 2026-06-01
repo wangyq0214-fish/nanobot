@@ -104,7 +104,7 @@
               <textarea v-else v-model="answers[hw.hwId][q.id]" :rows="q.type === 'essay' ? 5 : 3" :placeholder="q.type === 'fill' ? '填写答案...' : '输入你的答案...'" class="answer-input"></textarea>
             </div>
 
-            <div v-if="getHwStatus(hw.hwId) !== 'graded'" class="hw-actions">
+            <div v-if="getHwStatus(hw.hwId) === 'pending'" class="hw-actions">
               <button class="btn-primary" @click="handleSubmit(hw)" :disabled="submitting === hw.hwId">
                 {{ submitting === hw.hwId ? '提交中...' : '提交作业' }}
               </button>
@@ -143,7 +143,7 @@ const expandedLesson = ref(null)
 const expandedHw = ref(null)
 const lessonPlans = reactive({})
 const answers = reactive({})
-const submissions = reactive({}) // hwId -> submission
+const submissions = ref({}) // hwId -> submission
 const submitting = ref(null)
 const submitError = reactive({})
 
@@ -155,11 +155,13 @@ function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateStri
 
 async function loadAll() {
   const t = getToken()
+  console.log(`[loadAll] token=${t ? 'present' : 'MISSING'}, courseId=${courseId}`)
   await Promise.all([
     fetchCourseDetail(courseId, t),
     fetchLessons(courseId, t),
     fetchHomeworkList(courseId, t),
   ])
+  console.log(`[loadAll] homeworkList.length=${homeworkList.value.length}`)
   // Init answer slots
   for (const hw of homeworkList.value) {
     if (!answers[hw.hwId]) {
@@ -172,7 +174,9 @@ async function loadAll() {
     try {
       const subs = await fetchSubmissions(courseId, hw.hwId, t)
       const mySub = subs.find(s => s.studentId === user.value?.userId)
-      if (mySub) submissions[hw.hwId] = mySub
+      if (mySub) {
+        submissions.value[hw.hwId] = mySub
+      }
     } catch { /* no submissions */ }
   }
 }
@@ -193,19 +197,19 @@ function toggleHomework(hwId) {
 }
 
 function getHwStatus(hwId) {
-  const sub = submissions[hwId]
+  const sub = submissions.value[hwId]
   if (!sub) return 'pending'
   return sub.status
 }
 
 function getHwStatusLabel(hwId) {
   const status = getHwStatus(hwId)
-  if (status === 'graded') return `已批改 (${submissions[hwId].score}分)`
+  if (status === 'graded') return `已批改 (${submissions.value[hwId].score ?? 0}分)`
   if (status === 'submitted') return '已提交'
   return '未提交'
 }
 
-function getSubmission(hwId) { return submissions[hwId] }
+function getSubmission(hwId) { return submissions.value[hwId] }
 
 async function handleSubmit(hw) {
   const hwAnswers = answers[hw.hwId] || {}
@@ -219,7 +223,7 @@ async function handleSubmit(hw) {
     // Reload submission
     const subs = await fetchSubmissions(courseId, hw.hwId, getToken())
     const mySub = subs.find(s => s.studentId === user.value?.userId)
-    if (mySub) submissions[hw.hwId] = mySub
+    if (mySub) submissions.value[hw.hwId] = mySub
   } catch (e) {
     submitError[hw.hwId] = e.message
   } finally {
@@ -229,9 +233,6 @@ async function handleSubmit(hw) {
 
 onMounted(async () => {
   if (!user.value) { router.push('/login'); return }
-  if (!connected.value) {
-    try { await connectGateway({ role: user.value.role, userId: user.value.userId }) } catch {}
-  }
   await loadAll()
 })
 </script>

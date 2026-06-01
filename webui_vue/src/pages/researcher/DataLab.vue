@@ -110,7 +110,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import * as echarts from 'echarts'
+import echarts from '../../utils/echarts.js'
 import { useAuth } from '../../composables/useAuth.js'
 import ResearcherNav from '../../components/ResearcherNav.vue'
 

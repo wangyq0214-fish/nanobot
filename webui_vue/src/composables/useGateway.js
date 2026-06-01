@@ -21,6 +21,12 @@ let apiToken = null
 const chatHandlers = new Map()
 // Pending newChat Promise
 let pendingNewChat = null
+// Pending ai_grade_question requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiGrade = new Map()
+// Pending ai_generate_questions requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiGenerate = new Map()
+// Pending create_homework requests: Map<request_id, {resolve, reject, timer}>
+const pendingCreateHomework = new Map()
 let reconnectTimer = null
 let reconnectAttempts = 0
 let intentionallyClosed = false
@@ -115,6 +121,76 @@ function _doConnect(url) {
         pendingNewChat = null
       }
       _dispatch(data.chat_id, data)
+      return
+    }
+
+    // Handle ai_grade_question_result (request/response correlation)
+    if (data.event === 'ai_grade_question_result' && data.request_id) {
+      const pending = pendingAiGrade.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiGrade.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({ score: data.score, comment: data.comment })
+        }
+      }
+      return
+    }
+
+    // Handle ai_grade_submission_result (request/response correlation)
+    if (data.event === 'ai_grade_submission_result' && data.request_id) {
+      const pending = pendingAiGrade.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiGrade.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            score: data.score,
+            feedback: data.feedback,
+            rubric: data.rubric,
+            strengths: data.strengths,
+            improvements: data.improvements,
+            questions: data.questions,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle ai_generate_questions_result (request/response correlation)
+    if (data.event === 'ai_generate_questions_result' && data.request_id) {
+      const pending = pendingAiGenerate.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiGenerate.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            questions: data.questions,
+            totalPoints: data.total_points,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle create_homework_result (request/response correlation)
+    if (data.event === 'create_homework_result' && data.request_id) {
+      const pending = pendingCreateHomework.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingCreateHomework.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve(data.homework)
+        }
+      }
       return
     }
 
@@ -286,5 +362,113 @@ export function useGateway() {
     socket.send(JSON.stringify({ type: 'save_source', path, content }))
   }
 
-  return { connected, connectionError, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource }
+  /**
+   * Send an AI grading question via WebSocket (avoids HTTP proxy timeout).
+   * Returns Promise<{score, comment}>.
+   */
+  function sendAiGradeQuestion(params, timeoutMs = 60000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'agr_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiGrade.delete(requestId)
+        reject(new Error('AI 评分超时'))
+      }, timeoutMs)
+      pendingAiGrade.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_grade_question',
+        request_id: requestId,
+        content: params.content,
+        max_score: params.maxScore,
+        reference_answer: params.referenceAnswer || '',
+        student_answer: params.studentAnswer || '',
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * AI-grade an entire submission via WebSocket.
+   * Returns Promise<{score, feedback, rubric, strengths, improvements, questions}>.
+   */
+  function sendAiGradeSubmission(params, timeoutMs = 120000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'ags_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiGrade.delete(requestId)
+        reject(new Error('AI 批改超时'))
+      }, timeoutMs)
+      pendingAiGrade.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_grade_submission',
+        request_id: requestId,
+        course_id: params.courseId,
+        hw_id: params.hwId,
+        student_id: params.studentId,
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * Generate questions from knowledge content via WebSocket.
+   * Returns Promise<{questions, totalPoints}>.
+   */
+  function sendAiGenerateQuestions(params, timeoutMs = 120000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'agq_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiGenerate.delete(requestId)
+        reject(new Error('AI 生成题目超时'))
+      }, timeoutMs)
+      pendingAiGenerate.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_generate_questions',
+        request_id: requestId,
+        content: params.content,
+        num_questions: params.numQuestions,
+        type_distribution: params.typeDistribution || {},
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * Create homework via WebSocket (avoids HTTP 431 from large URL query params).
+   * Returns Promise<homework>.
+   */
+  function sendCreateHomework(courseId, data, timeoutMs = 30000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'chw_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingCreateHomework.delete(requestId)
+        reject(new Error('创建作业超时'))
+      }, timeoutMs)
+      pendingCreateHomework.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'create_homework',
+        request_id: requestId,
+        course_id: courseId,
+        data: data,
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  return { connected, connectionError, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework }
 }

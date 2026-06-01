@@ -28,6 +28,7 @@ class Homework(Base):
     total_points: Mapped[int] = mapped_column(Integer, default=0)
     deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft or published
     settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -47,6 +48,7 @@ class Homework(Base):
             "total_points": self.total_points,
             "deadline": self.deadline.isoformat() if self.deadline else None,
             "created_by": self.created_by,
+            "status": self.status,
             "questions": settings.get("questions", []),
             "settings": settings,
             "created_at": self.created_at.isoformat() if self.created_at else None,

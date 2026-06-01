@@ -82,7 +82,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import * as echarts from 'echarts'
+import echarts from '../../utils/echarts.js'
 import { useAuth } from '../../composables/useAuth.js'
 import { useCourse } from '../../composables/useCourse.js'
 import { useGateway } from '../../composables/useGateway.js'
@@ -167,9 +167,6 @@ function initRadar() {
 
 onMounted(async () => {
   if (!user.value) return
-  if (!connected.value) {
-    try { await connectGateway({ role: user.value.role, userId: user.value.userId }) } catch {}
-  }
   await loadCourse()
   await nextTick()
   initRadar()

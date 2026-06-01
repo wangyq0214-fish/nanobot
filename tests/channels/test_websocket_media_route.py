@@ -21,13 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from nanobot.channels.websocket import (
-    WebSocketChannel,
-    _b64url_decode,
-    _b64url_encode,
-)
+from nanobot.api.utils import b64url_decode, b64url_encode
+from nanobot.channels.websocket import WebSocketChannel
 from nanobot.session.manager import Session, SessionManager
-
 
 # PNG magic bytes + a couple of sentinel bytes so we can verify byte-for-byte
 # round-trip of the served payload. Stays under mimetype + size limits.
@@ -118,9 +114,9 @@ def test_sign_media_path_round_trips_via_hmac(
     expected = hmac.new(
         channel._media_secret, payload.encode("ascii"), hashlib.sha256
     ).digest()[:16]
-    assert _b64url_decode(sig) == expected
+    assert b64url_decode(sig) == expected
     # The payload decodes back to the *relative* path — no absolute-path leaks.
-    assert _b64url_decode(payload).decode() == "a.png"
+    assert b64url_decode(payload).decode() == "a.png"
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +177,7 @@ async def test_media_route_rejects_bad_signature(
         forged_mac = hmac.new(
             b"\x00" * 32, payload.encode("ascii"), hashlib.sha256
         ).digest()[:16]
-        forged = f"/api/media/{_b64url_encode(forged_mac)}/{payload}"
+        forged = f"/api/media/{b64url_encode(forged_mac)}/{payload}"
 
         server_task = asyncio.create_task(channel.start())
         await asyncio.sleep(0.3)
@@ -210,11 +206,11 @@ async def test_media_route_rejects_path_traversal_payload(
 
     channel = _ch(bus, port=29922)
     # Hand-craft a traversal payload the legit signer would refuse to mint.
-    payload = _b64url_encode(b"../secret.txt")
+    payload = b64url_encode(b"../secret.txt")
     mac = hmac.new(
         channel._media_secret, payload.encode("ascii"), hashlib.sha256
     ).digest()[:16]
-    url = f"/api/media/{_b64url_encode(mac)}/{payload}"
+    url = f"/api/media/{b64url_encode(mac)}/{payload}"
 
     with patch("nanobot.channels.websocket.get_media_dir", return_value=media):
         server_task = asyncio.create_task(channel.start())
@@ -269,11 +265,11 @@ async def test_media_route_degrades_non_image_to_octet_stream(
 
     channel = _ch(bus, port=29924)
     with patch("nanobot.channels.websocket.get_media_dir", return_value=media):
-        payload = _b64url_encode(b"scary.html")
+        payload = b64url_encode(b"scary.html")
         mac = hmac.new(
             channel._media_secret, payload.encode("ascii"), hashlib.sha256
         ).digest()[:16]
-        url = f"/api/media/{_b64url_encode(mac)}/{payload}"
+        url = f"/api/media/{b64url_encode(mac)}/{payload}"
         server_task = asyncio.create_task(channel.start())
         await asyncio.sleep(0.3)
         try:

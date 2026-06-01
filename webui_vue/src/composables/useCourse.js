@@ -3,6 +3,7 @@
  */
 
 import { ref } from 'vue'
+import { useGateway } from './useGateway.js'
 
 const courses = ref([])
 const currentCourse = ref(null)
@@ -28,16 +29,20 @@ export function useCourse() {
   async function _get(url, role, userId, token) {
     const params = _authParams(role, userId, token)
     const res = await fetch(`${url}?${params.toString()}`, {
-      credentials: 'same-origin', headers: _authHeaders(token),
+      // Don't send cookies to reduce header size
+      credentials: 'omit',
+      headers: _authHeaders(token),
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return res.json()
   }
   async function _mutate(url, data, role, userId, token) {
     const params = _authParams(role, userId, token)
-    params.set('data', encodeURIComponent(JSON.stringify(data)))
+    params.set('data', JSON.stringify(data))
     const res = await fetch(`${url}?${params.toString()}`, {
-      credentials: 'same-origin', headers: _authHeaders(token),
+      // Don't send cookies to reduce header size
+      credentials: 'omit',
+      headers: _authHeaders(token),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -89,21 +94,60 @@ export function useCourse() {
     return data.lesson
   }
 
+  // --- Normalize helpers (snake_case → camelCase) ---
+  function _normHomework(hw) {
+    if (!hw) return hw
+    return {
+      hwId: hw.hwId || hw.hw_id || '',
+      courseId: hw.courseId || hw.course_id || '',
+      title: hw.title || '',
+      description: hw.description || '',
+      totalPoints: hw.totalPoints ?? hw.total_points ?? 0,
+      deadline: hw.deadline || '',
+      createdBy: hw.createdBy || hw.created_by || '',
+      status: hw.status || 'draft',
+      questions: hw.questions || [],
+      settings: hw.settings || {},
+      createdAt: hw.createdAt || hw.created_at || '',
+    }
+  }
+  function _normSubmission(s) {
+    if (!s) return s
+    return {
+      id: s.id,
+      hwId: s.hwId || s.hw_id || '',
+      studentId: s.studentId || s.student_id || '',
+      studentName: s.studentName || s.student_name || s.studentId || s.student_id || '',
+      studentRole: s.studentRole || s.student_role || '',
+      courseId: s.courseId || s.course_id || '',
+      attemptNumber: s.attemptNumber ?? s.attempt_number ?? 1,
+      answers: s.answers || {},
+      status: s.status || 'submitted',
+      score: s.score ?? 0,
+      feedback: s.feedback || {},
+      submittedAt: s.submittedAt || s.submitted_at || '',
+      gradedAt: s.gradedAt || s.graded_at || null,
+      gradedBy: s.gradedBy || s.graded_by || null,
+    }
+  }
+
   // --- Homework ---
 
   async function fetchHomeworkList(courseId, token) {
     const data = await _get(`/api/courses/${courseId}/homework`, null, null, token)
-    homeworkList.value = data.homework || []
-    return data.homework || []
+    const list = (data.homework || []).map(_normHomework)
+    homeworkList.value = list
+    return list
   }
 
-  async function createHomework(courseId, data, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/create`, data, role, userId, token)
+  async function createHomework(courseId, data) {
+    const { sendCreateHomework } = useGateway()
+    return sendCreateHomework(courseId, data)
   }
 
   async function fetchHomeworkDetail(courseId, hwId, token) {
     const data = await _get(`/api/courses/${courseId}/homework/${hwId}`, null, null, token)
-    return data.homework
+    return _normHomework(data.homework)
   }
 
   async function submitHomework(courseId, hwId, answers, role, userId, token) {
@@ -112,20 +156,67 @@ export function useCourse() {
 
   async function fetchSubmissions(courseId, hwId, token) {
     const data = await _get(`/api/courses/${courseId}/homework/${hwId}/submissions`, null, null, token)
-    return data.submissions || []
+    return (data.submissions || []).map(_normSubmission)
   }
 
   async function fetchSubmissionDetail(courseId, hwId, studentId, token) {
     const data = await _get(`/api/courses/${courseId}/homework/${hwId}/submissions/${studentId}`, null, null, token)
-    return data.submission
+    return _normSubmission(data.submission)
   }
 
-  async function gradeSubmission(courseId, hwId, studentId, score, feedback, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/grade`, { studentId, score, feedback }, role, userId, token)
+  async function gradeSubmission(courseId, hwId, studentId, score, feedback, role, userId, token, questions) {
+    const data = { studentId, score, feedback }
+    if (questions) data.questions = questions
+    return _mutate(`/api/courses/${courseId}/homework/${hwId}/grade`, data, role, userId, token)
+  }
+
+  async function aiGradeSubmission(courseId, hwId, studentId, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade`, { studentId }, role, userId, token)
+  }
+
+  async function aiGradeQuestion(courseId, hwId, questionData, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-question`, questionData, role, userId, token)
   }
 
   async function deleteHomework(courseId, hwId, role, userId, token) {
     return _mutate(`/api/courses/${courseId}/homework/${hwId}/delete`, {}, role, userId, token)
+  }
+
+  async function publishHomework(courseId, hwId, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/homework/${hwId}/publish`, {}, role, userId, token)
+  }
+
+  async function aiGenerateQuestions(courseId, content, numQuestions, typeDistribution, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/ai-generate-questions`, {
+      content,
+      numQuestions,
+      typeDistribution,
+    }, role, userId, token)
+  }
+
+  // --- Question Bank ---
+
+  async function fetchQuestionBank(courseId, token, type = null) {
+    let url = `/api/courses/${courseId}/question-bank`
+    if (type) url += `?type=${type}`
+    const data = await _get(url, null, null, token)
+    return data.questions || []
+  }
+
+  async function addToQuestionBank(courseId, question, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/question-bank/add`, question, role, userId, token)
+  }
+
+  async function batchAddToQuestionBank(courseId, questions, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/question-bank/batch-add`, { questions }, role, userId, token)
+  }
+
+  async function deleteFromQuestionBank(courseId, questionId, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/question-bank/${questionId}/delete`, {}, role, userId, token)
+  }
+
+  async function updateQuestionBank(courseId, questionId, data, role, userId, token) {
+    return _mutate(`/api/courses/${courseId}/question-bank/${questionId}/update`, data, role, userId, token)
   }
 
   return {
@@ -133,6 +224,8 @@ export function useCourse() {
     fetchCourses, createCourse, joinCourse, fetchCourseDetail,
     fetchMembers, fetchLessons, fetchLessonDetail,
     fetchHomeworkList, createHomework, fetchHomeworkDetail,
-    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission, deleteHomework,
+    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission, aiGradeSubmission, aiGradeQuestion, deleteHomework,
+    publishHomework, aiGenerateQuestions,
+    fetchQuestionBank, addToQuestionBank, batchAddToQuestionBank, deleteFromQuestionBank, updateQuestionBank,
   }
 }

@@ -178,7 +178,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import * as echarts from 'echarts'
+import echarts from '../../utils/echarts.js'
 import { useAuth } from '../../composables/useAuth.js'
 import StudentNav from '../../components/StudentNav.vue'
 

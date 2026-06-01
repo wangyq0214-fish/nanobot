@@ -6,6 +6,16 @@ const wsTarget = target.replace(/^http/, 'ws')
 
 export default defineConfig({
   plugins: [vue()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-vue': ['vue', 'vue-router'],
+          'vendor-echarts': ['echarts'],
+        }
+      }
+    }
+  },
   server: {
     port: 5173,
     hmr: { host: '127.0.0.1', port: 5174 },

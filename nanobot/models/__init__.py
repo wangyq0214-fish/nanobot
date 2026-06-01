@@ -13,6 +13,7 @@ from .resource import CourseResource
 from .progress import LearningProgress
 from .notification import Notification
 from .audit import AuditLog
+from .question_bank import QuestionBank
 
 __all__ = [
     "Base",
@@ -28,4 +29,5 @@ __all__ = [
     "LearningProgress",
     "Notification",
     "AuditLog",
+    "QuestionBank",
 ]

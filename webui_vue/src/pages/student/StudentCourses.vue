@@ -117,9 +117,6 @@ onMounted(async () => {
     router.push('/login')
     return
   }
-  if (!connected.value) {
-    try { await connectGateway({ role: user.value.role, userId: user.value.userId }) } catch {}
-  }
   try {
     await fetchCourses(user.value.role, user.value.userId, getToken())
   } catch (e) {

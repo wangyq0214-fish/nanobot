@@ -1,41 +1,85 @@
+
+
+
+
+
+
 """WebSocket server channel: nanobot acts as a WebSocket server and serves connected clients."""
 
 from __future__ import annotations
 
+import os
+
+# Increase websockets HTTP request line limit to support longer URLs
+# (question bank data is passed as query parameters)
+os.environ.setdefault("WEBSOCKETS_MAX_LINE_LENGTH", "65536")
+
 import asyncio
-import base64
 import binascii
-import email.utils
 import hashlib
 import hmac
-import http
 import json
 import mimetypes
 import re
 import secrets
 import shutil
 import ssl
-import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote
 
 from loguru import logger
 from pydantic import Field, field_validator, model_validator
 from websockets.asyncio.server import ServerConnection, serve
-from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
+from nanobot.api.auth import AuthManager
+from nanobot.api.handlers import (
+    handle_ai_generate_questions,
+    handle_ai_grade,
+    handle_ai_grade_question,
+    handle_course_detail,
+    handle_course_members,
+    handle_courses_create,
+    handle_courses_join,
+    handle_courses_list,
+    handle_homework_create,
+    handle_homework_delete,
+    handle_homework_detail,
+    handle_homework_grade,
+    handle_homework_list,
+    handle_homework_publish,
+    handle_homework_submissions,
+    handle_homework_submit,
+    handle_lesson_detail,
+    handle_lessons_list,
+    handle_question_bank_add,
+    handle_question_bank_batch_add,
+    handle_question_bank_delete,
+    handle_question_bank_list,
+    handle_question_bank_update,
+    handle_submission_detail,
+)
+from nanobot.api.router import Router
+from nanobot.api.utils import (
+    b64url_decode,
+    b64url_encode,
+    http_error,
+    http_json_response,
+    http_response,
+    normalize_path,
+    parse_query,
+    query_first,
+)
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.paths import get_media_dir
 from nanobot.config.schema import Base
 from nanobot.storage.storage_wrapper import StorageWrapper
-from nanobot.storage.factory import auto_init_storage
 from nanobot.utils.helpers import safe_filename
 from nanobot.utils.media_decode import (
     FileSizeExceeded,
@@ -123,21 +167,6 @@ class WebSocketConfig(Base):
         return self
 
 
-def _http_json_response(data: dict[str, Any], *, status: int = 200) -> Response:
-    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    headers = Headers(
-        [
-            ("Date", email.utils.formatdate(usegmt=True)),
-            ("Connection", "close"),
-            ("Content-Length", str(len(body))),
-            ("Content-Type", "application/json; charset=utf-8"),
-        ]
-    )
-    reason = http.HTTPStatus(status).phrase
-    return Response(status, reason, headers, body)
-
-
-
 
 def _read_webui_model_name() -> str | None:
     """Return the configured default model for readonly webui display."""
@@ -150,27 +179,6 @@ def _read_webui_model_name() -> str | None:
         logger.debug("webui bootstrap could not load model name: {}", e)
         return None
 
-
-def _parse_request_path(path_with_query: str) -> tuple[str, dict[str, list[str]]]:
-    """Parse normalized path and query parameters in one pass."""
-    parsed = urlparse("ws://x" + path_with_query)
-    path = _strip_trailing_slash(parsed.path or "/")
-    return path, parse_qs(parsed.query)
-
-
-def _normalize_http_path(path_with_query: str) -> str:
-    """Return the path component (no query string), with trailing slash normalized (root stays ``/``)."""
-    return _parse_request_path(path_with_query)[0]
-
-
-def _parse_query(path_with_query: str) -> dict[str, list[str]]:
-    return _parse_request_path(path_with_query)[1]
-
-
-def _query_first(query: dict[str, list[str]], key: str) -> str | None:
-    """Return the first value for *key*, or None."""
-    values = query.get(key)
-    return values[0] if values else None
 
 
 def _parse_inbound_payload(raw: str) -> str | None:
@@ -263,8 +271,6 @@ def _extract_data_url_mime(url: str) -> str | None:
     return m.group(1).strip().lower() or None
 
 
-_LOCALHOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
-
 # Matches the legacy chat-id pattern but allows file-system-safe stems too,
 # so the API can address sessions whose keys came from non-WebSocket channels.
 _API_KEY_RE = re.compile(r"^[A-Za-z0-9_:.-]{1,128}$")
@@ -278,52 +284,6 @@ def _decode_api_key(raw_key: str) -> str | None:
     return key
 
 
-def _is_localhost(connection: Any) -> bool:
-    """Return True if *connection* originated from the loopback interface."""
-    addr = getattr(connection, "remote_address", None)
-    if not addr:
-        return False
-    host = addr[0] if isinstance(addr, tuple) else addr
-    if not isinstance(host, str):
-        return False
-    # ``::ffff:127.0.0.1`` is loopback in IPv6-mapped form.
-    if host.startswith("::ffff:"):
-        host = host[7:]
-    return host in _LOCALHOSTS
-
-
-def _http_response(
-    body: bytes,
-    *,
-    status: int = 200,
-    content_type: str = "text/plain; charset=utf-8",
-    extra_headers: list[tuple[str, str]] | None = None,
-) -> Response:
-    headers = [
-        ("Date", email.utils.formatdate(usegmt=True)),
-        ("Connection", "close"),
-        ("Content-Length", str(len(body))),
-        ("Content-Type", content_type),
-    ]
-    if extra_headers:
-        headers.extend(extra_headers)
-    reason = http.HTTPStatus(status).phrase
-    return Response(status, reason, Headers(headers), body)
-
-
-def _http_error(status: int, message: str | None = None) -> Response:
-    body = (message or http.HTTPStatus(status).phrase).encode("utf-8")
-    return _http_response(body, status=status)
-
-
-def _bearer_token(headers: Any) -> str | None:
-    """Pull a Bearer token out of standard or query-style headers."""
-    auth = headers.get("Authorization") or headers.get("authorization")
-    if auth and auth.lower().startswith("bearer "):
-        return auth[7:].strip() or None
-    return None
-
-
 def _is_websocket_upgrade(request: WsRequest) -> bool:
     """Detect an actual WS upgrade; plain HTTP GETs to the same path should fall through."""
     upgrade = request.headers.get("Upgrade") or request.headers.get("upgrade")
@@ -334,16 +294,6 @@ def _is_websocket_upgrade(request: WsRequest) -> bool:
         return False
     return True
 
-
-def _b64url_encode(data: bytes) -> str:
-    """URL-safe base64 without padding — compact + friendly in URL paths."""
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _b64url_decode(s: str) -> bytes:
-    """Reverse of :func:`_b64url_encode`; caller handles ``ValueError``."""
-    pad = "=" * (-len(s) % 4)
-    return base64.urlsafe_b64decode(s + pad)
 
 
 # Allowed MIME types we actually serve from the media endpoint. Anything
@@ -359,20 +309,6 @@ _MEDIA_ALLOWED_MIMES: frozenset[str] = frozenset({
     "video/webm",
     "video/quicktime",
 })
-
-
-def _issue_route_secret_matches(headers: Any, configured_secret: str) -> bool:
-    """Return True if the token-issue HTTP request carries credentials matching ``token_issue_secret``."""
-    if not configured_secret:
-        return True
-    authorization = headers.get("Authorization") or headers.get("authorization")
-    if authorization and authorization.lower().startswith("bearer "):
-        supplied = authorization[7:].strip()
-        return hmac.compare_digest(supplied, configured_secret)
-    header_token = headers.get("X-Nanobot-Auth") or headers.get("x-nanobot-auth")
-    if not header_token:
-        return False
-    return hmac.compare_digest(header_token.strip(), configured_secret)
 
 
 class WebSocketChannel(BaseChannel):
@@ -401,12 +337,6 @@ class WebSocketChannel(BaseChannel):
         self._conn_chats: dict[Any, set[str]] = {}
         # connection -> default chat_id for legacy frames that omit routing.
         self._conn_default: dict[Any, str] = {}
-        # Single-use tokens consumed at WebSocket handshake.
-        self._issued_tokens: dict[str, float] = {}
-        # Multi-use tokens for the embedded webui's REST surface; checked but not consumed.
-        self._api_tokens: dict[str, float] = {}
-        # Token metadata: role, user_id associated with each token
-        self._token_metadata: dict[str, dict[str, str]] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
         self._session_manager = session_manager
@@ -420,6 +350,10 @@ class WebSocketChannel(BaseChannel):
         self._media_secret: bytes = secrets.token_bytes(32)
         # Storage wrapper for database operations (lazy initialized)
         self._storage: StorageWrapper | None = None
+        # Auth manager for token and user management
+        self._auth: AuthManager | None = None
+        # Declarative HTTP route table (lazy initialized)
+        self._router: Router | None = None
 
     # -- Subscription bookkeeping -------------------------------------------
 
@@ -430,10 +364,30 @@ class WebSocketChannel(BaseChannel):
             self._storage = StorageWrapper()
         return self._storage
 
+    @property
+    def auth(self) -> AuthManager:
+        """Lazy-initialized auth manager."""
+        if self._auth is None:
+            self._auth = AuthManager(
+                token=self.config.token,
+                token_issue_secret=self.config.token_issue_secret,
+                token_ttl_s=self.config.token_ttl_s,
+                websocket_requires_token=self.config.websocket_requires_token,
+                ws_path=self._expected_path(),
+            )
+        return self._auth
+
+    @property
+    def _router_instance(self) -> Router:
+        """Lazy-initialized HTTP route table."""
+        if self._router is None:
+            self._router = self._build_router()
+        return self._router
+
     async def _ensure_storage(self) -> StorageWrapper:
         """Ensure storage backend is initialized (async)."""
-        from nanobot.storage.factory import is_database_configured, get_storage, auto_init_storage
         from nanobot.storage.database_storage import DatabaseStorage
+        from nanobot.storage.factory import auto_init_storage, get_storage, is_database_configured
 
         # Check if we need to initialize database
         if is_database_configured():
@@ -510,178 +464,184 @@ class WebSocketChannel(BaseChannel):
         ctx.load_cert_chain(certfile=cert, keyfile=key)
         return ctx
 
-    _MAX_ISSUED_TOKENS = 10_000
+    # -- HTTP dispatch ------------------------------------------------------
 
-    def _purge_expired_issued_tokens(self) -> None:
-        now = time.monotonic()
-        for token_key, expiry in list(self._issued_tokens.items()):
-            if now > expiry:
-                self._issued_tokens.pop(token_key, None)
+    def _build_router(self) -> Router:
+        """Build the declarative HTTP route table.
 
-    def _take_issued_token_if_valid(self, token_value: str | None) -> bool:
-        """Validate and consume one issued token (single use per connection attempt).
-
-        Uses single-step pop to minimize the window between lookup and removal;
-        safe under asyncio's single-threaded cooperative model.
+        Routes are tried in registration order — first match wins.
+        Exact-match routes are registered before regex routes so that
+        more-specific paths take precedence.
         """
-        if not token_value:
-            return False
-        self._purge_expired_issued_tokens()
-        expiry = self._issued_tokens.pop(token_value, None)
-        if expiry is None:
-            return False
-        if time.monotonic() > expiry:
-            return False
-        return True
+        r = Router()
 
-    def _handle_token_issue_http(self, connection: Any, request: Any) -> Any:
-        secret = self.config.token_issue_secret.strip()
-        if secret:
-            if not _issue_route_secret_matches(request.headers, secret):
-                return connection.respond(401, "Unauthorized")
-        else:
-            logger.warning(
-                "websocket: token_issue_path is set but token_issue_secret is empty; "
-                "any client can obtain connection tokens — set token_issue_secret for production."
-            )
-        self._purge_expired_issued_tokens()
-        if len(self._issued_tokens) >= self._MAX_ISSUED_TOKENS:
-            logger.error(
-                "websocket: too many outstanding issued tokens ({}), rejecting issuance",
-                len(self._issued_tokens),
-            )
-            return _http_json_response({"error": "too many outstanding tokens"}, status=429)
-        token_value = f"nbwt_{secrets.token_urlsafe(32)}"
-        self._issued_tokens[token_value] = time.monotonic() + float(self.config.token_ttl_s)
+        # -- Auth endpoints (sync, delegate to AuthManager) ----------------
+        r.add("/webui/bootstrap", self.auth.handle_webui_bootstrap, name="webui-bootstrap")
+        r.add("/api/users/register", self.auth.handle_users_register, is_async=True, name="users-register")
+        r.add("/api/users/validate", self.auth.handle_users_validate, is_async=True, name="users-validate")
 
-        return _http_json_response(
-            {"token": token_value, "expires_in": self.config.token_ttl_s}
+        # -- Session management (sync, local methods) ----------------------
+        r.add("/api/sessions", self._handle_sessions_list, name="sessions-list")
+        r.add(r"/api/sessions/(?P<key>[^/]+)/messages", self._handle_session_messages, name="session-messages")
+        r.add(r"/api/sessions/(?P<key>[^/]+)/delete", self._handle_session_delete, name="session-delete")
+
+        # -- Agent management (sync, local methods) ------------------------
+        r.add("/api/agents/current", self._handle_agents_current, name="agents-current")
+        r.add("/api/agents", self._handle_agents_list, name="agents-list")
+        r.add(r"/api/agents/(?P<agent_id>[^/]+)/switch", self._handle_agents_switch, name="agents-switch")
+
+        # -- Source file browsing (sync, local methods) --------------------
+        r.add("/api/source", self._handle_source_list, name="source-list")
+        r.add(r"/api/source/(?P<file_path>.+)", self._handle_source_file, name="source-file")
+
+        # -- Course management (async, delegated to handlers) --------------
+        r.add("/api/courses/create", handle_courses_create, is_async=True, name="courses-create")
+        r.add("/api/courses/join", handle_courses_join, is_async=True, name="courses-join")
+        r.add("/api/courses", handle_courses_list, is_async=True, name="courses-list")
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/members",
+            handle_course_members, is_async=True, name="course-members",
         )
 
-    # -- HTTP dispatch ------------------------------------------------------
+        # -- Lesson management ---------------------------------------------
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/lessons/(?P<lesson_id>[^/]+)",
+            handle_lesson_detail, is_async=True, name="lesson-detail",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/lessons",
+            handle_lessons_list, is_async=True, name="lessons-list",
+        )
+
+        # -- Homework management -------------------------------------------
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/create",
+            handle_homework_create, is_async=True, name="homework-create",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/submit",
+            handle_homework_submit, is_async=True, name="homework-submit",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/submissions/(?P<student_id>[^/]+)",
+            handle_submission_detail, is_async=True, name="submission-detail",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/submissions",
+            handle_homework_submissions, is_async=True, name="homework-submissions",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/grade",
+            handle_homework_grade, is_async=True, name="homework-grade",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/ai-grade-question",
+            handle_ai_grade_question, is_async=True, name="ai-grade-question",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/ai-grade",
+            handle_ai_grade, is_async=True, name="ai-grade",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/publish",
+            handle_homework_publish, is_async=True, name="homework-publish",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/delete",
+            handle_homework_delete, is_async=True, name="homework-delete",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)",
+            handle_homework_detail, is_async=True, name="homework-detail",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework",
+            handle_homework_list, is_async=True, name="homework-list",
+        )
+
+        # -- AI question generation ----------------------------------------
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/ai-generate-questions",
+            handle_ai_generate_questions, is_async=True, name="ai-generate-questions",
+        )
+
+        # -- Question bank -------------------------------------------------
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/question-bank/batch-add",
+            handle_question_bank_batch_add, is_async=True, name="qb-batch-add",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/question-bank/add",
+            handle_question_bank_add, is_async=True, name="qb-add",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/question-bank/(?P<question_id>[^/]+)/update",
+            handle_question_bank_update, is_async=True, name="qb-update",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/question-bank/(?P<question_id>[^/]+)/delete",
+            handle_question_bank_delete, is_async=True, name="qb-delete",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/question-bank",
+            handle_question_bank_list, is_async=True, name="qb-list",
+        )
+
+        # -- Course detail (must come after all /api/courses/xxx patterns) --
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)",
+            handle_course_detail, is_async=True, name="course-detail",
+        )
+
+        # -- Media fetch (sync, HMAC-signed URLs) --------------------------
+        r.add(
+            r"/api/media/(?P<sig>[A-Za-z0-9_-]+)/(?P<payload>[A-Za-z0-9_-]+)",
+            self._handle_media_fetch, name="media-fetch", takes_request=False,
+        )
+
+        return r
 
     async def _dispatch_http(self, connection: Any, request: WsRequest) -> Any:
         """Route an inbound HTTP request to a handler or to the WS upgrade path."""
         # Ensure storage is initialized for API requests
         await self._ensure_storage()
 
-        got, query = _parse_request_path(request.path)
+        got = normalize_path(request.path)
+        query = parse_query(request.path)
 
         # 1. Token issue endpoint (legacy, optional, gated by configured secret).
+        #    Dynamic path from config — not suitable for the static route table.
         if self.config.token_issue_path:
             issue_expected = _normalize_config_path(self.config.token_issue_path)
             if got == issue_expected:
-                return self._handle_token_issue_http(connection, request)
+                return self.auth.handle_token_issue_http(connection, request)
 
-        # 2. WebUI bootstrap: localhost-only, mints tokens for the embedded UI.
-        if got == "/webui/bootstrap":
-            return self._handle_webui_bootstrap(connection, request)
+        # 2. Declarative route table for all API endpoints.
+        resp = await self._router_instance.dispatch(
+            request, got,
+            context={
+                "storage": self.storage,
+                "check_token": self.auth.check_api_token,
+                "model_name": _read_webui_model_name(),
+            },
+        )
+        if resp is not None:
+            return resp
 
-        # 3. REST surface for the embedded UI.
-        if got == "/api/users/register":
-            return await self._handle_users_register(request)
-
-        if got == "/api/users/validate":
-            return await self._handle_users_validate(request)
-
-        if got == "/api/sessions":
-            return self._handle_sessions_list(request)
-
-        m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
-        if m:
-            return self._handle_session_messages(request, m.group(1))
-
-        # NOTE: websockets' HTTP parser only accepts GET, so we cannot expose a
-        # true ``DELETE`` verb. The action is folded into the path instead.
-        m = re.match(r"^/api/sessions/([^/]+)/delete$", got)
-        if m:
-            return self._handle_session_delete(request, m.group(1))
-
-        # Agent management endpoints
-        if got == "/api/agents":
-            return self._handle_agents_list(request)
-
-        if got == "/api/agents/current":
-            return self._handle_agents_current(request)
-
-        m = re.match(r"^/api/agents/([^/]+)/switch$", got)
-        if m:
-            return self._handle_agents_switch(request, m.group(1))
-
-        # Source file endpoints (user workspace source directory)
-        if got == "/api/source":
-            return self._handle_source_list(request)
-
-        m = re.match(r"^/api/source/(.+)$", got)
-        if m:
-            return self._handle_source_file(request, m.group(1))
-
-        # Course endpoints
-        if got == "/api/courses":
-            return await self._handle_courses_list(request)
-        if got == "/api/courses/create":
-            return await self._handle_courses_create(request)
-        if got == "/api/courses/join":
-            return await self._handle_courses_join(request)
-        m = re.match(r"^/api/courses/([^/]+)/members$", got)
-        if m:
-            return await self._handle_course_members(request, m.group(1))
-        m = re.match(r"^/api/courses/([^/]+)/lessons/([^/]+)$", got)
-        if m:
-            return await self._handle_lesson_detail(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/lessons$", got)
-        if m:
-            return await self._handle_lessons_list(request, m.group(1))
-        m = re.match(r"^/api/courses/([^/]+)/homework/create$", got)
-        if m:
-            return await self._handle_homework_create(request, m.group(1))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submit$", got)
-        if m:
-            return await self._handle_homework_submit(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions/([^/]+)$", got)
-        if m:
-            return await self._handle_submission_detail(request, m.group(1), m.group(2), m.group(3))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/submissions$", got)
-        if m:
-            return await self._handle_homework_submissions(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/grade$", got)
-        if m:
-            return await self._handle_homework_grade(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)/delete$", got)
-        if m:
-            return await self._handle_homework_delete(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/homework/([^/]+)$", got)
-        if m:
-            return await self._handle_homework_detail(request, m.group(1), m.group(2))
-        m = re.match(r"^/api/courses/([^/]+)/homework$", got)
-        if m:
-            return await self._handle_homework_list(request, m.group(1))
-        m = re.match(r"^/api/courses/([^/]+)$", got)
-        if m:
-            return await self._handle_course_detail(request, m.group(1))
-
-        # Signed media fetch: ``<sig>`` is an HMAC over ``<payload>``; the
-        # payload decodes to a path inside :func:`get_media_dir`. See
-        # :meth:`_sign_media_path` for the inverse direction used to build
-        # these URLs when replaying a session.
-        m = re.match(r"^/api/media/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)$", got)
-        if m:
-            return self._handle_media_fetch(m.group(1), m.group(2))
-
-        # 4. WebSocket upgrade (the channel's primary purpose). Only run the
+        # 3. WebSocket upgrade (the channel's primary purpose). Only run the
         # handshake gate on requests that actually ask to upgrade; otherwise
         # a bare ``GET /`` from the browser would be rejected as an
         # unauthorized WS handshake instead of serving the SPA's index.html.
         expected_ws = self._expected_path()
         if got == expected_ws and _is_websocket_upgrade(request):
-            client_id = _query_first(query, "client_id") or ""
+            client_id = query_first(query, "client_id") or ""
             if len(client_id) > 128:
                 client_id = client_id[:128]
             if not self.is_allowed(client_id):
                 return connection.respond(403, "Forbidden")
             return self._authorize_websocket_handshake(connection, query)
 
-        # 5. Static SPA serving (only if a build directory was wired in).
+        # 4. Static SPA serving (only if a build directory was wired in).
         if self._static_dist_path is not None:
             response = self._serve_static(got)
             if response is not None:
@@ -689,369 +649,20 @@ class WebSocketChannel(BaseChannel):
 
         return connection.respond(404, "Not Found")
 
-    # -- HTTP route handlers ------------------------------------------------
-
-    def _check_api_token(self, request: WsRequest) -> bool:
-        """Validate a request against the API token pool (multi-use, TTL-bound)."""
-        self._purge_expired_api_tokens()
-        token = _bearer_token(request.headers) or _query_first(
-            _parse_query(request.path), "token"
-        )
-        if not token:
-            return False
-        expiry = self._api_tokens.get(token)
-        if expiry is None or time.monotonic() > expiry:
-            self._api_tokens.pop(token, None)
-            return False
-        return True
-
-    def _purge_expired_api_tokens(self) -> None:
-        now = time.monotonic()
-        for token_key, expiry in list(self._api_tokens.items()):
-            if now > expiry:
-                self._api_tokens.pop(token_key, None)
-
-    def _handle_webui_bootstrap(self, connection: Any, request: WsRequest | None = None) -> Response:
-        # Cap outstanding tokens to avoid runaway growth from a misbehaving client.
-        self._purge_expired_issued_tokens()
-        self._purge_expired_api_tokens()
-        if (
-            len(self._issued_tokens) >= self._MAX_ISSUED_TOKENS
-            or len(self._api_tokens) >= self._MAX_ISSUED_TOKENS
-        ):
-            return _http_response(
-                json.dumps({"error": "too many outstanding tokens"}).encode("utf-8"),
-                status=429,
-                content_type="application/json; charset=utf-8",
-            )
-
-        # Parse role and user_id from query parameters
-        role = ""
-        user_id = ""
-        if request:
-            query = _parse_query(request.path)
-            role = _query_first(query, "role") or ""
-            user_id = _query_first(query, "user_id") or ""
-
-        token = f"nbwt_{secrets.token_urlsafe(32)}"
-        expiry = time.monotonic() + float(self.config.token_ttl_s)
-        # Same string registered in both pools: the WS handshake consumes one copy
-        # while the REST surface keeps validating the other until TTL expiry.
-        self._issued_tokens[token] = expiry
-        self._api_tokens[token] = expiry
-
-        # Store user metadata associated with this token
-        if role or user_id:
-            self._token_metadata[token] = {
-                "role": role,
-                "user_id": user_id,
-            }
-
-        resp: dict[str, Any] = {
-            "token": token,
-            "ws_path": self._expected_path(),
-            "expires_in": self.config.token_ttl_s,
-            "model_name": _read_webui_model_name(),
-        }
-        if role:
-            resp["role"] = role
-        if user_id:
-            resp["user_id"] = user_id
-        return _http_json_response(resp)
-
-    # -- User management helpers ----------------------------------------------
-
-    @property
-    def _users_file(self) -> Path:
-        return Path.home() / ".nanobot" / "users.json"
-
-    def _load_users(self) -> dict[str, Any]:
-        path = self._users_file
-        if not path.exists():
-            return {}
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-    def _save_users(self, data: dict[str, Any]) -> None:
-        path = self._users_file
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _create_user_workspace(self, role: str, user_id: str) -> None:
-        """Create user workspace with USER.md and directory structure.
-
-        AGENTS.md / SOUL.md / TOOLS.md are read directly from the role
-        template directory by ContextBuilder, so we do NOT copy them into
-        per-user workspaces.
-        """
-        templates_dir = Path.home() / ".nanobot" / "templates" / role
-        if not templates_dir.is_dir():
-            logger.warning("Template directory not found: {}", templates_dir)
-            return
-
-        users_dir = Path.home() / ".nanobot" / "users" / role / user_id
-        if users_dir.exists():
-            return
-
-        users_dir.mkdir(parents=True, exist_ok=True)
-        # Only copy USER.md (per-user profile); the other bootstrap files
-        # (AGENTS.md, SOUL.md, TOOLS.md) stay in the role template dir.
-        user_md = templates_dir / "USER.md"
-        if user_md.is_file():
-            shutil.copy2(user_md, users_dir / "USER.md")
-        # Ensure required subdirectories exist
-        (users_dir / "sessions").mkdir(exist_ok=True)
-        (users_dir / "source").mkdir(exist_ok=True)
-        (users_dir / "memory").mkdir(exist_ok=True)
-        logger.info("Created workspace for user: {} (role={})", user_id, role)
-
-    # -- Course storage helpers ------------------------------------------------
-
-    @property
-    def _courses_dir(self) -> Path:
-        return Path.home() / ".nanobot" / "courses"
-
-    @property
-    def _courses_index_file(self) -> Path:
-        return self._courses_dir / "index.json"
-
-    def _load_courses_index(self) -> dict[str, Any]:
-        path = self._courses_index_file
-        if not path.exists():
-            return {}
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-    def _save_courses_index(self, data: dict[str, Any]) -> None:
-        path = self._courses_index_file
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _load_course(self, course_id: str) -> dict[str, Any] | None:
-        path = self._courses_dir / course_id / "course.json"
-        if not path.exists():
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    def _save_course(self, course_id: str, data: dict[str, Any]) -> None:
-        path = self._courses_dir / course_id / "course.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _load_members(self, course_id: str) -> list[dict[str, Any]]:
-        path = self._courses_dir / course_id / "members.json"
-        if not path.exists():
-            return []
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
-
-    def _save_members(self, course_id: str, members: list[dict[str, Any]]) -> None:
-        path = self._courses_dir / course_id / "members.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(members, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _load_homework(self, course_id: str, hw_id: str) -> dict[str, Any] | None:
-        path = self._courses_dir / course_id / "homework" / f"{hw_id}.json"
-        if not path.exists():
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    def _list_homework(self, course_id: str) -> list[dict[str, Any]]:
-        hw_dir = self._courses_dir / course_id / "homework"
-        if not hw_dir.is_dir():
-            return []
-        result = []
-        for f in sorted(hw_dir.glob("*.json")):
-            try:
-                result.append(json.loads(f.read_text(encoding="utf-8")))
-            except (json.JSONDecodeError, OSError):
-                continue
-        return result
-
-    def _save_homework(self, course_id: str, hw_id: str, data: dict[str, Any]) -> None:
-        path = self._courses_dir / course_id / "homework" / f"{hw_id}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _load_submission(self, course_id: str, hw_id: str, student_id: str) -> dict[str, Any] | None:
-        path = self._courses_dir / course_id / "homework" / "submissions" / f"{student_id}.json"
-        if not path.exists():
-            return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if data.get("hwId") == hw_id:
-                return data
-            return None
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    def _save_submission(self, course_id: str, hw_id: str, student_id: str, data: dict[str, Any]) -> None:
-        path = self._courses_dir / course_id / "homework" / "submissions" / f"{student_id}.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _list_submissions(self, course_id: str, hw_id: str) -> list[dict[str, Any]]:
-        sub_dir = self._courses_dir / course_id / "homework" / "submissions"
-        if not sub_dir.is_dir():
-            return []
-        result = []
-        for f in sorted(sub_dir.glob("*.json")):
-            try:
-                data = json.loads(f.read_text(encoding="utf-8"))
-                if data.get("hwId") == hw_id:
-                    result.append(data)
-            except (json.JSONDecodeError, OSError):
-                continue
-        return result
-
-    def _load_lessons(self, course_id: str) -> list[dict[str, Any]]:
-        lessons_dir = self._courses_dir / course_id / "lessons"
-        if not lessons_dir.is_dir():
-            return []
-        result = []
-        for d in sorted(lessons_dir.iterdir()):
-            if d.is_dir():
-                lesson_file = d / "lesson.json"
-                if lesson_file.exists():
-                    try:
-                        result.append(json.loads(lesson_file.read_text(encoding="utf-8")))
-                    except (json.JSONDecodeError, OSError):
-                        continue
-        return result
-
-    def _save_lesson(self, course_id: str, lesson_id: str, data: dict[str, Any]) -> None:
-        path = self._courses_dir / course_id / "lessons" / lesson_id / "lesson.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def _save_lesson_plan(self, course_id: str, lesson_id: str, content: str) -> None:
-        path = self._courses_dir / course_id / "lessons" / lesson_id / "plan.md"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-
-    def _generate_join_code(self) -> str:
-        index = self._load_courses_index()
-        existing = {c.get("joinCode") for c in index.values()}
-        while True:
-            code = f"{secrets.randbelow(1_000_000):06d}"
-            if code not in existing:
-                return code
-
-    def _generate_id(self) -> str:
-        return uuid.uuid4().hex[:12]
-
-    def _parse_mutation_data(self, query: dict[str, list[str]]) -> dict[str, Any] | Response:
-        raw = _query_first(query, "data")
-        if not raw:
-            return _http_error(400, "missing data parameter")
-        try:
-            payload = json.loads(unquote(raw))
-        except (json.JSONDecodeError, TypeError):
-            return _http_error(400, "invalid JSON in data parameter")
-        if not isinstance(payload, dict):
-            return _http_error(400, "data must be a JSON object")
-        return payload
-
-    # -- User management HTTP handlers ----------------------------------------
-
-    async def _handle_users_register(self, request: WsRequest) -> Response:
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        display_name = _query_first(query, "display_name") or user_id
-        password = _query_first(query, "password") or ""
-
-        if not role or not user_id:
-            return _http_error(400, "role and user_id are required")
-        if role not in ("student", "teacher", "researcher"):
-            return _http_error(400, "Invalid role")
-        if len(user_id) > 64:
-            return _http_error(400, "user_id too long (max 64)")
-        if not password:
-            return _http_error(400, "password is required")
-
-        # Check if user already exists
-        existing = await self.storage.get_user(role, user_id)
-        if existing:
-            return _http_error(409, "User already exists")
-
-        # Hash password
-        import hashlib
-        import secrets as secrets_mod
-        salt = secrets_mod.token_hex(16)
-        password_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-
-        user_data = {
-            "role": role,
-            "user_id": user_id,
-            "display_name": display_name,
-            "password_hash": password_hash,
-            "password_salt": salt,
-            "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        user = await self.storage.create_user(user_data)
-
-        # Create user workspace from templates
-        self._create_user_workspace(role, user_id)
-
-        logger.info("Registered user: {} (role={})", user_id, role)
-        return _http_json_response({"ok": True, "user": user})
-
-    async def _handle_users_validate(self, request: WsRequest) -> Response:
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        password = _query_first(query, "password") or ""
-
-        if not role or not user_id:
-            return _http_error(400, "role and user_id are required")
-
-        user = await self.storage.get_user(role, user_id)
-        if not user:
-            return _http_error(404, "User not found")
-
-        # Validate password if provided
-        if password and user.get("password_hash"):
-            import hashlib
-            salt = user.get("password_salt", "")
-            expected_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-            if expected_hash != user.get("password_hash"):
-                return _http_error(401, "Invalid password")
-
-        # Generate API token for authenticated user
-        self._purge_expired_api_tokens()
-        token = f"nbwt_{secrets.token_urlsafe(32)}"
-        expiry = time.monotonic() + float(self.config.token_ttl_s)
-        self._api_tokens[token] = expiry
-
-        return _http_json_response({"ok": True, "user": user, "token": token})
-
     # -- Source file HTTP handlers -------------------------------------------
 
     def _resolve_source_dir(self, request: WsRequest) -> Path | Response:
         """Resolve the source directory for a user, or return an error response."""
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
+        query = parse_query(request.path)
+        role = query_first(query, "role") or ""
+        user_id = query_first(query, "user_id") or ""
         if not role or not user_id:
-            return _http_error(400, "role and user_id are required")
+            return http_error(400, "role and user_id are required")
         source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
         if not source_dir.is_dir():
-            return _http_error(404, "Source directory not found")
+            return http_error(404, "Source directory not found")
         return source_dir
 
     def _handle_source_list(self, request: WsRequest) -> Response:
@@ -1069,13 +680,13 @@ class WebSocketChannel(BaseChannel):
                     "name": f.name,
                     "path": str(rel).replace("\\", "/"),
                 })
-        return _http_json_response({"files": files})
+        return http_json_response({"files": files})
 
     def _handle_source_file(self, request: WsRequest, file_path: str) -> Response:
         file_path = unquote(file_path)
         # Security: reject path traversal
         if ".." in file_path:
-            return _http_error(400, "Invalid path")
+            return http_error(400, "Invalid path")
         result = self._resolve_source_dir(request)
         if isinstance(result, Response):
             return result
@@ -1084,21 +695,21 @@ class WebSocketChannel(BaseChannel):
         target = (source_dir / file_path).resolve()
         # Ensure resolved path is still under source_dir
         if not str(target).startswith(str(source_dir.resolve())):
-            return _http_error(403, "Access denied")
+            return http_error(403, "Access denied")
         if not target.is_file():
-            return _http_error(404, "File not found")
+            return http_error(404, "File not found")
 
         content = target.read_text(encoding="utf-8")
-        return _http_json_response({"content": content})
+        return http_json_response({"content": content})
 
     def _handle_sessions_list(self, request: WsRequest) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
 
         # Parse role/user_id from query for per-user session lookup
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
+        query = parse_query(request.path)
+        role = query_first(query, "role") or ""
+        user_id = query_first(query, "user_id") or ""
 
         # Determine sessions directory: user workspace or global
         if role and user_id:
@@ -1108,10 +719,10 @@ class WebSocketChannel(BaseChannel):
             sessions_dir = self._session_manager.workspace / "sessions"
             user_prefix = ""
         else:
-            return _http_error(503, "session manager unavailable")
+            return http_error(503, "session manager unavailable")
 
         if not sessions_dir.is_dir():
-            return _http_json_response({"sessions": []})
+            return http_json_response({"sessions": []})
 
         # Scan JSONL session files
         sessions = []
@@ -1134,7 +745,7 @@ class WebSocketChannel(BaseChannel):
                 "preview": "",
             })
 
-        return _http_json_response({"sessions": sessions})
+        return http_json_response({"sessions": sessions})
 
     @staticmethod
     def _is_webui_session_key(key: str) -> bool:
@@ -1142,23 +753,23 @@ class WebSocketChannel(BaseChannel):
         return key.startswith("websocket:")
 
     def _handle_session_messages(self, request: WsRequest, key: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
         if self._session_manager is None:
-            return _http_error(503, "session manager unavailable")
+            return http_error(503, "session manager unavailable")
         decoded_key = _decode_api_key(key)
         if decoded_key is None:
-            return _http_error(400, "invalid session key")
+            return http_error(400, "invalid session key")
         # The embedded webui only understands websocket-channel sessions. Keep
         # its read surface aligned with ``/api/sessions`` instead of letting a
         # caller probe arbitrary CLI / Slack / Lark history by handcrafted URL.
         if not self._is_webui_session_key(decoded_key):
-            return _http_error(404, "session not found")
+            return http_error(404, "session not found")
 
         # Parse role/user_id to find user workspace
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
+        query = parse_query(request.path)
+        role = query_first(query, "role") or ""
+        user_id = query_first(query, "user_id") or ""
 
         if role and user_id:
             # Reconstruct full key with user prefix for user workspace
@@ -1169,7 +780,7 @@ class WebSocketChannel(BaseChannel):
             safe_key = SessionManager.safe_key(full_key)
             session_file = user_sessions_dir / f"{safe_key}.jsonl"
             if not session_file.exists():
-                return _http_error(404, "session not found")
+                return http_error(404, "session not found")
             # Read JSONL file directly
             try:
                 messages = []
@@ -1193,17 +804,17 @@ class WebSocketChannel(BaseChannel):
                 }
             except Exception as e:
                 logger.warning("Failed to read user session {}: {}", full_key, e)
-                return _http_error(500, "Failed to read session")
+                return http_error(500, "Failed to read session")
         else:
             data = self._session_manager.read_session_file(decoded_key)
             if data is None:
-                return _http_error(404, "session not found")
+                return http_error(404, "session not found")
         # Decorate persisted user messages with signed media URLs so the
         # client can render previews. The raw on-disk ``media`` paths are
         # stripped on the way out — they leak server filesystem layout and
         # the client never needs them once it has the signed fetch URL.
         self._augment_media_urls(data)
-        return _http_json_response(data)
+        return http_json_response(data)
 
     def _augment_media_urls(self, payload: dict[str, Any]) -> None:
         """Mutate *payload* in place: each message's ``media`` path list is
@@ -1250,11 +861,11 @@ class WebSocketChannel(BaseChannel):
             rel = abs_path.resolve().relative_to(media_root)
         except (OSError, ValueError):
             return None
-        payload = _b64url_encode(rel.as_posix().encode("utf-8"))
+        payload = b64url_encode(rel.as_posix().encode("utf-8"))
         mac = hmac.new(
             self._media_secret, payload.encode("ascii"), hashlib.sha256
         ).digest()[:16]
-        return f"/api/media/{_b64url_encode(mac)}/{payload}"
+        return f"/api/media/{b64url_encode(mac)}/{payload}"
 
     def _sign_or_stage_media_path(self, path: Path) -> dict[str, str] | None:
         """Return a signed media URL payload for *path*.
@@ -1290,19 +901,19 @@ class WebSocketChannel(BaseChannel):
         long-lived immutable cache header (the URL already encodes the
         file identity, so caches can be aggressive)."""
         try:
-            provided_mac = _b64url_decode(sig)
+            provided_mac = b64url_decode(sig)
         except (ValueError, binascii.Error):
-            return _http_error(401, "invalid signature")
+            return http_error(401, "invalid signature")
         expected_mac = hmac.new(
             self._media_secret, payload.encode("ascii"), hashlib.sha256
         ).digest()[:16]
         if not hmac.compare_digest(expected_mac, provided_mac):
-            return _http_error(401, "invalid signature")
+            return http_error(401, "invalid signature")
         try:
-            rel_bytes = _b64url_decode(payload)
+            rel_bytes = b64url_decode(payload)
             rel_str = rel_bytes.decode("utf-8")
         except (ValueError, binascii.Error, UnicodeDecodeError):
-            return _http_error(400, "invalid payload")
+            return http_error(400, "invalid payload")
         # An attacker who somehow bypassed the HMAC check would still need
         # the resolved path to escape the media root; guard defensively.
         try:
@@ -1310,17 +921,17 @@ class WebSocketChannel(BaseChannel):
             candidate = (media_root / rel_str).resolve()
             candidate.relative_to(media_root)
         except (OSError, ValueError):
-            return _http_error(404, "not found")
+            return http_error(404, "not found")
         if not candidate.is_file():
-            return _http_error(404, "not found")
+            return http_error(404, "not found")
         try:
             body = candidate.read_bytes()
         except OSError:
-            return _http_error(500, "read error")
+            return http_error(500, "read error")
         mime, _ = mimetypes.guess_type(candidate.name)
         if mime not in _MEDIA_ALLOWED_MIMES:
             mime = "application/octet-stream"
-        return _http_response(
+        return http_response(
             body,
             content_type=mime,
             extra_headers=[
@@ -1332,23 +943,23 @@ class WebSocketChannel(BaseChannel):
         )
 
     def _handle_session_delete(self, request: WsRequest, key: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
         if self._session_manager is None:
-            return _http_error(503, "session manager unavailable")
+            return http_error(503, "session manager unavailable")
         decoded_key = _decode_api_key(key)
         if decoded_key is None:
-            return _http_error(400, "invalid session key")
+            return http_error(400, "invalid session key")
         # Same boundary as ``_handle_session_messages``: the webui may only
         # mutate websocket sessions, and deletion really does unlink the local
         # JSONL, so keep the blast radius narrow and explicit.
         if not self._is_webui_session_key(decoded_key):
-            return _http_error(404, "session not found")
+            return http_error(404, "session not found")
 
         # Parse role/user_id to find user workspace
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
+        query = parse_query(request.path)
+        role = query_first(query, "role") or ""
+        user_id = query_first(query, "user_id") or ""
 
         if role and user_id:
             # Reconstruct full key with user prefix for user workspace
@@ -1359,47 +970,47 @@ class WebSocketChannel(BaseChannel):
             safe_key = SessionManager.safe_key(full_key)
             session_file = user_sessions_dir / f"{safe_key}.jsonl"
             if not session_file.exists():
-                return _http_json_response({"deleted": False})
+                return http_json_response({"deleted": False})
             try:
                 session_file.unlink()
-                return _http_json_response({"deleted": True})
+                return http_json_response({"deleted": True})
             except OSError as e:
                 logger.warning("Failed to delete user session {}: {}", full_key, e)
-                return _http_error(500, "Failed to delete session")
+                return http_error(500, "Failed to delete session")
         else:
             deleted = self._session_manager.delete_session(decoded_key)
-            return _http_json_response({"deleted": bool(deleted)})
+            return http_json_response({"deleted": bool(deleted)})
 
     def _handle_agents_list(self, request: WsRequest) -> Response:
         """List all available agents."""
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
         if not hasattr(self, '_agent_manager') or self._agent_manager is None:
-            return _http_json_response({"agents": [], "has_multi_agent": False})
+            return http_json_response({"agents": [], "has_multi_agent": False})
         agents = self._agent_manager.list_agents()
-        return _http_json_response({"agents": agents, "has_multi_agent": True})
+        return http_json_response({"agents": agents, "has_multi_agent": True})
 
     def _handle_agents_current(self, request: WsRequest) -> Response:
         """Get the current active agent."""
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
         if not hasattr(self, '_agent_manager') or self._agent_manager is None:
-            return _http_json_response({"agent": None, "has_multi_agent": False})
+            return http_json_response({"agent": None, "has_multi_agent": False})
         active_agent = self._agent_manager.get_active_agent()
         if active_agent:
-            return _http_json_response({"agent": active_agent.to_dict(), "has_multi_agent": True})
-        return _http_json_response({"agent": None, "has_multi_agent": True})
+            return http_json_response({"agent": active_agent.to_dict(), "has_multi_agent": True})
+        return http_json_response({"agent": None, "has_multi_agent": True})
 
     def _handle_agents_switch(self, request: WsRequest, agent_name: str) -> Response:
         """Switch to a different agent."""
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
+        if not self.auth.check_api_token(request):
+            return http_error(401, "Unauthorized")
         if not hasattr(self, '_agent_manager') or self._agent_manager is None:
-            return _http_error(503, "multi-agent system not configured")
+            return http_error(503, "multi-agent system not configured")
         success = self._agent_manager.switch_agent(agent_name)
         if success:
-            return _http_json_response({"success": True, "agent": agent_name})
-        return _http_error(404, "agent not found")
+            return http_json_response({"success": True, "agent": agent_name})
+        return http_error(404, "agent not found")
 
     def _serve_static(self, request_path: str) -> Response | None:
         """Resolve *request_path* against the built SPA directory; SPA fallback to index.html."""
@@ -1409,12 +1020,12 @@ class WebSocketChannel(BaseChannel):
             rel = "index.html"
         # Reject path-traversal attempts and absolute targets.
         if ".." in rel.split("/") or rel.startswith("/"):
-            return _http_error(403, "Forbidden")
+            return http_error(403, "Forbidden")
         candidate = (self._static_dist_path / rel).resolve()
         try:
             candidate.relative_to(self._static_dist_path)
         except ValueError:
-            return _http_error(403, "Forbidden")
+            return http_error(403, "Forbidden")
         if not candidate.is_file():
             # SPA history-mode fallback: unknown routes serve index.html so the
             # client-side router can render them.
@@ -1427,7 +1038,7 @@ class WebSocketChannel(BaseChannel):
             body = candidate.read_bytes()
         except OSError as e:
             logger.warning("websocket static: failed to read {}: {}", candidate, e)
-            return _http_error(500, "Internal Server Error")
+            return http_error(500, "Internal Server Error")
         ctype, _ = mimetypes.guess_type(candidate.name)
         if ctype is None:
             ctype = "application/octet-stream"
@@ -1438,350 +1049,15 @@ class WebSocketChannel(BaseChannel):
             cache = "no-cache"
         else:
             cache = "public, max-age=31536000, immutable"
-        return _http_response(
+        return http_response(
             body,
             status=200,
             content_type=ctype,
             extra_headers=[("Cache-Control", cache)],
         )
 
-    # -- Course HTTP handlers -------------------------------------------------
-
-    async def _handle_courses_list(self, request: WsRequest) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-
-        if role == "teacher":
-            courses = await self.storage.get_teacher_courses(user_id)
-        elif role == "student":
-            courses = await self.storage.get_student_courses(user_id)
-        else:
-            # Public courses only
-            all_courses = await self.storage.list_courses()
-            courses = [c for c in all_courses if c.get("is_public")]
-        return _http_json_response({"courses": courses})
-
-    async def _handle_courses_create(self, request: WsRequest) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        logger.info("[courses_create] role={!r} user_id={!r}", role, user_id)
-        if role != "teacher":
-            return _http_error(403, "Only teachers can create courses")
-        payload = self._parse_mutation_data(query)
-        if isinstance(payload, Response):
-            return payload
-        course_name = payload.get("courseName", "").strip()
-        subject = payload.get("subject", "").strip()
-        grade = payload.get("grade", "").strip()
-        if not course_name:
-            return _http_error(400, "courseName is required")
-
-        # Check course limit per teacher
-        teacher_courses = await self.storage.get_teacher_courses(user_id)
-        if len(teacher_courses) >= 100:
-            return _http_error(400, "Course limit reached (max 100)")
-
-        course_id = self._generate_id()
-        join_code = self._generate_join_code()
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        display_name = payload.get("teacherName") or user_id
-
-        course_data = {
-            "course_id": course_id,
-            "course_name": course_name,
-            "subject": subject,
-            "grade": grade,
-            "description": payload.get("description", ""),
-            "teacher_id": user_id,
-            "teacher_role": "teacher",
-            "teacher_name": display_name,
-            "join_code": join_code,
-            "is_public": payload.get("isPublic", True),
-            "max_members": payload.get("maxMembers", 50),
-            "created_at": now,
-            "updated_at": now,
-        }
-        course = await self.storage.create_course(course_data)
-
-        # Add teacher as course member automatically
-        await self.storage.add_course_member(course_id, user_id, "teacher", display_name)
-
-        logger.info("Course created: {} ({}) by {}", course_name, course_id, user_id)
-        return _http_json_response({"ok": True, "course": course})
-
-    async def _handle_courses_join(self, request: WsRequest) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        if role != "student":
-            return _http_error(403, "Only students can join courses")
-        payload = self._parse_mutation_data(query)
-        if isinstance(payload, Response):
-            return payload
-        join_code = payload.get("joinCode", "").strip()
-        if not join_code:
-            return _http_error(400, "joinCode is required")
-
-        # Find course by join code
-        course = await self.storage.get_course_by_join_code(join_code)
-        if not course:
-            return _http_error(404, "Invalid join code")
-
-        course_id = course["course_id"]
-
-        # Check if already a member
-        if await self.storage.is_course_member(course_id, user_id):
-            return _http_json_response({"ok": True, "course": course, "message": "Already a member"})
-
-        # Check member limit
-        members_count = await self.storage.get_course_members_count(course_id)
-        max_members = course.get("max_members", 50)
-        if members_count >= max_members:
-            return _http_error(400, "Course is full")
-
-        display_name = payload.get("displayName") or user_id
-        await self.storage.add_course_member(course_id, user_id, "student", display_name)
-
-        logger.info("Student {} joined course {} ({})", user_id, course.get("course_name"), course_id)
-        return _http_json_response({"ok": True, "course": course})
-
-    async def _handle_course_detail(self, request: WsRequest, course_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        return _http_json_response({"course": course})
-
-    async def _handle_course_members(self, request: WsRequest, course_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        members = await self.storage.get_course_members(course_id)
-        return _http_json_response({"members": members})
-
-    async def _handle_lessons_list(self, request: WsRequest, course_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        lessons = await self.storage.get_course_lessons(course_id)
-        return _http_json_response({"lessons": lessons})
-
-    async def _handle_lesson_detail(self, request: WsRequest, course_id: str, lesson_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-
-        # Try to find lesson by ID (as integer) or by lesson_id string
-        try:
-            lesson_id_int = int(lesson_id)
-            lesson = await self.storage.get_lesson(lesson_id_int)
-        except ValueError:
-            return _http_error(400, "Invalid lesson ID")
-
-        if not lesson:
-            return _http_error(404, "Lesson not found")
-        return _http_json_response({"lesson": lesson})
-
-    async def _handle_homework_list(self, request: WsRequest, course_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        homework = await self.storage.get_course_homework(course_id)
-        return _http_json_response({"homework": homework})
-
-    async def _handle_homework_create(self, request: WsRequest, course_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        logger.info("[homework_create] role={!r} user_id={!r} course_id={!r}", role, user_id, course_id)
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        # Support both camelCase and snake_case
-        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
-        logger.info("[homework_create] teacher_id={!r}", teacher_id)
-        if teacher_id != user_id:
-            return _http_error(403, "Only the course owner can create homework")
-        payload = self._parse_mutation_data(query)
-        if isinstance(payload, Response):
-            return payload
-        title = payload.get("title", "").strip()
-        if not title:
-            return _http_error(400, "title is required")
-
-        hw_id = f"hw{self._generate_id()}"
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-        hw_data = {
-            "hw_id": hw_id,
-            "course_id": course_id,
-            "title": title,
-            "description": payload.get("description", ""),
-            "questions": payload.get("questions", []),
-            "total_points": payload.get("totalPoints", 0),
-            "deadline": payload.get("deadline", ""),
-            "created_at": now,
-            "created_by": user_id,
-            "created_by_role": "teacher",
-        }
-        homework = await self.storage.create_homework(hw_data)
-        logger.info("Homework created: {} in course {} by {}", title, course_id, user_id)
-        return _http_json_response({"ok": True, "homework": homework})
-
-    async def _handle_homework_detail(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        hw = await self.storage.get_homework(hw_id)
-        if not hw:
-            return _http_error(404, "Homework not found")
-        return _http_json_response({"homework": hw})
-
-    async def _handle_homework_submit(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        role = _query_first(query, "role") or ""
-        user_id = _query_first(query, "user_id") or ""
-        if role != "student":
-            return _http_error(403, "Only students can submit homework")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        hw = await self.storage.get_homework(hw_id)
-        if not hw:
-            return _http_error(404, "Homework not found")
-        payload = self._parse_mutation_data(query)
-        if isinstance(payload, Response):
-            return payload
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-        submission_data = {
-            "hw_id": hw_id,
-            "student_id": user_id,
-            "student_role": "student",
-            "course_id": course_id,
-            "answers": payload.get("answers", {}),
-            "submitted_at": now,
-            "status": "submitted",
-            "score": 0,
-            "feedback": {},
-            "graded_at": None,
-            "graded_by": None,
-        }
-        await self.storage.create_submission(submission_data)
-        logger.info("Homework {} submitted by student {} in course {}", hw_id, user_id, course_id)
-        return _http_json_response({"ok": True})
-
-    async def _handle_homework_submissions(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        submissions = await self.storage.get_homework_submissions(hw_id)
-        return _http_json_response({"submissions": submissions})
-
-    async def _handle_submission_detail(self, request: WsRequest, course_id: str, hw_id: str, student_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        submission = await self.storage.get_submission(hw_id, student_id)
-        if not submission:
-            return _http_error(404, "Submission not found")
-        return _http_json_response({"submission": submission})
-
-    async def _handle_homework_grade(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        user_id = _query_first(query, "user_id") or ""
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        # Support both camelCase and snake_case
-        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
-        if teacher_id != user_id:
-            return _http_error(403, "Only the course owner can grade")
-        payload = self._parse_mutation_data(query)
-        if isinstance(payload, Response):
-            return payload
-        student_id = payload.get("studentId", "").strip()
-        if not student_id:
-            return _http_error(400, "studentId is required")
-        submission = await self.storage.get_submission(hw_id, student_id)
-        if not submission:
-            return _http_error(404, "Submission not found")
-
-        submission_update = {
-            "status": "graded",
-            "score": payload.get("score", 0),
-            "feedback": payload.get("feedback", {}),
-            "graded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "graded_by": user_id,
-            "graded_by_role": "teacher",
-        }
-        updated = await self.storage.update_submission(submission["id"], submission_update)
-        logger.info("Homework {} graded for student {} in course {}", hw_id, student_id, course_id)
-        return _http_json_response({"ok": True, "submission": updated})
-
-    async def _handle_homework_delete(self, request: WsRequest, course_id: str, hw_id: str) -> Response:
-        if not self._check_api_token(request):
-            return _http_error(401, "Unauthorized")
-        query = _parse_query(request.path)
-        user_id = _query_first(query, "user_id") or ""
-        course = await self.storage.get_course(course_id)
-        if not course:
-            return _http_error(404, "Course not found")
-        # Support both camelCase and snake_case
-        teacher_id = course.get("teacherId") or course.get("teacher_id", "")
-        if teacher_id != user_id:
-            return _http_error(403, "Only the course owner can delete homework")
-        hw = await self.storage.get_homework(hw_id)
-        if not hw:
-            return _http_error(404, "Homework not found")
-        success = await self.storage.delete_homework(hw_id)
-        if success:
-            logger.info("Homework {} deleted from course {} by {}", hw_id, course_id, user_id)
-            return _http_json_response({"ok": True})
-        return _http_error(500, "Failed to delete homework")
-
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
-        supplied = _query_first(query, "token")
-        static_token = self.config.token.strip()
-
-        if static_token:
-            if supplied and hmac.compare_digest(supplied, static_token):
-                return None
-            if supplied and self._take_issued_token_if_valid(supplied):
-                return None
-            return connection.respond(401, "Unauthorized")
-
-        if self.config.websocket_requires_token:
-            if supplied and self._take_issued_token_if_valid(supplied):
-                return None
-            return connection.respond(401, "Unauthorized")
-
-        if supplied:
-            self._take_issued_token_if_valid(supplied)
-        return None
+        return self.auth.authorize_websocket_handshake(connection, query)
 
     async def start(self) -> None:
         self._running = True
@@ -1835,8 +1111,8 @@ class WebSocketChannel(BaseChannel):
     async def _connection_loop(self, connection: Any) -> None:
         request = connection.request
         path_part = request.path if request else "/"
-        _, query = _parse_request_path(path_part)
-        client_id_raw = _query_first(query, "client_id")
+        query = parse_query(path_part)
+        client_id_raw = query_first(query, "client_id")
         client_id = client_id_raw.strip() if client_id_raw else ""
         if not client_id:
             client_id = f"anon-{uuid.uuid4().hex[:12]}"
@@ -1845,11 +1121,22 @@ class WebSocketChannel(BaseChannel):
             client_id = client_id[:128]
 
         # Extract role/user_id from token metadata
-        token = _query_first(query, "token") or ""
+        token = query_first(query, "token") or ""
         conn_meta: dict[str, str] = {}
-        if token and token in self._token_metadata:
-            conn_meta = self._token_metadata.pop(token, {})
-            logger.info("websocket: token metadata loaded for role={}, user_id={}", conn_meta.get("role"), conn_meta.get("user_id"))
+        if token:
+            conn_meta = self.auth.get_token_metadata(token)
+            logger.info(
+                "websocket: token={}, metadata={}, all_metadata_keys={}",
+                token[:20] + "..." if len(token) > 20 else token,
+                conn_meta,
+                list(self.auth._token_metadata.keys())[:5],
+            )
+            if conn_meta:
+                logger.info("websocket: token metadata loaded for role={}, user_id={}", conn_meta.get("role"), conn_meta.get("user_id"))
+            else:
+                logger.warning("websocket: no metadata found for token")
+        else:
+            logger.warning("websocket: no token in WS URL")
         # Store per-connection metadata for use in _dispatch_envelope
         self._conn_metadata: dict[Any, dict[str, str]] = getattr(self, '_conn_metadata', {})
         self._conn_metadata[connection] = conn_meta
@@ -1881,7 +1168,7 @@ class WebSocketChannel(BaseChannel):
 
                 envelope = _parse_envelope(raw)
                 if envelope is not None:
-                    await self._dispatch_envelope(connection, client_id, envelope)
+                    asyncio.create_task(self._dispatch_envelope(connection, client_id, envelope))
                     continue
 
                 content = _parse_inbound_payload(raw)
@@ -1975,95 +1262,9 @@ class WebSocketChannel(BaseChannel):
         envelope: dict[str, Any],
     ) -> None:
         """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message``)."""
-        t = envelope.get("type")
-        if t == "new_chat":
-            new_id = str(uuid.uuid4())
-            self._attach(connection, new_id)
-            await self._send_event(connection, "attached", chat_id=new_id)
-            return
-        if t == "attach":
-            cid = envelope.get("chat_id")
-            if not _is_valid_chat_id(cid):
-                await self._send_event(connection, "error", detail="invalid chat_id")
-                return
-            self._attach(connection, cid)
-            await self._send_event(connection, "attached", chat_id=cid)
-            return
-        if t == "message":
-            cid = envelope.get("chat_id")
-            content = envelope.get("content")
-            if not _is_valid_chat_id(cid):
-                await self._send_event(connection, "error", detail="invalid chat_id")
-                return
-            if not isinstance(content, str):
-                await self._send_event(connection, "error", detail="missing content")
-                return
+        from nanobot.api.ws_handlers import dispatch_envelope
 
-            raw_media = envelope.get("media")
-            media_paths: list[str] = []
-            if raw_media is not None:
-                if not isinstance(raw_media, list):
-                    await self._send_event(
-                        connection, "error",
-                        detail="image_rejected", reason="malformed",
-                    )
-                    return
-                media_paths, reason = self._save_envelope_media(raw_media)
-                if reason is not None:
-                    await self._send_event(
-                        connection, "error",
-                        detail="image_rejected", reason=reason,
-                    )
-                    return
-
-            # Allow image-only turns (content may be empty when media is attached).
-            if not content.strip() and not media_paths:
-                await self._send_event(connection, "error", detail="missing content")
-                return
-
-            # Auto-attach on first use so clients can one-shot without a separate attach.
-            self._attach(connection, cid)
-            msg_meta = {"remote": getattr(connection, "remote_address", None)}
-            conn_meta = getattr(self, '_conn_metadata', {}).get(connection, {})
-            msg_meta.update(conn_meta)
-            logger.debug("WS message: conn_meta={}, msg_meta={}", conn_meta, msg_meta)
-            await self._handle_message(
-                sender_id=client_id,
-                chat_id=cid,
-                content=content,
-                media=media_paths or None,
-                metadata=msg_meta,
-            )
-            return
-        if t == "save_source":
-            path = envelope.get("path")
-            content = envelope.get("content")
-            if not path or not isinstance(path, str):
-                await self._send_event(connection, "error", detail="missing path")
-                return
-            if not isinstance(content, str):
-                await self._send_event(connection, "error", detail="missing content")
-                return
-            conn_meta = getattr(self, '_conn_metadata', {}).get(connection, {})
-            role = conn_meta.get("role", "")
-            user_id = conn_meta.get("user_id", "")
-            if not role or not user_id:
-                await self._send_event(connection, "error", detail="not authenticated")
-                return
-            if ".." in path:
-                await self._send_event(connection, "error", detail="invalid path")
-                return
-            source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
-            target = (source_dir / path).resolve()
-            if not str(target).startswith(str(source_dir.resolve())):
-                await self._send_event(connection, "error", detail="access denied")
-                return
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-            await self._send_event(connection, "source_saved", path=path)
-            return
-
-        await self._send_event(connection, "error", detail=f"unknown type: {t!r}")
+        await dispatch_envelope(self, connection, client_id, envelope)
 
     async def stop(self) -> None:
         if not self._running:
@@ -2080,8 +1281,8 @@ class WebSocketChannel(BaseChannel):
         self._subs.clear()
         self._conn_chats.clear()
         self._conn_default.clear()
-        self._issued_tokens.clear()
-        self._api_tokens.clear()
+        self._auth = None
+        self._router = None
 
     async def _safe_send_to(self, connection: Any, raw: str, *, label: str = "") -> None:
         """Send a raw frame to one connection, cleaning up on ConnectionClosed."""

@@ -255,12 +255,21 @@
 
 <script setup>
 import { ref, reactive, computed, nextTick, watch, onMounted } from 'vue'
-import { marked } from 'marked'
-import markedKatex from 'marked-katex-extension'
 
-// Configure marked with GFM + KaTeX
-marked.setOptions({ breaks: true, gfm: true })
-marked.use(markedKatex({ throwOnError: false, output: 'html' }))
+// Lazy-load marked + katex (saves ~258 KB from initial bundle)
+let markedInstance = null
+let markedReady = false
+
+async function ensureMarked() {
+  if (markedReady) return markedInstance
+  const { marked } = await import('marked')
+  const { default: markedKatex } = await import('marked-katex-extension')
+  marked.setOptions({ breaks: true, gfm: true })
+  marked.use(markedKatex({ throwOnError: false, output: 'html' }))
+  markedInstance = marked
+  markedReady = true
+  return markedInstance
+}
 import { lessonPlan, setLessonPlan, clearLessonPlan, MOCK_LESSON_PLAN } from '../../composables/useLessonPlan.js'
 import { sectionComponents, FALLBACK_TYPE } from '../../components/index.js'
 import { useGateway } from '../../composables/useGateway.js'
@@ -421,8 +430,12 @@ function normalizePunctuation(text) {
 
 function renderMarkdown(text) {
   if (!text) return ''
+  // If marked not loaded yet, return plain text with basic escaping
+  if (!markedReady) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+  }
   try {
-    return marked.parse(normalizePunctuation(text))
+    return markedInstance.parse(normalizePunctuation(text))
   } catch {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
   }
@@ -2979,6 +2992,8 @@ onMounted(() => {
   document.addEventListener('keydown', onKeyDown)
   loadDraft()
   scrollChat()
+  // Pre-load marked + katex in background (non-blocking)
+  ensureMarked()
   const saved = loadUser()
   if (saved) {
     user.value = saved

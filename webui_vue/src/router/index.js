@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useGateway } from '../composables/useGateway.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const routes = [
   {
@@ -101,7 +103,7 @@ const router = createRouter({
 })
 
 // Auth guard — check login + role-based access
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (to.path === '/login') return true
   let user = null
   try {
@@ -122,6 +124,18 @@ router.beforeEach((to) => {
     const roleHome = { teacher: '/teacher/lesson-plan', student: '/student/learning-path' }
     return roleHome[user.role] || '/login'
   }
+
+  // Ensure gateway connection is established before navigating to protected pages
+  const { connected, connect } = useGateway()
+  if (!connected.value) {
+    try {
+      await connect({ role: user.role, userId: user.userId })
+    } catch (e) {
+      console.error('[router] Gateway connection failed:', e.message)
+      // Don't block navigation, let the page handle the connection error
+    }
+  }
+
   return true
 })
 

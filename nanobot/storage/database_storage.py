@@ -27,6 +27,7 @@ from ..models import (
     LearningProgress,
     Notification,
     AuditLog,
+    QuestionBank,
 )
 
 logger = logging.getLogger(__name__)
@@ -297,7 +298,7 @@ class DatabaseStorage(BaseStorage):
 
         async with get_session() as session:
             # Only pass fields that Homework model supports
-            valid_fields = {'hw_id', 'course_id', 'title', 'description', 'total_points', 'deadline', 'created_by', 'settings', 'created_at'}
+            valid_fields = {'hw_id', 'course_id', 'title', 'description', 'total_points', 'deadline', 'created_by', 'status', 'settings', 'created_at'}
             data = {k: v for k, v in homework_data.items() if k in valid_fields}
 
             # Convert deadline string to datetime if needed
@@ -346,8 +347,12 @@ class DatabaseStorage(BaseStorage):
             return await self.get_homework(hw_id)
 
     async def delete_homework(self, hw_id: str) -> bool:
-        """Delete homework. Returns True if successful."""
+        """Delete homework and all related submissions. Returns True if successful."""
         async with get_session() as session:
+            # Delete related submissions first
+            await session.execute(
+                delete(Submission).where(Submission.hw_id == hw_id)
+            )
             result = await session.execute(
                 delete(Homework).where(Homework.hw_id == hw_id)
             )
@@ -414,16 +419,16 @@ class DatabaseStorage(BaseStorage):
     async def update_submission(self, submission_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update submission data. Returns updated submission data."""
         async with get_session() as session:
-            await session.execute(
-                update(Submission).where(Submission.id == submission_id).values(**data)
-            )
+            # Use session.get() + direct attribute update to avoid SQL generation issues
+            submission = await session.get(Submission, submission_id)
+            if not submission:
+                return None
+            for key, value in data.items():
+                if hasattr(submission, key):
+                    setattr(submission, key, value)
             await session.flush()
-            # Return the updated submission
-            result = await session.execute(
-                select(Submission).where(Submission.id == submission_id)
-            )
-            submission = result.scalar_one_or_none()
-            return submission.to_dict() if submission else None
+            await session.refresh(submission)
+            return submission.to_dict()
 
     async def list_submissions(self, hw_id: str, student_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List submissions for a homework, optionally filtered by student."""
@@ -676,3 +681,92 @@ class DatabaseStorage(BaseStorage):
                 "status": "unhealthy",
                 "error": str(e),
             }
+
+    # Question Bank operations
+    async def add_to_question_bank(self, question_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a question to the question bank. Returns created question data."""
+        async with get_session() as session:
+            # Generate question_id if not provided
+            if 'question_id' not in question_data:
+                question_data['question_id'] = f"qb{uuid.uuid4().hex[:8]}"
+
+            # Filter to valid fields
+            valid_fields = {'course_id', 'question_id', 'question_type', 'content', 'points',
+                          'answer', 'options', 'explanation', 'tags', 'source', 'created_by'}
+            data = {k: v for k, v in question_data.items() if k in valid_fields}
+
+            question = QuestionBank(**data)
+            session.add(question)
+            await session.flush()
+            await session.refresh(question)
+            logger.info(f"Added question to bank: {question.question_id}")
+            return question.to_dict()
+
+    async def get_question_bank(self, question_id: int) -> Optional[Dict[str, Any]]:
+        """Get question from bank by ID. Returns None if not found."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(QuestionBank).where(QuestionBank.id == question_id)
+            )
+            question = result.scalar_one_or_none()
+            return question.to_dict() if question else None
+
+    async def list_question_bank(self, course_id: str, question_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List questions in the bank for a course, optionally filtered by type."""
+        async with get_session() as session:
+            query = select(QuestionBank).where(QuestionBank.course_id == course_id)
+            if question_type:
+                query = query.where(QuestionBank.question_type == question_type)
+            query = query.order_by(QuestionBank.created_at.desc())
+            result = await session.execute(query)
+            questions = result.scalars().all()
+            return [q.to_dict() for q in questions]
+
+    async def delete_from_question_bank(self, question_id: int) -> bool:
+        """Delete question from bank. Returns True if successful."""
+        async with get_session() as session:
+            result = await session.execute(
+                delete(QuestionBank).where(QuestionBank.id == question_id)
+            )
+            return result.rowcount > 0
+
+    async def update_question_bank(self, question_id: int, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a question in the bank. Returns updated question or None if not found."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(QuestionBank).where(QuestionBank.id == question_id)
+            )
+            question = result.scalar_one_or_none()
+            if not question:
+                return None
+
+            # Filter to updatable fields
+            updatable_fields = {'question_type', 'content', 'points', 'answer', 'options', 'explanation', 'tags'}
+            for key, value in update_data.items():
+                if key in updatable_fields:
+                    setattr(question, key, value)
+
+            await session.flush()
+            await session.refresh(question)
+            logger.info(f"Updated question in bank: {question.question_id}")
+            return question.to_dict()
+
+    async def batch_add_to_question_bank(self, questions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Add multiple questions to the question bank in a single session."""
+        valid_fields = {'course_id', 'question_id', 'question_type', 'content', 'points',
+                        'answer', 'options', 'explanation', 'tags', 'source', 'created_by'}
+        results = []
+        async with get_session() as session:
+            for q in questions:
+                # Generate question_id if not provided
+                if 'question_id' not in q:
+                    q['question_id'] = f"qb{uuid.uuid4().hex[:8]}"
+
+                data = {k: v for k, v in q.items() if k in valid_fields}
+                question = QuestionBank(**data)
+                session.add(question)
+                await session.flush()
+                await session.refresh(question)
+                logger.info(f"Added question to bank: {question.question_id}")
+                results.append(question.to_dict())
+        return results

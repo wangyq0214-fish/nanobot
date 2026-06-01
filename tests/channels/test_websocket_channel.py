@@ -13,18 +13,16 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 from websockets.frames import Close
 
+from nanobot.api.auth import _issue_route_secret_matches
+from nanobot.api.utils import normalize_path, parse_query
 from nanobot.bus.events import OutboundMessage
 from nanobot.channels.websocket import (
     WebSocketChannel,
     WebSocketConfig,
     _is_valid_chat_id,
-    _issue_route_secret_matches,
     _normalize_config_path,
-    _normalize_http_path,
     _parse_envelope,
     _parse_inbound_payload,
-    _parse_query,
-    _parse_request_path,
 )
 
 # -- Shared helpers (aligned with test_websocket_integration.py) ---------------
@@ -60,15 +58,16 @@ async def _http_get(url: str, headers: dict[str, str] | None = None) -> httpx.Re
 
 
 def test_normalize_http_path_strips_trailing_slash_except_root() -> None:
-    assert _normalize_http_path("/chat/") == "/chat"
-    assert _normalize_http_path("/chat?x=1") == "/chat"
-    assert _normalize_http_path("/") == "/"
+    assert normalize_path("/chat/") == "/chat"
+    assert normalize_path("/chat?x=1") == "/chat"
+    assert normalize_path("/") == "/"
 
 
 def test_parse_request_path_matches_normalize_and_query() -> None:
-    path, query = _parse_request_path("/ws/?token=secret&client_id=u1")
-    assert path == _normalize_http_path("/ws/?token=secret&client_id=u1")
-    assert query == _parse_query("/ws/?token=secret&client_id=u1")
+    path = normalize_path("/ws/?token=secret&client_id=u1")
+    query = parse_query("/ws/?token=secret&client_id=u1")
+    assert path == normalize_path("/ws/?token=secret&client_id=u1")
+    assert query == parse_query("/ws/?token=secret&client_id=u1")
 
 
 def test_normalize_config_path_matches_request() -> None:
@@ -77,7 +76,7 @@ def test_normalize_config_path_matches_request() -> None:
 
 
 def test_parse_query_extracts_token_and_client_id() -> None:
-    query = _parse_query("/?token=secret&client_id=u1")
+    query = parse_query("/?token=secret&client_id=u1")
     assert query.get("token") == ["secret"]
     assert query.get("client_id") == ["u1"]
 
@@ -489,8 +488,9 @@ async def test_token_issue_rejects_when_at_capacity(bus: MagicMock) -> None:
 
     try:
         # Fill issued tokens to capacity
-        channel._issued_tokens = {
-            f"nbwt_fill_{i}": time.monotonic() + 300 for i in range(channel._MAX_ISSUED_TOKENS)
+        from nanobot.api.auth import _MAX_ISSUED_TOKENS
+        channel.auth._issued_tokens = {
+            f"nbwt_fill_{i}": time.monotonic() + 300 for i in range(_MAX_ISSUED_TOKENS)
         }
 
         resp = await _http_get(

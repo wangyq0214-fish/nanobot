@@ -154,10 +154,10 @@
     <!-- Student info -->
     <div class="student-bar">
       <div class="sb-left">
-        <div class="sb-avatar">{{ activeSubmission.student[0] }}</div>
+        <div class="sb-avatar">{{ (activeSubmission.studentName || activeSubmission.studentId || '?')[0] }}</div>
         <div>
-          <div class="sb-name">{{ activeSubmission.student }} <span class="sb-class">{{ activeSubmission.className }}</span></div>
-          <div class="sb-meta">{{ activeSubmission.title }} · {{ activeSubmission.date }}</div>
+          <div class="sb-name">{{ activeSubmission.studentName || activeSubmission.studentId }}</div>
+          <div class="sb-meta">{{ activeSubmission.submittedAt }}</div>
         </div>
       </div>
       <span class="sb-status" :class="{ done: activeSubmission.status === 'graded' }">
@@ -223,6 +223,23 @@
               <div class="q-ref-label">参考答案</div>
               <p class="q-ref-text">{{ q.referenceAnswer }}</p>
             </div>
+            <!-- 手动批改输入框 (pending 状态) -->
+            <div v-if="activeSubmission.status !== 'graded' && manualGrades[q.id] !== undefined" class="manual-grade-input">
+              <div class="manual-grade-row">
+                <label class="manual-grade-label">得分</label>
+                <input type="number" class="manual-grade-score" v-model.number="manualGrades[q.id].score" :min="0" :max="q.maxScore" :placeholder="'0-' + q.maxScore" />
+                <span class="manual-grade-max">/ {{ q.maxScore }}</span>
+                <button class="ai-grade-q-btn" @click="aiGradeSingleQuestion(q)" :disabled="aiGradingQuestionId === q.id" :title="aiGradingQuestionId === q.id ? 'AI 评阅中…' : 'AI 智能评分'">
+                  <span v-if="aiGradingQuestionId === q.id" class="grade-spinner"></span>
+                  <span v-else>🤖</span>
+                  {{ aiGradingQuestionId === q.id ? '评阅中…' : 'AI 评分' }}
+                </button>
+              </div>
+              <div class="manual-grade-row">
+                <label class="manual-grade-label">评语</label>
+                <textarea class="manual-grade-comment" v-model="manualGrades[q.id].comment" rows="2" placeholder="输入评语（可选）"></textarea>
+              </div>
+            </div>
           </div>
 
           <!-- 评分结果 -->
@@ -252,6 +269,14 @@
   <div v-else class="pr-scroll">
     <!-- Pending state -->
     <template v-if="activeSubmission.status === 'pending'">
+      <div class="pr-section">
+        <div class="pr-sec-title">手动批改</div>
+        <p class="grade-intro">在左侧题目区域为主观题逐题打分、写评语，完成后点击下方按钮提交。</p>
+        <button class="grade-start manual-grade-btn" @click="submitManualGrade(activeSubmission)" :disabled="manualGradingInProgress">
+          <span v-if="manualGradingInProgress" class="grade-spinner"></span>
+          {{ manualGradingInProgress ? '提交中…' : '提交手动批改' }}
+        </button>
+      </div>
       <div class="pr-section">
         <div class="pr-sec-title">AI 批改</div>
         <p class="grade-intro">AI 助教将对客观题自动判分，主观题根据评分标准智能评阅，并生成多维分析报告。</p>
@@ -440,7 +465,7 @@ function goToLessonPlan() { window.location.href = '/' }
 function goToAnalytics() { window.location.href = '/analytics.html' }
 
 // ====== Course API ======
-const { courses, homeworkList, fetchCourses: apiFetchCourses, fetchHomeworkList: apiFetchHomeworkList, fetchSubmissions: apiFetchSubmissions, fetchHomeworkDetail: apiFetchHomeworkDetail } = useCourse()
+const { courses, homeworkList, fetchCourses: apiFetchCourses, fetchHomeworkList: apiFetchHomeworkList, fetchSubmissions: apiFetchSubmissions, fetchHomeworkDetail: apiFetchHomeworkDetail, gradeSubmission: apiGrade, aiGradeSubmission: apiAiGrade, aiGradeQuestion: apiAiGradeQuestion } = useCourse()
 
 const selectedCourseId = ref('')
 const selectedHwId = ref('')
@@ -491,15 +516,11 @@ async function selectHomework(hw) {
     const hwDetail = await apiFetchHomeworkDetail(selectedCourseId.value, hw.hwId, authToken.value)
     currentHomework.value = hwDetail
 
-    // Load submissions
+    // Load submissions (already normalized by useCourse)
     const subs = await apiFetchSubmissions(selectedCourseId.value, hw.hwId, authToken.value)
     submissions.value = (subs || []).map(s => ({
       ...s,
       id: s.id || `${s.hwId}-${s.studentId}`,
-      studentName: s.studentName || s.student_id || s.studentId,
-      studentId: s.studentId || s.student_id,
-      status: s.status || 'pending',
-      score: s.score || 0,
     }))
 
     // Update homework stats
@@ -517,42 +538,99 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const questionType = ref('all')
 const gradingInProgress = ref(false)
+const manualGradingInProgress = ref(false)
+const aiGradingQuestionId = ref(null)
 const gradeOptions = reactive({ detailed: true, rubric: true, suggestions: true })
+const manualGrades = reactive({})  // { [qid]: { score: number, comment: string } }
 
 const activeSubmission = computed(() => submissions.value.find(s => s.id === activeId.value) || null)
 
-// Parse questions from homework or submission
+// Map API question type → template objType
+function _mapObjType(type) {
+  if (type === 'choice') return 'choice'
+  if (type === 'true_false') return 'tf'
+  if (type === 'fill' || type === 'blank') return 'fill'
+  return null
+}
+const TYPE_LABELS = { choice: '选择题', tf: '判断题', fill: '填空题', short_answer: '简答题' }
+
 const displayQuestions = computed(() => {
   if (!activeSubmission.value) return []
 
-  // Try to get questions from homework detail
   let questions = []
   if (currentHomework.value?.questions) {
-    questions = currentHomework.value.questions
+    questions = currentHomework.value.questions.map((q, idx) => ({
+      id: q.id,
+      stem: q.content || q.stem || `题目 ${idx + 1}`,
+      maxScore: q.points ?? q.maxScore ?? 10,
+      objType: _mapObjType(q.type || q.objType),
+      typeLabel: TYPE_LABELS[q.type || q.objType] || '主观题',
+      options: q.options || [],
+      answerKey: q.answer || q.answerKey || '',
+      referenceAnswer: q.referenceAnswer || q.reference_answer || '',
+    }))
   } else if (activeSubmission.value.answers) {
-    // Convert answers to question format for display
     const answers = activeSubmission.value.answers
     questions = Object.entries(answers).map(([qid, answer], idx) => ({
-      id: idx + 1,
+      id: qid,
       stem: `题目 ${idx + 1}`,
       studentAnswer: typeof answer === 'string' ? answer : JSON.stringify(answer),
       maxScore: 10,
       objType: null,
+      typeLabel: '主观题',
       graded: activeSubmission.value.status === 'graded',
       studentScore: 0,
       comment: '',
     }))
   }
 
-  // Enrich with student answers from submission
   if (activeSubmission.value.answers && questions.length > 0) {
     const answers = activeSubmission.value.answers
-    questions = questions.map((q, idx) => ({
-      ...q,
-      studentAnswer: answers[q.id] || answers[`q${idx + 1}`] || answers[idx] || q.studentAnswer || '',
-      studentPick: answers[q.id] || answers[`q${idx + 1}`] || answers[idx] || q.studentPick || '',
-      graded: activeSubmission.value.status === 'graded',
-    }))
+    questions = questions.map((q, idx) => {
+      const studentAns = answers[q.id] || answers[`q${idx + 1}`] || answers[idx] || ''
+      const isObj = !!q.objType
+      // Auto-grade objective questions based on answer key
+      let graded = activeSubmission.value.status === 'graded'
+      let studentScore = q.studentScore ?? 0
+      let comment = q.comment ?? ''
+      if (isObj && q.answerKey) {
+        graded = true
+        if (q.objType === 'choice' || q.objType === 'tf') {
+          studentScore = studentAns === q.answerKey ? q.maxScore : 0
+          comment = studentScore > 0 ? '回答正确' : '回答错误'
+        } else if (q.objType === 'fill') {
+          const a = (studentAns || '').trim()
+          const b = (q.answerKey || '').trim()
+          if (!a) { studentScore = 0; comment = '未作答' }
+          else if (a === b) { studentScore = q.maxScore; comment = '回答正确' }
+          else if (b.includes(a) || a.includes(b)) { studentScore = Math.ceil(q.maxScore * 0.5); comment = '部分正确' }
+          else { studentScore = 0; comment = '回答错误' }
+        }
+      }
+      return {
+        ...q,
+        studentAnswer: typeof studentAns === 'string' ? studentAns : JSON.stringify(studentAns),
+        studentPick: studentAns,
+        graded,
+        studentScore,
+        comment,
+      }
+    })
+  }
+
+  // Merge graded results from submission feedback
+  if (activeSubmission.value.status === 'graded') {
+    const fb = activeSubmission.value.feedback
+    const gradedQs = fb?.questions || (Array.isArray(fb) ? fb : [])
+    if (gradedQs.length > 0) {
+      const qMap = Object.fromEntries(gradedQs.map(gq => [gq.id, gq]))
+      questions = questions.map(q => ({
+        ...q,
+        graded: true,
+        studentScore: qMap[q.id]?.studentScore ?? q.studentScore ?? 0,
+        comment: qMap[q.id]?.comment ?? q.comment ?? '',
+      }))
+    }
   }
 
   if (questionType.value === 'subjective') questions = questions.filter(q => !q.objType)
@@ -648,7 +726,19 @@ const radarData = computed(() => {
 const panelCollapsed = reactive({ left: false, right: false })
 
 // ====== Actions ======
-function selectSubmission(sub) { activeId.value = sub.id; questionType.value = 'all' }
+function selectSubmission(sub) {
+  activeId.value = sub.id
+  questionType.value = 'all'
+  // Reset manual grades for pending submissions
+  Object.keys(manualGrades).forEach(k => delete manualGrades[k])
+  if (sub.status !== 'graded' && currentHomework.value?.questions) {
+    currentHomework.value.questions.forEach(q => {
+      if (!['choice', 'true_false', 'fill', 'blank'].includes(q.type || q.objType)) {
+        manualGrades[q.id] = { score: 0, comment: '' }
+      }
+    })
+  }
+}
 function autoGradeObj(q) {
   if (q.objType === 'choice' || q.objType === 'tf') return q.studentPick === q.answerKey ? q.maxScore : 0
   if (q.objType === 'fill') { const a = (q.studentPick||'').trim(), b = (q.answerKey||'').trim(); if (!a) return 0; if (a === b) return q.maxScore; if (b.includes(a)||a.includes(b)) return Math.ceil(q.maxScore*0.5); return 0 }
@@ -656,30 +746,141 @@ function autoGradeObj(q) {
 }
 function autoGradeSub(q) { const l = (q.studentAnswer||'').length; if (l > 150) return { score: Math.round(q.maxScore*0.9), comment:'回答详细，条理清晰。' }; if (l > 80) return { score: Math.round(q.maxScore*0.72), comment:'回答基本完整，可进一步展开。' }; if (l > 30) return { score: Math.round(q.maxScore*0.5), comment:'回答偏简略，建议展开论述。' }; return { score: Math.round(q.maxScore*0.3), comment:'回答过于简略，需充分展开。' } }
 
-function gradeSubmission(sub) {
+async function gradeSubmission(sub) {
   gradingInProgress.value = true
-  setTimeout(() => {
+  try {
+    const saved = user.value
+    if (!saved) throw new Error('未登录')
+    const result = await apiAiGrade(selectedCourseId.value, selectedHwId.value, sub.studentId, saved.role, saved.userId, authToken.value)
     const idx = submissions.value.findIndex(s => s.id === sub.id)
-    if (idx === -1) { gradingInProgress.value = false; return }
-    const g = JSON.parse(JSON.stringify(sub)); g.status = 'graded'
-    g.questions.forEach(q => { q.graded = true; if (q.objType) { q.studentScore = autoGradeObj(q); q.comment = q.studentScore === q.maxScore ? '正确' : q.studentScore > 0 ? '部分正确' : '错误' } else { const r = autoGradeSub(q); q.studentScore = r.score; q.comment = r.comment } })
-    const tm = g.questions.reduce((a,q)=>a+q.maxScore,0); const ts = g.questions.reduce((a,q)=>a+q.studentScore,0); g.score = Math.round((ts/tm)*100)
-    g.rubric = [
-      { name:'基础知识', score:Math.round(g.questions.filter(q=>q.objType).reduce((a,q)=>a+q.studentScore,0)/Math.max(1,g.questions.filter(q=>q.objType).reduce((a,q)=>a+q.maxScore,0))*20)||Math.round(14+Math.random()*6), max:20 },
-      { name:'内容理解', score:Math.round(12+Math.random()*8), max:20 },{ name:'分析深度', score:Math.round(10+Math.random()*10), max:20 },{ name:'语言表达', score:Math.round(10+Math.random()*10), max:20 },
-      { name:'文学鉴赏', score:Math.round(6+Math.random()*9), max:15 },{ name:'创新思维', score:Math.round(4+Math.random()*6), max:10 },
-    ]
-    g.feedback = `本次作业完成质量${g.score>=85?'优秀':g.score>=70?'良好':'一般'}。客观题${g.questions.filter(q=>q.objType&&q.studentScore===q.maxScore).length}/${g.questions.filter(q=>q.objType).length}道全对，主观题${g.score>=80?'分析到位、表述清晰':g.score>=70?'基本理解正确但深度有待加强':'需要提升分析深度和语言组织'}。`
-    g.strengths = g.score>=80 ? ['客观题正确率高','对文本有较深理解','作答思路清晰'] : ['能完成全部题目','对课文有基本了解']
-    g.improvements = g.score>=80 ? [{ title:'精益求精', detail:'尝试从更多维度展开，如社会背景、作者生平，使论述更加立体。' },{ title:'术语规范', detail:'多使用"细节描写""情感线索""以小见大"等专业术语。' }] : [{ title:'夯实基础', detail:'客观题需加强记忆和理解，避免粗心失分。' },{ title:'提升分析深度', detail:'主观题每道至少展开3-4句，采用"观点+原文+分析"的结构。' }]
-    submissions.value.splice(idx,1,g); gradingInProgress.value = false
-  }, 1600)
+    if (idx !== -1) {
+      const updated = {
+        ...sub,
+        status: 'graded',
+        score: result.score || 0,
+        feedback: result.feedback || '',
+        rubric: result.rubric || [],
+        strengths: result.strengths || [],
+        improvements: result.improvements || [],
+      }
+      if (result.questions) {
+        const qMap = Object.fromEntries(result.questions.map(q => [q.id, q]))
+        updated.questions = sub.questions.map(q => ({
+          ...q,
+          graded: true,
+          studentScore: qMap[q.id]?.studentScore ?? q.studentScore ?? 0,
+          comment: qMap[q.id]?.comment ?? q.comment ?? '',
+        }))
+      }
+      submissions.value.splice(idx, 1, updated)
+    }
+  } catch (e) {
+    console.error('AI grading failed:', e)
+    alert('AI 批改失败: ' + (e.message || '未知错误'))
+  } finally {
+    gradingInProgress.value = false
+  }
 }
 
-function batchGradeAll() {
-  const pending = submissions.value.filter(s => s.status === 'pending'); if (!pending.length) return
-  gradingInProgress.value = true; let i = 0
-  const go = () => { if (i >= pending.length) { gradingInProgress.value = false; return }; const idx = submissions.value.findIndex(s => s.id === pending[i].id); if (idx !== -1) { const g = JSON.parse(JSON.stringify(submissions.value[idx])); g.status = 'graded'; g.questions.forEach(q => { q.graded = true; if (q.objType) { q.studentScore = autoGradeObj(q); q.comment = q.studentScore === q.maxScore ? '正确' : q.studentScore > 0 ? '部分正确' : '错误' } else { const r = autoGradeSub(q); q.studentScore = r.score; q.comment = r.comment } }); const tm = g.questions.reduce((a,q)=>a+q.maxScore,0); g.score = Math.round((g.questions.reduce((a,q)=>a+q.studentScore,0)/tm)*100); g.rubric = [{ name:'基础知识', score:Math.round(10+Math.random()*10), max:20 },{ name:'内容理解', score:Math.round(10+Math.random()*10), max:20 },{ name:'分析深度', score:Math.round(8+Math.random()*12), max:20 },{ name:'语言表达', score:Math.round(8+Math.random()*12), max:20 },{ name:'文学鉴赏', score:Math.round(5+Math.random()*10), max:15 },{ name:'创新思维', score:Math.round(3+Math.random()*7), max:10 }]; g.feedback = '已完成批改。'; g.strengths = ['完成了全部题目']; g.improvements = [{ title:'继续努力', detail:'加强日常练习和阅读积累。' }]; submissions.value.splice(idx,1,g) }; i++; setTimeout(go,250) }; go()
+async function batchGradeAll() {
+  const pending = submissions.value.filter(s => s.status !== 'graded')
+  if (!pending.length) return
+  gradingInProgress.value = true
+  for (const sub of pending) {
+    try {
+      const saved = user.value
+      if (!saved) break
+      const result = await apiAiGrade(selectedCourseId.value, selectedHwId.value, sub.studentId, saved.role, saved.userId, authToken.value)
+      const idx = submissions.value.findIndex(s => s.id === sub.id)
+      if (idx !== -1) {
+        const updated = {
+          ...sub,
+          status: 'graded',
+          score: result.score || 0,
+          feedback: result.feedback || '',
+          rubric: result.rubric || [],
+          strengths: result.strengths || [],
+          improvements: result.improvements || [],
+        }
+        if (result.questions) {
+          const qMap = Object.fromEntries(result.questions.map(q => [q.id, q]))
+          updated.questions = sub.questions.map(q => ({
+            ...q,
+            graded: true,
+            studentScore: qMap[q.id]?.studentScore ?? q.studentScore ?? 0,
+            comment: qMap[q.id]?.comment ?? q.comment ?? '',
+          }))
+        }
+        submissions.value.splice(idx, 1, updated)
+      }
+    } catch (e) {
+      console.error(`AI grading failed for ${sub.studentId}:`, e)
+    }
+  }
+  gradingInProgress.value = false
+}
+
+async function submitManualGrade(sub) {
+  manualGradingInProgress.value = true
+  try {
+    const saved = user.value
+    if (!saved) throw new Error('未登录')
+    // Collect per-question grades
+    const questions = Object.entries(manualGrades).map(([qid, g]) => ({
+      id: qid, score: g.score || 0, comment: g.comment || '',
+    }))
+    if (questions.length === 0) { alert('请至少为一道主观题评分'); return }
+    const result = await apiGrade(selectedCourseId.value, selectedHwId.value, sub.studentId, 0, '', saved.role, saved.userId, authToken.value, questions)
+    const idx = submissions.value.findIndex(s => s.id === sub.id)
+    if (idx !== -1) {
+      const updated = {
+        ...sub,
+        status: 'graded',
+        score: result.submission?.score ?? 0,
+        feedback: result.submission?.feedback || {},
+      }
+      // Merge graded questions into submission
+      const gradedQs = result.submission?.feedback?.questions
+      if (gradedQs) {
+        const qMap = Object.fromEntries(gradedQs.map(q => [q.id, q]))
+        updated.questions = (sub.questions || []).map(q => ({
+          ...q,
+          graded: true,
+          studentScore: qMap[q.id]?.studentScore ?? q.studentScore ?? 0,
+          comment: qMap[q.id]?.comment ?? q.comment ?? '',
+        }))
+      }
+      submissions.value.splice(idx, 1, updated)
+    }
+  } catch (e) {
+    console.error('Manual grading failed:', e)
+    alert('手动批改失败: ' + (e.message || '未知错误'))
+  } finally {
+    manualGradingInProgress.value = false
+  }
+}
+
+async function aiGradeSingleQuestion(q) {
+  aiGradingQuestionId.value = q.id
+  try {
+    const saved = user.value
+    if (!saved) throw new Error('未登录')
+    const result = await apiAiGradeQuestion(selectedCourseId.value, selectedHwId.value, {
+      content: q.stem,
+      maxScore: q.maxScore,
+      referenceAnswer: q.referenceAnswer || '',
+      studentAnswer: q.studentAnswer || '',
+    }, saved.role, saved.userId, authToken.value)
+    if (manualGrades[q.id]) {
+      manualGrades[q.id].score = result.score ?? 0
+      manualGrades[q.id].comment = result.comment ?? ''
+    }
+  } catch (e) {
+    console.error('AI question grading failed:', e)
+    alert('AI 评分失败: ' + (e.message || '未知错误'))
+  } finally {
+    aiGradingQuestionId.value = null
+  }
 }
 
 function exportReport(f) { alert(`导出 ${f.toUpperCase()}（Demo 模式暂不可用）`) }
@@ -1074,6 +1275,41 @@ body.dark .batch-btn {
   border-bottom:1px solid var(--accent-light); padding-bottom:3px;
 }
 .q-ref-text { font-size:0.82rem; color:var(--accent-deep); line-height:1.8; margin:0; }
+
+/* Manual grading inputs */
+.manual-grade-input {
+  margin-top:8px; padding:12px 14px; border-radius:10px;
+  border:1.5px dashed var(--accent); background:var(--accent-dim);
+}
+.manual-grade-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.manual-grade-row:last-child { margin-bottom:0; }
+.manual-grade-label {
+  font-size:0.68rem; font-weight:700; color:var(--accent-deep); flex-shrink:0; width:32px;
+}
+.manual-grade-score {
+  width:60px; padding:4px 8px; border-radius:6px; border:1px solid var(--accent);
+  background:var(--bg-card); font-size:0.82rem; color:var(--text-primary);
+  text-align:center;
+}
+.manual-grade-score:focus { outline:none; border-color:var(--accent-deep); box-shadow:0 0 0 2px var(--accent-soft); }
+.manual-grade-max { font-size:0.72rem; color:var(--text-muted); }
+.manual-grade-comment {
+  flex:1; padding:6px 10px; border-radius:6px; border:1px solid var(--accent);
+  background:var(--bg-card); font-size:0.78rem; color:var(--text-primary);
+  resize:vertical; font-family:inherit;
+}
+.manual-grade-comment:focus { outline:none; border-color:var(--accent-deep); box-shadow:0 0 0 2px var(--accent-soft); }
+.manual-grade-btn { background:var(--accent-deep) !important; }
+.ai-grade-q-btn {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:4px 10px; border-radius:6px; border:1px solid var(--accent);
+  background:var(--accent-dim); color:var(--accent-deep);
+  font-size:0.68rem; font-weight:600; cursor:pointer;
+  transition:all 0.2s; flex-shrink:0; white-space:nowrap;
+}
+.ai-grade-q-btn:hover:not(:disabled) { background:var(--accent-soft); border-color:var(--accent-deep); }
+.ai-grade-q-btn:disabled { opacity:0.6; cursor:not-allowed; }
+.ai-grade-q-btn .grade-spinner { width:12px; height:12px; }
 
 /* Footer */
 .q-footer { display:flex;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--divider);margin-top:4px; }
