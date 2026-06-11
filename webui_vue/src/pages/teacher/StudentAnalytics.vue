@@ -14,63 +14,86 @@
           </div>
         </div>
 
-        <!-- Radar Chart -->
-        <div class="chart-section">
-          <h3>能力雷达图</h3>
-          <div ref="radarEl" class="chart-container"></div>
-        </div>
+        <!-- 2x2 网格容器 -->
+        <div class="grid-container">
+          <!-- Radar Chart -->
+          <div class="chart-section panel">
+            <div class="panel-hd">
+              <i class="panel-accent-bar"></i>
+              <span class="panel-title">能力雷达图</span>
+            </div>
+            <div class="panel-body">
+              <div ref="radarEl" class="chart-container"></div>
+            </div>
+          </div>
 
-        <!-- Weak Points -->
-        <div class="section">
-          <h3>薄弱知识点</h3>
-          <table class="data-table">
-            <thead><tr><th>知识点</th><th>掌握度</th><th>状态</th></tr></thead>
-            <tbody>
-              <tr v-for="wp in mockData.weakPoints" :key="wp.name">
-                <td>{{ wp.name }}</td>
-                <td>
-                  <div class="progress-bar">
-                    <div class="progress-fill" :style="{ width: wp.pct + '%', background: wp.pct < 50 ? '#e74c3c' : wp.pct < 70 ? '#f39c12' : '#2ecc71' }"></div>
+          <!-- Weak Points -->
+          <div class="section panel">
+            <div class="panel-hd">
+              <i class="panel-accent-bar"></i>
+              <span class="panel-title">薄弱知识点</span>
+            </div>
+            <div class="panel-body">
+              <table class="data-table">
+                <thead><tr><th>知识点</th><th>掌握度</th><th>状态</th></tr></thead>
+                <tbody>
+                  <tr v-for="wp in mockData.weakPoints" :key="wp.name">
+                    <td>{{ wp.name }}</td>
+                    <td>
+                      <div class="progress-bar">
+                        <div class="progress-fill" :style="{ width: wp.pct + '%', background: wp.pct < 50 ? '#ef4444' : wp.pct < 70 ? '#f59e0b' : '#0d9488' }"></div>
+                      </div>
+                      <span class="pct-label">{{ wp.pct }}%</span>
+                    </td>
+                    <td><span class="status-badge" :class="wp.pct < 50 ? 'danger' : wp.pct < 70 ? 'warning' : 'good'">
+                      {{ wp.pct < 50 ? '需加强' : wp.pct < 70 ? '待巩固' : '已掌握' }}
+                    </span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Homework History -->
+          <div class="section panel">
+            <div class="panel-hd">
+              <i class="panel-accent-bar"></i>
+              <span class="panel-title">作业记录</span>
+            </div>
+            <div class="panel-body">
+              <table class="data-table">
+                <thead><tr><th>作业</th><th>提交时间</th><th>得分</th><th>状态</th></tr></thead>
+                <tbody>
+                  <tr v-for="hw in mockData.homeworkHistory" :key="hw.title">
+                    <td>{{ hw.title }}</td>
+                    <td>{{ hw.submittedAt }}</td>
+                    <td>{{ hw.score }}/{{ hw.total }}</td>
+                    <td><span class="status-badge" :class="hw.score / hw.total >= 0.7 ? 'good' : 'warning'">
+                      {{ hw.score / hw.total >= 0.7 ? '良好' : '待提升' }}
+                    </span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Learning Path -->
+          <div class="section panel">
+            <div class="panel-hd">
+              <i class="panel-accent-bar"></i>
+              <span class="panel-title">学习路径进度</span>
+            </div>
+            <div class="panel-body">
+              <div class="path-list">
+                <div v-for="p in mockData.learningPath" :key="p.name" class="path-item">
+                  <div class="path-indicator" :class="p.status"></div>
+                  <div class="path-info">
+                    <span class="path-name">{{ p.name }}</span>
+                    <span class="path-desc">{{ p.desc }}</span>
                   </div>
-                  <span class="pct-label">{{ wp.pct }}%</span>
-                </td>
-                <td><span class="status-badge" :class="wp.pct < 50 ? 'danger' : wp.pct < 70 ? 'warning' : 'good'">
-                  {{ wp.pct < 50 ? '需加强' : wp.pct < 70 ? '待巩固' : '已掌握' }}
-                </span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Homework History -->
-        <div class="section">
-          <h3>作业记录</h3>
-          <table class="data-table">
-            <thead><tr><th>作业</th><th>提交时间</th><th>得分</th><th>状态</th></tr></thead>
-            <tbody>
-              <tr v-for="hw in mockData.homeworkHistory" :key="hw.title">
-                <td>{{ hw.title }}</td>
-                <td>{{ hw.submittedAt }}</td>
-                <td>{{ hw.score }}/{{ hw.total }}</td>
-                <td><span class="status-badge" :class="hw.score / hw.total >= 0.7 ? 'good' : 'warning'">
-                  {{ hw.score / hw.total >= 0.7 ? '良好' : '待提升' }}
-                </span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Learning Path -->
-        <div class="section">
-          <h3>学习路径进度</h3>
-          <div class="path-list">
-            <div v-for="p in mockData.learningPath" :key="p.name" class="path-item">
-              <div class="path-indicator" :class="p.status"></div>
-              <div class="path-info">
-                <span class="path-name">{{ p.name }}</span>
-                <span class="path-desc">{{ p.desc }}</span>
+                  <span class="path-pct">{{ p.pct }}%</span>
+                </div>
               </div>
-              <span class="path-pct">{{ p.pct }}%</span>
             </div>
           </div>
         </div>
@@ -80,6 +103,7 @@
 </template>
 
 <script setup>
+// 脚本与原来完全一致，无需任何修改
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import echarts from '../../utils/echarts.js'
@@ -101,7 +125,6 @@ const courseName = ref('')
 const radarEl = ref(null)
 let chartInstance = null
 
-// Mock data
 const mockData = {
   totalScore: 78.5,
   weakPoints: [
@@ -174,73 +197,322 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.app-shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg, #f8f6f1); }
-.main-area { flex: 1; overflow-y: auto; padding: 24px 32px; }
-.analytics-page { width: 100%; }
+/* ========== 主题变量 ========== */
+:root {
+  --bg-root: #f4f3f9;
+  --bg-card: rgba(255, 255, 255, 0.55);
+  --accent: #6b5df0;
+  --accent-deep: #5a4ad0;
+  --accent-soft: rgba(107, 93, 240, 0.09);
+  --accent-glow: rgba(107, 93, 240, 0.22);
+  --border-light: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.14);
+  --text-primary: #1a1828;
+  --text-secondary: #514e68;
+  --text-muted: #85829e;
+  --divider: rgba(0, 0, 0, 0.06);
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #0d9488;
+}
 
-/* Login */
-.login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-.login-card { background: #fff; border-radius: 16px; padding: 40px; width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-.login-header { text-align: center; margin-bottom: 24px; }
-.login-logo { font-size: 1.5rem; font-weight: 700; }
-.login-logo .dot { display: inline-block; width: 8px; height: 8px; background: #5b8def; border-radius: 50%; margin-right: 6px; }
-.login-subtitle { color: #888; font-size: 0.85rem; margin-top: 4px; }
-.login-input { width: 100%; padding: 10px 14px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.9rem; outline: none; box-sizing: border-box; }
-.login-error { color: #e74c3c; font-size: 0.8rem; margin-top: 8px; }
-.login-submit { width: 100%; padding: 10px; background: #5b8def; color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 12px; }
-.login-submit:disabled { opacity: 0.5; }
+body.dark {
+  --bg-root: #080810;
+  --bg-card: rgba(18, 19, 34, 0.50);
+  --accent: #8b70ff;
+  --accent-deep: #6b50e0;
+  --accent-soft: rgba(139, 112, 255, 0.12);
+  --accent-glow: rgba(139, 112, 255, 0.30);
+  --border-light: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --text-primary: #e2e0f4;
+  --text-secondary: #a09cb8;
+  --text-muted: #6d6a88;
+  --divider: rgba(255, 255, 255, 0.07);
+}
 
-.back-btn { background: none; border: none; color: #5b8def; font-size: 0.85rem; cursor: pointer; margin-bottom: 16px; padding: 0; }
+/* ========== 布局 ========== */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-root);
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: var(--text-primary);
+  transition: background 0.4s, color 0.4s;
+}
 
-/* Student Card */
-.student-card { display: flex; align-items: center; gap: 16px; background: #fff; border-radius: 12px; padding: 20px 24px; margin-bottom: 24px; border: 1px solid #e8e4db; }
-.avatar { width: 48px; height: 48px; border-radius: 50%; background: #5b8def; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 700; }
-.info h2 { margin: 0; font-size: 1.2rem; }
-.info .meta { margin: 4px 0 0; font-size: 0.82rem; color: #888; }
+.main-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 32px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+}
 
-/* Chart */
-.chart-section { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 24px; border: 1px solid #e8e4db; }
-.chart-section h3 { margin: 0 0 12px; font-size: 1rem; }
-.chart-container { width: 100%; height: 320px; }
+.main-area::-webkit-scrollbar {
+  width: 4px;
+}
+.main-area::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 2px;
+}
 
-/* Sections */
-.section { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #e8e4db; }
-.section h3 { margin: 0 0 14px; font-size: 1rem; }
+.analytics-page {
+  width: 100%;
+}
 
-/* Data table */
-.data-table { width: 100%; border-collapse: collapse; }
-.data-table th, .data-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #f0ede8; font-size: 0.82rem; }
-.data-table th { font-weight: 600; color: #555; }
+/* ========== 返回按钮 ========== */
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-bottom: 16px;
+  padding: 4px 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s;
+}
+.back-btn:hover {
+  color: var(--accent-deep);
+}
 
-/* Progress bar */
-.progress-bar { display: inline-block; width: 80px; height: 6px; background: #e8e4db; border-radius: 3px; vertical-align: middle; margin-right: 8px; }
-.progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
-.pct-label { font-size: 0.78rem; color: #666; }
+/* ========== 学生卡片 ========== */
+.student-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1.8px solid var(--accent);
+  border-radius: 14px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 0 16px var(--accent-soft);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.student-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 28px var(--accent-glow);
+}
 
-/* Status badges */
-.status-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-.status-badge.danger { background: #fde8e8; color: #e74c3c; }
-.status-badge.warning { background: #fff3e0; color: #e67e22; }
-.status-badge.good { background: #e8f5e9; color: #2e7d32; }
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  font-weight: 700;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
 
-/* Learning path */
-.path-list { display: flex; flex-direction: column; gap: 12px; }
-.path-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0ede8; }
-.path-item:last-child { border-bottom: none; }
-.path-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.path-indicator.done { background: #2ecc71; }
-.path-indicator.current { background: #f39c12; }
-.path-indicator.future { background: #ddd; }
-.path-info { flex: 1; }
-.path-name { font-weight: 600; font-size: 0.88rem; display: block; }
-.path-desc { font-size: 0.78rem; color: #888; }
-.path-pct { font-size: 0.82rem; font-weight: 600; color: #555; }
+.info h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--text-primary);
+}
 
-/* Dark */
-:global(body.dark) .app-shell { background: #12121a; }
-:global(body.dark) .login-card, :global(body.dark) .student-card,
-:global(body.dark) .chart-section, :global(body.dark) .section { background: #1e1e2e; border-color: #333; }
-:global(body.dark) .info h2, :global(body.dark) .chart-section h3, :global(body.dark) .section h3 { color: #e0e0e0; }
-:global(body.dark) .login-input { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
-:global(body.dark) .data-table th { color: #ccc; }
+.info .meta {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* ========== 2x2 网格容器 ========== */
+.grid-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* ========== 通用面板样式 ========== */
+.panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.8px solid var(--accent);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 16px var(--accent-soft);
+  transition: border-color 0.3s, box-shadow 0.3s;
+  /* 移除 margin-bottom，网格 gap 已控制间距 */
+  margin-bottom: 0;
+}
+.panel:hover {
+  border-color: var(--accent);
+  box-shadow: 0 8px 28px var(--accent-glow);
+}
+
+.panel-hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.panel-accent-bar {
+  display: inline-block;
+  width: 4px;
+  height: 16px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--accent-glow);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.4px;
+}
+
+.panel-body {
+  padding: 16px 20px;
+}
+
+/* ========== 图表容器 ========== */
+.chart-container {
+  width: 100%;
+  height: 280px; /* 适当缩小，适应网格 */
+}
+
+/* ========== 表格 ========== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--divider);
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.data-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ========== 进度条 ========== */
+.progress-bar {
+  display: inline-block;
+  width: 80px;
+  height: 6px;
+  background: var(--divider);
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.pct-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ========== 状态徽章 ========== */
+.status-badge {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.status-badge.danger {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.status-badge.warning {
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.status-badge.good {
+  background: rgba(13, 148, 136, 0.08);
+  color: var(--success);
+  border: 1px solid rgba(13, 148, 136, 0.25);
+}
+
+/* ========== 学习路径 ========== */
+.path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.path-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.path-item:last-child {
+  border-bottom: none;
+}
+
+.path-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.path-indicator.done {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(13, 148, 136, 0.4);
+}
+
+.path-indicator.current {
+  background: var(--warning);
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+.path-indicator.future {
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.path-info {
+  flex: 1;
+}
+
+.path-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  display: block;
+  color: var(--text-primary);
+}
+
+.path-desc {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.path-pct {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
 </style>

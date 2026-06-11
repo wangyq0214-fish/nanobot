@@ -74,7 +74,7 @@ class StorageWrapper:
             return hw
         # Get questions from settings if available
         settings = hw.get("settings", {}) or {}
-        questions = settings.get("questions", [])
+        questions = hw.get("questions") or settings.get("questions", [])
         return {
             "hwId": hw.get("hw_id", ""),
             "courseId": hw.get("course_id", ""),

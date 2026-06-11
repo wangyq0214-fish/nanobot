@@ -608,6 +608,7 @@ class WebSocketChannel(BaseChannel):
 
         got = normalize_path(request.path)
         query = parse_query(request.path)
+        logger.info("[dispatch_http] path={!r} normalized={!r} query_keys={}", request.path, got, list(query.keys()))
 
         # 1. Token issue endpoint (legacy, optional, gated by configured secret).
         #    Dynamic path from config — not suitable for the static route table.
