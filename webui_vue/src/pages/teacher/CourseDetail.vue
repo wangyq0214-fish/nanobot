@@ -2,10 +2,19 @@
   <div class="app-shell">
     <TeacherNav active-tab="courses" @logout="onLogout" />
 
-    <div class="main-area">
+    <!-- 主内容框：紫色描边 + 扫描线 + 横向铺满 -->
+    <div class="main-area panel">
+      <!-- 四边扫描线装饰 -->
+      <div class="panel-strip top"></div>
+      <div class="panel-strip right"></div>
+      <div class="panel-strip bottom"></div>
+      <div class="panel-strip left"></div>
+
       <div class="detail-page">
-        <!-- Back + Header -->
+        <!-- 返回按钮 -->
         <button class="back-btn" @click="$router.push('/teacher/courses')">← 返回课程列表</button>
+
+        <!-- 课程头部 -->
         <div v-if="course" class="course-header">
           <div class="course-info">
             <h2>{{ course.courseName }}</h2>
@@ -18,7 +27,7 @@
           </div>
         </div>
 
-        <!-- Tabs -->
+        <!-- 标签栏 -->
         <div class="tab-bar">
           <span class="tab-item" :class="{ active: activeTab === 'lessons' }" @click="activeTab = 'lessons'">课时</span>
           <span class="tab-item" :class="{ active: activeTab === 'homework' }" @click="activeTab = 'homework'">作业</span>
@@ -26,7 +35,7 @@
           <span class="tab-item" :class="{ active: activeTab === 'students' }" @click="activeTab = 'students'">学生 ({{ members.length }})</span>
         </div>
 
-        <!-- Tab: Lessons -->
+        <!-- ===== 课时 ===== -->
         <div v-if="activeTab === 'lessons'" class="tab-content">
           <div v-if="lessons.length === 0" class="empty-hint">暂无课时，通过教案页面生成教案后可关联到课程</div>
           <div v-for="l in lessons" :key="l.lessonId" class="lesson-card">
@@ -43,7 +52,7 @@
           </div>
         </div>
 
-        <!-- Tab: Homework -->
+        <!-- ===== 作业 ===== -->
         <div v-if="activeTab === 'homework'" class="tab-content">
           <div class="tab-header">
             <button class="btn-primary" @click="showCreateHw = true">+ 布置作业</button>
@@ -75,7 +84,6 @@
                 <button v-if="hw.status === 'published'" class="btn-secondary" @click="viewSubmissions(hw.hwId)">查看提交 ({{ submissionCounts[hw.hwId] || 0 }})</button>
                 <span v-else class="hint-text">发布后学生才能提交</span>
               </div>
-              <!-- Submissions list -->
               <div v-if="viewingSubmissions === hw.hwId" class="submissions-panel">
                 <h4>提交列表</h4>
                 <div v-if="currentSubmissions.length === 0" class="empty-hint">暂无提交</div>
@@ -90,9 +98,9 @@
           </div>
         </div>
 
-        <!-- Tab: Question Bank -->
+        <!-- ===== 题库 ===== -->
         <div v-if="activeTab === 'questionBank'" class="tab-content">
-          <div class="tab-header">
+          <div class="tab-header qb-header">
             <div class="qb-filter-row">
               <select v-model="qbFilterType" class="qb-filter-select">
                 <option value="">全部题型</option>
@@ -111,7 +119,7 @@
           <div v-for="(q, qi) in filteredQuestionBank" :key="q.id" class="qb-question-card"
                :class="{ 'qb-editing': editingQuestion && editingQuestion.id === q.id }">
 
-            <!-- View Mode -->
+            <!-- 查看模式 -->
             <template v-if="!(editingQuestion && editingQuestion.id === q.id)">
               <div class="q-header">
                 <span class="q-num">{{ qi + 1 }}</span>
@@ -128,7 +136,7 @@
               <div v-if="q.explanation" class="q-explanation">解析：{{ q.explanation }}</div>
             </template>
 
-            <!-- Inline Edit Mode -->
+            <!-- 编辑模式 -->
             <template v-else>
               <div class="inline-edit-form">
                 <div class="form-row">
@@ -143,7 +151,6 @@
                 </div>
                 <textarea v-model="editingQuestion.content" rows="3" placeholder="题目内容" class="q-content-input"></textarea>
 
-                <!-- Choice options -->
                 <div v-if="editingQuestion.questionType === 'choice'" class="options-section">
                   <div v-for="(opt, oi) in editingQuestion.options" :key="oi" class="option-row">
                     <span>{{ String.fromCharCode(65 + oi) }}.</span>
@@ -159,7 +166,6 @@
                   </div>
                 </div>
 
-                <!-- True/False -->
                 <div v-if="editingQuestion.questionType === 'true_false'" class="answer-row">
                   <label>正确答案：</label>
                   <select v-model="editingQuestion.answer">
@@ -168,7 +174,6 @@
                   </select>
                 </div>
 
-                <!-- Fill/Short answer/Essay -->
                 <div v-if="['fill', 'short_answer', 'essay'].includes(editingQuestion.questionType)" class="answer-row">
                   <label>参考答案：</label>
                   <textarea v-model="editingQuestion.answer" rows="2" placeholder="参考答案"></textarea>
@@ -185,7 +190,7 @@
           </div>
         </div>
 
-        <!-- Tab: Students -->
+        <!-- ===== 学生 ===== -->
         <div v-if="activeTab === 'students'" class="tab-content">
           <div v-if="members.length === 0" class="empty-hint">暂无学生加入，分享课程码 <strong>{{ course?.joinCode }}</strong> 给学生</div>
           <table v-else class="students-table">
@@ -202,13 +207,11 @@
       </div>
     </div>
 
-    <!-- CREATE HOMEWORK DIALOG -->
+    <!-- 对话框组件 -->
     <CreateHomeworkDialog v-if="showCreateHw" :user="user" @close="showCreateHw = false" @created="onHomeworkCreated" />
-
-    <!-- QUESTION BANK DIALOG -->
     <QuestionBankDialog v-if="showQuestionBank" :user="user" @close="onQuestionBankClose" @updated="onQuestionBankUpdated" />
 
-    <!-- GRADE DIALOG -->
+    <!-- 批改对话框 -->
     <div v-if="gradingSub" class="dialog-overlay" @click.self="gradingSub = null">
       <div class="dialog-card">
         <h3>批改: {{ gradingSub.studentId }}</h3>
@@ -230,7 +233,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { marked } from 'marked'
 import { useAuth } from '../../composables/useAuth.js'
@@ -277,16 +280,14 @@ async function loadAll() {
     fetchLessons(courseId, t),
     fetchHomeworkList(courseId, t),
   ])
-  // Load question bank
   try {
     questionBank.value = await fetchQuestionBank(courseId, t)
-  } catch { /* ignore */ }
-  // Load submission counts for each homework
+  } catch {}
   for (const hw of homeworkList.value) {
     try {
       const subs = await fetchSubmissions(courseId, hw.hwId, t)
       submissionCounts[hw.hwId] = subs.length
-    } catch { /* ignore */ }
+    } catch {}
   }
 }
 
@@ -305,49 +306,30 @@ async function handleDeleteHomework(hw) {
   if (!confirm(`确定要删除作业"${hw.title}"吗？此操作不可恢复。`)) return
   try {
     const t = getToken()
-    const saved = user.value
-    if (!saved) return
-    await deleteHomework(courseId, hw.hwId, saved.role, saved.userId, t)
-    // Reload homework list
+    if (!user.value) return
+    await deleteHomework(courseId, hw.hwId, user.value.role, user.value.userId, t)
     await fetchHomeworkList(courseId, t)
     alert('作业已删除')
-  } catch (e) {
-    console.error('Failed to delete homework:', e)
-    alert('删除失败: ' + (e.message || '未知错误'))
-  }
+  } catch (e) { alert('删除失败: ' + (e.message || '未知错误')) }
 }
 
 async function handlePublishHomework(hw) {
   if (!confirm(`确定要发布作业"${hw.title}"吗？发布后学生可以看到并提交。`)) return
   try {
     const t = getToken()
-    const saved = user.value
-    if (!saved) return
-    await publishHomework(courseId, hw.hwId, saved.role, saved.userId, t)
-    // Reload homework list
+    if (!user.value) return
+    await publishHomework(courseId, hw.hwId, user.value.role, user.value.userId, t)
     await fetchHomeworkList(courseId, t)
     alert('作业已发布')
-  } catch (e) {
-    console.error('Failed to publish homework:', e)
-    alert('发布失败: ' + (e.message || '未知错误'))
-  }
+  } catch (e) { alert('发布失败: ' + (e.message || '未知错误')) }
 }
 
 async function onQuestionBankClose() {
   showQuestionBank.value = false
-  // Refresh question bank data
-  try {
-    const t = getToken()
-    questionBank.value = await fetchQuestionBank(courseId, t)
-  } catch { /* ignore */ }
+  try { questionBank.value = await fetchQuestionBank(courseId, getToken()) } catch {}
 }
-
 async function onQuestionBankUpdated() {
-  // Refresh question bank data when dialog updates
-  try {
-    const t = getToken()
-    questionBank.value = await fetchQuestionBank(courseId, t)
-  } catch { /* ignore */ }
+  try { questionBank.value = await fetchQuestionBank(courseId, getToken()) } catch {}
 }
 
 function handleEditQ(q) {
@@ -361,17 +343,13 @@ function handleEditQ(q) {
     explanation: q.explanation || '',
   }
 }
-
-function handleCancelEditQ() {
-  editingQuestion.value = null
-}
+function handleCancelEditQ() { editingQuestion.value = null }
 
 async function handleSaveEditQ() {
   if (!editingQuestion.value || !editingQuestion.value.content.trim()) return
   try {
     const t = getToken()
-    const saved = user.value
-    if (!saved) return
+    if (!user.value) return
     const updateData = {
       type: editingQuestion.value.questionType,
       content: editingQuestion.value.content.trim(),
@@ -382,28 +360,23 @@ async function handleSaveEditQ() {
     if (editingQuestion.value.questionType === 'choice') {
       updateData.options = editingQuestion.value.options.filter(o => o.text?.trim())
     }
-    const result = await updateQuestionBank(courseId, editingQuestion.value.id, updateData, saved.role, saved.userId, t)
+    const result = await updateQuestionBank(courseId, editingQuestion.value.id, updateData, user.value.role, user.value.userId, t)
     if (result.question) {
       const idx = questionBank.value.findIndex(item => item.id === editingQuestion.value.id)
       if (idx >= 0) questionBank.value[idx] = result.question
     }
     editingQuestion.value = null
-  } catch (e) {
-    alert('保存失败: ' + (e.message || '未知错误'))
-  }
+  } catch (e) { alert('保存失败: ' + (e.message || '未知错误')) }
 }
 
 async function handleDeleteQ(q) {
   if (!confirm('确定要从题库中删除这道题吗？')) return
   try {
     const t = getToken()
-    const saved = user.value
-    if (!saved) return
-    await deleteFromQuestionBank(courseId, q.id, saved.role, saved.userId, t)
+    if (!user.value) return
+    await deleteFromQuestionBank(courseId, q.id, user.value.role, user.value.userId, t)
     questionBank.value = questionBank.value.filter(item => item.id !== q.id)
-  } catch (e) {
-    alert('删除失败: ' + (e.message || '未知错误'))
-  }
+  } catch (e) { alert('删除失败: ' + (e.message || '未知错误')) }
 }
 
 function toggleHomework(hwId) {
@@ -415,17 +388,10 @@ function renderMd(text) { return marked.parse(text || '') }
 function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('zh-CN') }
 
 function getTypeLabel(type) {
-  const labels = {
-    choice: '选择题',
-    true_false: '判断题',
-    fill: '填空题',
-    short_answer: '简答题',
-    essay: '论述题',
-  }
+  const labels = { choice: '选择题', true_false: '判断题', fill: '填空题', short_answer: '简答题', essay: '论述题' }
   return labels[type] || type
 }
 
-// Submissions
 const viewingSubmissions = ref(null)
 const currentSubmissions = ref([])
 const submissionCounts = reactive({})
@@ -440,7 +406,6 @@ async function viewSubmissions(hwId) {
   } catch { currentSubmissions.value = [] }
 }
 
-// Grading
 const gradingHw = ref(null)
 const gradingSub = ref(null)
 const gradeScores = reactive({})
@@ -487,177 +452,258 @@ onMounted(async () => {
 })
 </script>
 
+<style>
+/* ========== 全局主题变量 ========== */
+:root {
+  --bg-root: #f4f3f9;
+  --bg-card: rgba(255, 255, 255, 0.55);
+  --accent: #6b5df0;
+  --accent-deep: #5a4ad0;
+  --accent-soft: rgba(107, 93, 240, 0.09);
+  --accent-glow: rgba(107, 93, 240, 0.22);
+  --border-light: rgba(0, 0, 0, 0.08);
+  --border-medium: rgba(0, 0, 0, 0.14);
+  --border-active: #6b5df0;
+  --text-primary: #1a1828;
+  --text-secondary: #514e68;
+  --text-muted: #85829e;
+  --divider: rgba(0, 0, 0, 0.06);
+  --danger: #ef4444;
+  --success: #0d9488;
+  --warning: #f39c12;
+}
+
+body.dark {
+  --bg-root: #080810;
+  --bg-card: rgba(18, 19, 34, 0.50);
+  --accent: #8b70ff;
+  --accent-deep: #6b50e0;
+  --accent-soft: rgba(139, 112, 255, 0.12);
+  --accent-glow: rgba(139, 112, 255, 0.30);
+  --border-light: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.16);
+  --border-active: #8b70ff;
+  --text-primary: #e2e0f4;
+  --text-secondary: #a09cb8;
+  --text-muted: #6d6a88;
+  --divider: rgba(255, 255, 255, 0.07);
+}
+</style>
+
 <style scoped>
-.app-shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg, #f8f6f1); }
-.main-area { flex: 1; overflow-y: auto; padding: 24px 32px; }
+/* ========== 布局 ========== */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 6px 10px;
+  gap: 8px;
+  background: var(--bg-root);
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: var(--text-primary);
+  transition: background 0.4s, color 0.4s;
+  overflow: hidden;
+}
+
+.main-area {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 24px 36px;
+  background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.8px solid var(--border-active);
+  border-radius: 20px;
+  box-shadow: 0 0 20px var(--accent-glow), 0 0 44px var(--accent-soft);
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-light) transparent;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+.main-area:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 28px var(--accent-glow), 0 0 56px var(--accent-soft);
+}
+
+.main-area::-webkit-scrollbar { width: 4px; }
+.main-area::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+
 .detail-page { width: 100%; }
 
-/* Login (reuse) */
-.login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-.login-card { background: #fff; border-radius: 16px; padding: 40px; width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-.login-header { text-align: center; margin-bottom: 24px; }
-.login-logo { font-size: 1.5rem; font-weight: 700; }
-.login-logo .dot { display: inline-block; width: 8px; height: 8px; background: #5b8def; border-radius: 50%; margin-right: 6px; }
-.login-subtitle { color: #888; font-size: 0.85rem; margin-top: 4px; }
-.login-input { width: 100%; padding: 10px 14px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.9rem; outline: none; box-sizing: border-box; }
-.login-error { color: #e74c3c; font-size: 0.8rem; margin-top: 8px; }
-.login-submit { width: 100%; padding: 10px; background: #5b8def; color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; margin-top: 12px; }
-.login-submit:disabled { opacity: 0.5; }
+/* ========== 扫描线动画（参考批改页面panel-strip） ========== */
+.panel-strip { position: absolute; pointer-events: none; z-index: 1; }
+.panel-strip.top, .panel-strip.bottom { left: -100%; width: 100%; height: 1.5px; background: linear-gradient(90deg, transparent, #C4B0FF, #7B5CFF, #C4B0FF, transparent); box-shadow: 0 0 7px #C4B0FF; }
+.panel-strip.right, .panel-strip.left { top: -100%; width: 1.5px; height: 100%; background: linear-gradient(180deg, transparent, #C4B0FF, #A78BFA, #C4B0FF, transparent); box-shadow: 0 0 7px #C4B0FF; }
+.panel-strip.top    { top: 0;    animation: scanH 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); }
+.panel-strip.right  { right: 0;  animation: scanV 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay: 0.8s; }
+.panel-strip.bottom { bottom: 0; animation: scanHRev 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay: 1.6s; }
+.panel-strip.left   { left: 0;   animation: scanVRev 3.2s infinite cubic-bezier(0.45,0.05,0.55,0.95); animation-delay: 2.4s; }
 
-/* Header */
-.back-btn { background: none; border: none; color: #5b8def; font-size: 0.85rem; cursor: pointer; margin-bottom: 16px; padding: 0; }
-.course-header { margin-bottom: 24px; }
-.course-header h2 { margin: 0 0 8px; font-size: 1.4rem; }
-.course-tags { display: flex; gap: 8px; flex-wrap: wrap; }
-.tag { background: #eef4ff; color: #5b8def; font-size: 0.72rem; font-weight: 600; padding: 2px 10px; border-radius: 4px; }
-.code-tag { background: #fff3e0; color: #e67e22; font-family: monospace; }
-.course-desc { color: #666; font-size: 0.85rem; margin-top: 8px; }
+@keyframes scanH    { 0%{left:-100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{left:100%;opacity:0} }
+@keyframes scanHRev { 0%{left:100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{left:-100%;opacity:0} }
+@keyframes scanV    { 0%{top:-100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:100%;opacity:0} }
+@keyframes scanVRev { 0%{top:100%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{top:-100%;opacity:0} }
 
-/* Tabs */
-.tab-bar { display: flex; gap: 0; border-bottom: 2px solid #e8e4db; margin-bottom: 20px; }
-.tab-item { padding: 10px 20px; font-size: 0.88rem; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
-.tab-item.active { color: #5b8def; border-bottom-color: #5b8def; }
+/* ========== 返回按钮 ========== */
+.back-btn {
+  background: none; border: none; color: var(--accent); font-size: 0.85rem;
+  cursor: pointer; margin-bottom: 16px; padding: 4px 0;
+  display: inline-flex; align-items: center; gap: 4px; transition: color 0.2s;
+}
+.back-btn:hover { color: var(--accent-deep); }
+
+/* ========== 课程头 ========== */
+.course-header {
+  margin-bottom: 24px;
+  background: var(--bg-card); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1.8px solid var(--accent); border-radius: 14px; padding: 20px;
+  box-shadow: 0 0 16px var(--accent-soft);
+}
+.course-header h2 { margin: 0 0 10px; font-size: 1.4rem; color: var(--text-primary); }
+.course-tags { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tag { background: rgba(107,93,240,0.1); color: var(--accent); font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--accent); white-space: nowrap; }
+.code-tag { background: rgba(245,158,12,0.1); color: var(--warning); border-color: var(--warning); font-family: monospace; font-size: 0.7rem; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 10px; }
+.course-desc { color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px; }
+
+/* ========== 标签栏 ========== */
+.tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--border-medium); margin-bottom: 20px; }
+.tab-item { padding: 10px 20px; font-size: 0.88rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+.tab-item:hover { color: var(--text-primary); }
+.tab-item.active { color: var(--accent); border-bottom-color: var(--accent); }
 .tab-header { display: flex; justify-content: flex-end; margin-bottom: 16px; }
+.qb-header { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 
-/* Lessons */
-.lesson-card { background: #fff; border: 1px solid #e8e4db; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+/* ========== 课时卡片 ========== */
+.lesson-card {
+  background: var(--bg-card); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1.8px solid var(--accent); border-radius: 12px; margin-bottom: 10px;
+  overflow: hidden; transition: all 0.3s ease; box-shadow: 0 0 12px var(--accent-soft);
+}
+.lesson-card:hover { border-color: var(--accent); box-shadow: 0 4px 20px var(--accent-glow); }
 .lesson-header { display: flex; align-items: center; padding: 14px 18px; cursor: pointer; gap: 10px; }
-.lesson-header:hover { background: #faf8f5; }
-.lesson-order { font-size: 0.8rem; color: #5b8def; font-weight: 700; min-width: 30px; }
-.lesson-title { flex: 1; font-weight: 600; font-size: 0.92rem; }
-.lesson-toggle { font-size: 0.7rem; color: #999; }
-.lesson-body { padding: 0 18px 16px; border-top: 1px solid #f0ede8; }
-.lesson-desc { color: #666; font-size: 0.82rem; margin: 10px 0; }
-.plan-content { font-size: 0.85rem; line-height: 1.7; }
-.plan-content :deep(h1), .plan-content :deep(h2), .plan-content :deep(h3) { margin: 12px 0 6px; }
-.plan-content :deep(table) { border-collapse: collapse; margin: 8px 0; }
-.plan-content :deep(th), .plan-content :deep(td) { border: 1px solid #e0dcd5; padding: 6px 10px; font-size: 0.82rem; }
+.lesson-header:hover { background: var(--accent-soft); }
+.lesson-order { font-size: 0.8rem; color: var(--accent); font-weight: 700; min-width: 30px; }
+.lesson-title { flex: 1; font-weight: 600; font-size: 0.92rem; color: var(--text-primary); }
+.lesson-toggle { font-size: 0.7rem; color: var(--text-muted); }
+.lesson-body { padding: 0 18px 16px; border-top: 1px solid var(--divider); }
+.lesson-desc { color: var(--text-secondary); font-size: 0.82rem; margin: 10px 0; }
+.plan-content { font-size: 0.85rem; line-height: 1.7; color: var(--text-primary); }
 
-/* Homework */
-.hw-card { background: #fff; border: 1px solid #e8e4db; border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
-.hw-card.hw-draft { border-left: 4px solid #f39c12; background: #fffbf5; }
+/* ========== 作业卡片 ========== */
+.hw-card {
+  background: var(--bg-card); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1.8px solid var(--accent); border-radius: 12px; margin-bottom: 10px;
+  overflow: hidden; transition: all 0.3s; box-shadow: 0 0 12px var(--accent-soft);
+}
+.hw-card.hw-draft { border-left: 4px solid var(--warning); }
 .hw-header { padding: 14px 18px; cursor: pointer; }
-.hw-header:hover { background: #faf8f5; }
+.hw-header:hover { background: var(--accent-soft); }
 .hw-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; gap: 8px; }
-.hw-title { font-weight: 600; font-size: 0.92rem; }
+.hw-title { font-weight: 600; font-size: 0.92rem; color: var(--text-primary); }
 .hw-status-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
-.hw-status-badge.draft { background: #fff3e0; color: #e67e22; }
-.hw-status-badge.published { background: #e8f5e9; color: #2e7d32; }
-.hw-deadline { font-size: 0.75rem; color: #e67e22; }
+.hw-status-badge.draft { background: rgba(245,158,12,0.12); color: var(--warning); }
+.hw-status-badge.published { background: rgba(13,148,136,0.12); color: var(--success); }
+.hw-deadline { font-size: 0.75rem; color: var(--warning); }
 .hw-meta-row { display: flex; justify-content: space-between; align-items: center; }
-.hw-questions { font-size: 0.78rem; color: #888; }
+.hw-questions { font-size: 0.78rem; color: var(--text-secondary); }
 .hw-actions-row { display: flex; gap: 8px; }
-.btn-publish-hw { background: none; border: 1px solid #27ae60; color: #27ae60; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
-.btn-publish-hw:hover { background: #27ae60; color: #fff; }
-.btn-delete-hw { background: none; border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
-.btn-delete-hw:hover { background: #e74c3c; color: #fff; }
-.hw-body { padding: 0 18px 16px; border-top: 1px solid #f0ede8; }
-.hw-question { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px dashed #f0ede8; align-items: flex-start; }
+.btn-publish-hw { background: none; border: 1px solid var(--success); color: var(--success); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+.btn-publish-hw:hover { background: var(--success); color: #fff; }
+.btn-delete-hw { background: none; border: 1px solid var(--danger); color: var(--danger); font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s; }
+.btn-delete-hw:hover { background: var(--danger); color: #fff; }
+.hw-body { padding: 0 18px 16px; border-top: 1px solid var(--divider); }
+.hw-question { display: flex; gap: 8px; padding: 8px 0; border-bottom: 1px dashed var(--divider); align-items: flex-start; }
 .hw-question:last-child { border-bottom: none; }
-.q-label { font-weight: 700; color: #5b8def; min-width: 24px; }
-.q-content { flex: 1; font-size: 0.85rem; }
-.q-points { font-size: 0.75rem; color: #999; }
+.q-label { font-weight: 700; color: var(--accent); min-width: 24px; }
+.q-content { flex: 1; font-size: 0.85rem; color: var(--text-primary); }
+.q-points { font-size: 0.75rem; color: var(--text-muted); }
 .hw-actions { margin-top: 12px; }
-.hint-text { font-size: 0.78rem; color: #999; font-style: italic; }
+.hint-text { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
 
-/* Question Bank */
+/* ========== 题库 ========== */
 .qb-filter-row { display: flex; align-items: center; gap: 10px; }
-.qb-filter-select { padding: 6px 12px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.82rem; outline: none; }
-.question-count { font-size: 0.82rem; color: #888; }
-.qb-question-card { background: #fff; border: 1px solid #e8e4db; border-radius: 10px; padding: 12px; margin-bottom: 10px; transition: all 0.2s; }
-.qb-question-card.qb-editing { border-color: #5b8def; background: #f8f9ff; }
-.qb-question-card .q-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.qb-question-card .q-num { font-weight: 700; color: #5b8def; font-size: 0.85rem; min-width: 20px; }
-.q-type-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: #eef4ff; color: #5b8def; }
-.q-source { font-size: 0.78rem; color: #999; }
-.q-answer { font-size: 0.78rem; color: #666; margin-top: 4px; }
-.q-explanation { font-size: 0.78rem; color: #888; margin-top: 4px; }
+.qb-filter-select { padding: 6px 12px; background: var(--bg-card); backdrop-filter: blur(8px); border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.82rem; outline: none; color: var(--text-primary); transition: border 0.2s; }
+.qb-filter-select:focus { border-color: var(--accent); }
+.question-count { font-size: 0.78rem; color: var(--text-muted); background: var(--accent-soft); padding: 2px 10px; border-radius: 20px; white-space: nowrap; }
+.qb-question-card {
+  background: var(--bg-card); backdrop-filter: blur(12px); border: 1.8px solid var(--accent);
+  border-radius: 12px; padding: 12px; margin-bottom: 10px; transition: all 0.3s; box-shadow: 0 0 12px var(--accent-soft);
+}
+.qb-question-card.qb-editing { border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+.q-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.q-num { font-weight: 700; color: var(--accent); font-size: 0.85rem; min-width: 20px; }
+.q-type-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: rgba(107,93,240,0.1); color: var(--accent); }
+.q-source { font-size: 0.78rem; color: var(--text-muted); }
+.q-content { color: var(--text-primary); }
+.q-answer, .q-explanation { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
 .q-actions { margin-left: auto; display: flex; gap: 4px; }
-.btn-edit-q, .btn-delete-q { background: none; border: none; cursor: pointer; font-size: 0.85rem; opacity: 0.5; transition: opacity 0.2s; padding: 2px 4px; }
+.btn-edit-q, .btn-delete-q { background: none; border: none; cursor: pointer; font-size: 0.85rem; opacity: 0.5; transition: opacity 0.2s; padding: 2px 4px; color: var(--text-secondary); }
 .btn-edit-q:hover, .btn-delete-q:hover { opacity: 1; }
-
-/* Inline Edit Form */
 .inline-edit-form { padding: 4px 0; }
 .inline-edit-form .form-row { display: flex; gap: 10px; margin-bottom: 10px; }
-.inline-edit-form .q-type-select { flex: 1; padding: 8px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.85rem; }
-.inline-edit-form .points-input { width: 80px; padding: 8px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.85rem; }
-.inline-edit-form .q-content-input { width: 100%; padding: 8px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; }
-.inline-edit-form .options-section { margin: 10px 0; padding: 10px; background: #f8f6f1; border-radius: 8px; }
+.inline-edit-form .q-type-select, .inline-edit-form .points-input, .inline-edit-form .q-content-input, .inline-edit-form .explanation-input, .inline-edit-form .option-row input, .inline-edit-form .answer-row select, .inline-edit-form .answer-row textarea { background: rgba(255,255,255,0.4); border: 1.5px solid var(--border-medium); border-radius: 8px; padding: 8px; font-size: 0.85rem; color: var(--text-primary); transition: border 0.2s; }
+.dark .inline-edit-form .q-type-select, .dark .inline-edit-form .points-input, .dark .inline-edit-form .q-content-input, .dark .inline-edit-form .explanation-input, .dark .inline-edit-form .option-row input, .dark .inline-edit-form .answer-row select, .dark .inline-edit-form .answer-row textarea { background: rgba(20,20,35,0.6); }
+.inline-edit-form .q-type-select:focus, .inline-edit-form .points-input:focus, .inline-edit-form .q-content-input:focus, .inline-edit-form .explanation-input:focus, .inline-edit-form .option-row input:focus, .inline-edit-form .answer-row select:focus, .inline-edit-form .answer-row textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.inline-edit-form .q-type-select { flex: 1; }
+.inline-edit-form .points-input { width: 80px; }
+.inline-edit-form .q-content-input, .inline-edit-form .explanation-input { width: 100%; resize: vertical; box-sizing: border-box; }
+.inline-edit-form .options-section { margin: 10px 0; padding: 10px; background: var(--bg-root); border-radius: 8px; }
 .inline-edit-form .option-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.inline-edit-form .option-row span { min-width: 20px; font-weight: 600; color: #5b8def; }
-.inline-edit-form .option-row input { flex: 1; padding: 6px 8px; border: 1px solid #e0dcd5; border-radius: 4px; font-size: 0.82rem; }
-.inline-edit-form .option-row button { background: none; border: none; color: #ccc; cursor: pointer; }
-.inline-edit-form .option-row button:hover { color: #e74c3c; }
-.inline-edit-form .btn-add-opt { background: none; border: 1px dashed #ccc; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.78rem; color: #888; margin-top: 4px; }
-.inline-edit-form .btn-add-opt:hover { border-color: #5b8def; color: #5b8def; }
+.inline-edit-form .option-row span { min-width: 20px; font-weight: 600; color: var(--accent); }
+.inline-edit-form .option-row button { background: none; border: none; color: var(--text-muted); cursor: pointer; }
+.inline-edit-form .option-row button:hover { color: var(--danger); }
+.btn-add-opt { background: none; border: 1px dashed var(--border-medium); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
+.btn-add-opt:hover { border-color: var(--accent); color: var(--accent); }
 .inline-edit-form .answer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.inline-edit-form .answer-row label { font-size: 0.82rem; color: #555; min-width: 70px; }
-.inline-edit-form .answer-row select, .inline-edit-form .answer-row textarea { flex: 1; padding: 6px 8px; border: 1px solid #e0dcd5; border-radius: 4px; font-size: 0.82rem; }
-.inline-edit-form .explanation-input { width: 100%; padding: 8px; border: 1.5px solid #e0dcd5; border-radius: 8px; font-size: 0.85rem; margin-top: 10px; resize: vertical; box-sizing: border-box; }
+.inline-edit-form .answer-row label { font-size: 0.82rem; color: var(--text-secondary); min-width: 70px; }
+.inline-edit-form .answer-row select, .inline-edit-form .answer-row textarea { flex: 1; }
 .inline-edit-form .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
-/* Submissions */
-.submissions-panel { margin-top: 16px; padding: 16px; background: #faf8f5; border-radius: 8px; }
-.submissions-panel h4 { margin: 0 0 12px; font-size: 0.9rem; }
-.sub-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0ede8; }
+/* ========== 提交面板 ========== */
+.submissions-panel { margin-top: 16px; padding: 16px; background: var(--bg-card); backdrop-filter: blur(8px); border-radius: 10px; border: 1px solid var(--border-medium); }
+.submissions-panel h4 { margin: 0 0 12px; font-size: 0.9rem; color: var(--text-primary); }
+.sub-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--divider); }
 .sub-row:last-child { border-bottom: none; }
-.sub-student { font-weight: 600; font-size: 0.85rem; flex: 1; }
+.sub-student { font-weight: 600; font-size: 0.85rem; color: var(--text-primary); flex: 1; }
 .sub-status { font-size: 0.78rem; padding: 2px 8px; border-radius: 4px; }
-.sub-status.submitted { background: #fff3e0; color: #e67e22; }
-.sub-status.graded { background: #e8f5e9; color: #2e7d32; }
+.sub-status.submitted { background: rgba(245,158,12,0.1); color: var(--warning); }
+.sub-status.graded { background: rgba(13,148,136,0.1); color: var(--success); }
 
-/* Students table */
-.students-table { width: 100%; border-collapse: collapse; }
-.students-table th, .students-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #e8e4db; font-size: 0.85rem; }
-.students-table th { font-weight: 600; color: #555; background: #faf8f5; }
+/* ========== 学生表格 ========== */
+.students-table { width: 100%; border-collapse: collapse; background: var(--bg-card); backdrop-filter: blur(12px); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-medium); }
+.students-table th, .students-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--divider); font-size: 0.85rem; color: var(--text-primary); }
+.students-table th { font-weight: 600; color: var(--text-secondary); background: var(--accent-soft); }
 
-/* Grade dialog */
-.grade-question { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f0ede8; }
-.grade-q-label { font-weight: 600; font-size: 0.85rem; margin: 0 0 4px; }
-.grade-answer { font-size: 0.82rem; color: #555; margin: 0 0 8px; background: #f8f6f1; padding: 8px; border-radius: 6px; }
+/* ========== 批改对话框 ========== */
+.grade-question { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
+.grade-q-label { font-weight: 600; font-size: 0.85rem; color: var(--text-primary); margin: 0 0 4px; }
+.grade-answer { font-size: 0.82rem; color: var(--text-secondary); margin: 0 0 8px; background: var(--bg-root); padding: 8px; border-radius: 6px; }
 .grade-input-row { display: flex; gap: 8px; }
-.grade-input-row input { flex: 1; padding: 6px 10px; border: 1.5px solid #e0dcd5; border-radius: 6px; font-size: 0.82rem; outline: none; }
+.grade-input-row input { flex: 1; padding: 6px 10px; background: rgba(255,255,255,0.4); border: 1.5px solid var(--border-medium); border-radius: 6px; font-size: 0.82rem; outline: none; color: var(--text-primary); transition: border 0.2s; }
+.dark .grade-input-row input { background: rgba(20,20,35,0.6); }
+.grade-input-row input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .grade-input-row input:first-child { max-width: 80px; }
 
-/* Dialog (shared) */
-.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog-card { background: #fff; border-radius: 16px; padding: 32px; width: 520px; max-height: 85vh; overflow-y: auto; }
-.dialog-card h3 { margin: 0 0 20px; }
+/* ========== 通用对话框 ========== */
+.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.dialog-card { background: var(--bg-card); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1.8px solid var(--accent); border-radius: 16px; padding: 32px; width: 520px; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 24px var(--accent-glow); }
+.dialog-card h3 { margin: 0 0 20px; font-size: 1.15rem; font-weight: 700; color: var(--text-primary); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
-/* Buttons */
-.btn-primary { padding: 8px 20px; background: #5b8def; color: #fff; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
-.btn-primary:hover { background: #4a7de0; }
-.btn-secondary { padding: 8px 20px; background: #f0ede8; color: #555; border: none; border-radius: 8px; font-size: 0.85rem; cursor: pointer; }
-.btn-small { padding: 4px 12px; background: #5b8def; color: #fff; border: none; border-radius: 6px; font-size: 0.75rem; cursor: pointer; }
-.btn-small.secondary { background: #f0ede8; color: #555; }
+/* ========== 按钮 ========== */
+.btn-primary { padding: 8px 20px; background: linear-gradient(135deg, var(--accent), var(--accent-deep)); color: #fff; border: none; border-radius: 10px; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px var(--accent-glow); transition: all 0.3s; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.btn-primary:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+.btn-secondary { padding: 8px 20px; background: rgba(107,93,240,0.08); color: var(--text-primary); border: 1.5px solid var(--border-medium); border-radius: 10px; font-size: 0.85rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.btn-secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
+.btn-small { padding: 4px 12px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: background 0.2s; }
+.btn-small:hover { background: var(--accent-deep); }
+.btn-small.secondary { background: rgba(107,93,240,0.1); color: var(--text-primary); }
+.btn-small.secondary:hover { background: var(--accent-soft); }
 
-.empty-hint { text-align: center; padding: 40px; color: #999; }
-
-/* Dark */
-:global(body.dark) .app-shell { background: #12121a; }
-:global(body.dark) .login-card, :global(body.dark) .dialog-card, :global(body.dark) .lesson-card, :global(body.dark) .hw-card { background: #1e1e2e; border-color: #333; }
-:global(body.dark) .hw-card.hw-draft { background: #2a2520; border-left-color: #f39c12; }
-:global(body.dark) .course-header h2, :global(body.dark) .dialog-card h3 { color: #e0e0e0; }
-:global(body.dark) .lesson-header:hover, :global(body.dark) .hw-header:hover { background: #252535; }
-:global(body.dark) .login-input, :global(body.dark) .grade-input-row input { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
-:global(body.dark) .students-table th { background: #252535; color: #ccc; }
-:global(body.dark) .submissions-panel { background: #252535; }
-:global(body.dark) .grade-answer { background: #252535; color: #ccc; }
-:global(body.dark) .hw-status-badge.draft { background: #3a3020; color: #f39c12; }
-:global(body.dark) .hw-status-badge.published { background: #1a3a1a; color: #4caf50; }
-:global(body.dark) .qb-question-card { background: #252535; border-color: #333; }
-:global(body.dark) .qb-question-card.qb-editing { background: #1a2035; border-color: #5b8def; }
-:global(body.dark) .qb-question-card .q-content { color: #e0e0e0; }
-:global(body.dark) .qb-question-card .q-answer, :global(body.dark) .qb-question-card .q-explanation { color: #aaa; }
-:global(body.dark) .inline-edit-form .options-section { background: #2a2a3a; }
-:global(body.dark) .inline-edit-form .q-type-select,
-:global(body.dark) .inline-edit-form .points-input,
-:global(body.dark) .inline-edit-form .q-content-input,
-:global(body.dark) .inline-edit-form .explanation-input,
-:global(body.dark) .inline-edit-form .option-row input,
-:global(body.dark) .inline-edit-form .answer-row select,
-:global(body.dark) .inline-edit-form .answer-row textarea { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
-:global(body.dark) .inline-edit-form .answer-row label { color: #aaa; }
-:global(body.dark) .qb-filter-select { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
+/* ========== 空状态 ========== */
+.empty-hint, .loading-hint { text-align: center; padding: 40px; color: var(--text-muted); background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border-medium); }
 </style>

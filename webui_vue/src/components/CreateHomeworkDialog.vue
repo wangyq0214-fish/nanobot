@@ -137,53 +137,51 @@ async function handleCreate() {
 </script>
 
 <style scoped>
-.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog-card { background: #fff; border-radius: 16px; padding: 32px; width: 560px; max-height: 85vh; overflow-y: auto; }
+.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.dialog-card { background: #fff; border: 1.8px solid var(--accent); border-radius: 16px; padding: 32px; width: 560px; max-height: 85vh; overflow-y: auto; box-shadow: 0 0 24px var(--accent-glow); }
 .dialog-card-wide { width: 640px; }
-.dialog-card h3 { margin: 0 0 20px; font-size: 1.15rem; }
+.dialog-card h3 { margin: 0 0 20px; font-size: 1.15rem; color: var(--text-primary); }
 .form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: #555; margin-bottom: 6px; }
+.form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
 .form-group input, .form-group textarea, .form-group select {
-  width: 100%; padding: 8px 12px; border: 1.5px solid #e0dcd5; border-radius: 8px;
-  font-size: 0.85rem; outline: none; box-sizing: border-box; font-family: inherit;
+  width: 100%; padding: 8px 12px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px;
+  font-size: 0.85rem; outline: none; box-sizing: border-box; font-family: inherit; color: var(--text-primary);
 }
-.form-group input:focus, .form-group textarea:focus { border-color: #5b8def; }
+.form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* Questions */
 .questions-section { margin: 20px 0; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.section-label { font-size: 0.82rem; font-weight: 600; color: #555; }
-.question-count { font-size: 0.82rem; color: #888; }
+.section-label { font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); }
+.question-count { font-size: 0.82rem; color: var(--text-muted); }
 
-.empty-questions { text-align: center; padding: 40px; background: #f8f6f1; border-radius: 12px; border: 2px dashed #e0dcd5; }
-.empty-questions p { color: #888; margin-bottom: 16px; }
-.btn-from-bank { padding: 10px 24px; background: #5b8def; color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
-.btn-from-bank:hover { background: #4a7de0; }
+.empty-questions { text-align: center; padding: 40px; background: var(--bg-root); border-radius: 12px; border: 2px dashed var(--border-medium); }
+.empty-questions p { color: var(--text-muted); margin-bottom: 16px; }
+.btn-from-bank { padding: 10px 24px; background: linear-gradient(135deg,var(--accent),var(--accent-deep)); color: #fff; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px var(--accent-glow); }
+.btn-from-bank:hover { opacity: 0.9; }
 
-.question-item { background: #faf8f5; border: 1px solid #e8e4db; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.question-item { background: var(--bg-root); border: 1px solid var(--border-light); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 .q-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.q-num { font-weight: 700; color: #5b8def; font-size: 0.85rem; min-width: 20px; }
-.q-type-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: #eef4ff; color: #5b8def; }
-.q-points { font-size: 0.78rem; color: #888; }
-.q-remove { background: none; border: none; color: #ccc; cursor: pointer; font-size: 0.9rem; margin-left: auto; }
-.q-remove:hover { color: #e74c3c; }
-.q-content { font-size: 0.88rem; line-height: 1.5; }
-.q-answer { font-size: 0.78rem; color: #666; margin-top: 4px; }
+.q-num { font-weight: 700; color: var(--accent); font-size: 0.85rem; min-width: 20px; }
+.q-type-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+.q-points { font-size: 0.78rem; color: var(--text-muted); }
+.q-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; margin-left: auto; }
+.q-remove:hover { color: var(--danger); }
+.q-content { font-size: 0.88rem; line-height: 1.5; color: var(--text-primary); }
+.q-answer { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
 
-.btn-add-more { width: 100%; padding: 10px; background: none; border: 1.5px dashed #27ae60; border-radius: 8px; color: #27ae60; font-size: 0.85rem; cursor: pointer; margin-top: 10px; }
-.btn-add-more:hover { background: #27ae60; color: #fff; }
+.btn-add-more { width: 100%; padding: 10px; background: none; border: 1.5px dashed var(--success); border-radius: 8px; color: var(--success); font-size: 0.85rem; cursor: pointer; margin-top: 10px; }
+.btn-add-more:hover { background: var(--success); color: #fff; }
 
-.error-text { color: #e74c3c; font-size: 0.8rem; margin-top: 12px; }
+.error-text { color: var(--danger); font-size: 0.8rem; margin-top: 12px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
-.btn-primary { padding: 8px 20px; background: #5b8def; color: #fff; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.btn-primary { padding: 10px 24px; background: linear-gradient(135deg,var(--accent),var(--accent-deep)); color: #fff; border: none; border-radius: 10px; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px var(--accent-glow); }
 .btn-primary:disabled { opacity: 0.5; }
-.btn-secondary { padding: 8px 20px; background: #f0ede8; color: #555; border: none; border-radius: 8px; font-size: 0.85rem; cursor: pointer; }
+.btn-secondary { padding: 10px 24px; background: var(--bg-root); color: var(--text-primary); border: 1.5px solid var(--border-medium); border-radius: 10px; font-size: 0.85rem; cursor: pointer; }
+.btn-secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
 
-:global(body.dark) .dialog-card { background: #1e1e2e; }
-:global(body.dark) .dialog-card h3, :global(body.dark) .section-label { color: #e0e0e0; }
-:global(body.dark) .form-group input, :global(body.dark) .form-group textarea { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
-:global(body.dark) .empty-questions { background: #252535; border-color: #444; }
-:global(body.dark) .question-item { background: #252535; border-color: #333; }
-:global(body.dark) .q-content { color: #e0e0e0; }
-:global(body.dark) .q-answer { color: #aaa; }
+.dark .dialog-card { background: #1e1e2e; }
+.dark .form-group input, .dark .form-group textarea, .dark .form-group select { background: #252535; }
+.dark .empty-questions { background: #1a1a2e; }
+.dark .question-item { background: #1a1a2e; }
 </style>

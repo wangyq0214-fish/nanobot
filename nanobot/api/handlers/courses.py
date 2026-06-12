@@ -133,7 +133,7 @@ async def handle_courses_join(
     if not course:
         return http_error(404, "Invalid join code")
 
-    course_id = course["course_id"]
+    course_id = course["courseId"]
 
     if await storage.is_course_member(course_id, user_id):
         return http_json_response({"ok": True, "course": course, "message": "Already a member"})
@@ -146,7 +146,7 @@ async def handle_courses_join(
     display_name = payload.get("displayName") or user_id
     await storage.add_course_member(course_id, user_id, "student", display_name)
 
-    logger.info("Student {} joined course {} ({})", user_id, course.get("course_name"), course_id)
+    logger.info("Student {} joined course {} ({})", user_id, course.get("courseName"), course_id)
     return http_json_response({"ok": True, "course": course})
 
 

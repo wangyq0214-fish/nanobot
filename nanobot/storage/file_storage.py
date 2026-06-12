@@ -229,7 +229,7 @@ class FileStorage(BaseStorage):
         return None
 
     # Course member operations
-    async def add_course_member(self, course_id: str, user_id: str, role: str = "student") -> Dict[str, Any]:
+    async def add_course_member(self, course_id: str, user_id: str, role: str = "student", display_name: str = "") -> Dict[str, Any]:
         """Add a member to a course. Returns membership data."""
         members_file = self.courses_path / course_id / "members.json"
         members = self._load_json(members_file) or []
@@ -241,6 +241,7 @@ class FileStorage(BaseStorage):
         member = {
             "user_id": user_id,
             "role": role,
+            "display_name": display_name,
             "joined_at": datetime.utcnow().isoformat(),
         }
         members.append(member)
@@ -381,7 +382,7 @@ class FileStorage(BaseStorage):
     async def create_homework(self, homework_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new homework. Returns created homework data."""
         course_id = homework_data.get("course_id")
-        homework_id = homework_data.get("homework_id") or str(uuid.uuid4())[:8]
+        homework_id = homework_data.get("homework_id") or homework_data.get("hw_id") or str(uuid.uuid4())[:8]
         homework_data["homework_id"] = homework_id
         homework_data["created_at"] = datetime.utcnow().isoformat()
         homework_data["updated_at"] = datetime.utcnow().isoformat()
@@ -1065,6 +1066,108 @@ class FileStorage(BaseStorage):
             return []
 
         return self._load_json(chunks_file) or []
+
+    # Question bank operations
+    def _get_qb_file(self, course_id: str) -> Path:
+        """Get the question bank JSON file path for a course."""
+        return self.courses_path / course_id / "question_bank.json"
+
+    def _load_question_bank(self, course_id: str) -> List[Dict[str, Any]]:
+        """Load all questions for a course."""
+        qb_file = self._get_qb_file(course_id)
+        return self._load_json(qb_file) or []
+
+    def _save_question_bank(self, course_id: str, questions: List[Dict[str, Any]]) -> None:
+        """Save all questions for a course."""
+        qb_file = self._get_qb_file(course_id)
+        qb_file.parent.mkdir(parents=True, exist_ok=True)
+        self._save_json(qb_file, questions)
+
+    def _next_qb_id(self, course_id: str) -> int:
+        """Get the next available question bank integer ID for a course."""
+        questions = self._load_question_bank(course_id)
+        if not questions:
+            return 1
+        return max(q.get("id", 0) for q in questions) + 1
+
+    async def add_to_question_bank(self, question_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a question to the question bank."""
+        course_id = question_data.get("course_id")
+        if not course_id:
+            raise ValueError("course_id is required")
+
+        valid_fields = {'course_id', 'question_id', 'question_type', 'content', 'points',
+                        'answer', 'options', 'explanation', 'tags', 'source', 'created_by'}
+        data = {k: v for k, v in question_data.items() if k in valid_fields}
+
+        if 'question_id' not in data:
+            data['question_id'] = f"qb{uuid.uuid4().hex[:8]}"
+
+        data['id'] = self._next_qb_id(course_id)
+        data['created_at'] = datetime.utcnow().isoformat()
+
+        questions = self._load_question_bank(course_id)
+        questions.append(data)
+        self._save_question_bank(course_id, questions)
+
+        logger.info(f"Added question to bank: {data['question_id']}")
+        return data
+
+    async def get_question_bank(self, question_id: int) -> Optional[Dict[str, Any]]:
+        """Get question from bank by ID."""
+        for course_dir in self.courses_path.iterdir():
+            if course_dir.is_dir():
+                questions = self._load_question_bank(course_dir.name)
+                for q in questions:
+                    if q.get("id") == question_id:
+                        return q
+        return None
+
+    async def list_question_bank(self, course_id: str, question_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List questions in the bank for a course, optionally filtered by type."""
+        questions = self._load_question_bank(course_id)
+        if question_type:
+            questions = [q for q in questions if q.get("question_type") == question_type]
+        questions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return questions
+
+    async def delete_from_question_bank(self, question_id: int) -> bool:
+        """Delete question from bank."""
+        for course_dir in self.courses_path.iterdir():
+            if course_dir.is_dir():
+                questions = self._load_question_bank(course_dir.name)
+                for i, q in enumerate(questions):
+                    if q.get("id") == question_id:
+                        questions.pop(i)
+                        self._save_question_bank(course_dir.name, questions)
+                        return True
+        return False
+
+    async def update_question_bank(self, question_id: int, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update a question in the bank."""
+        updatable_fields = {'question_type', 'content', 'points', 'answer', 'options', 'explanation', 'tags'}
+        for course_dir in self.courses_path.iterdir():
+            if course_dir.is_dir():
+                questions = self._load_question_bank(course_dir.name)
+                for q in questions:
+                    if q.get("id") == question_id:
+                        for key, value in update_data.items():
+                            if key in updatable_fields:
+                                q[key] = value
+                        self._save_question_bank(course_dir.name, questions)
+                        logger.info(f"Updated question in bank: id={question_id}")
+                        return q
+        return None
+
+    async def batch_add_to_question_bank(self, questions_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Add multiple questions to the question bank."""
+        valid_fields = {'course_id', 'question_id', 'question_type', 'content', 'points',
+                        'answer', 'options', 'explanation', 'tags', 'source', 'created_by'}
+        results = []
+        for q_data in questions_data:
+            result = await self.add_to_question_bank(q_data)
+            results.append(result)
+        return results
 
     # Health check
     async def health_check(self) -> Dict[str, Any]:
