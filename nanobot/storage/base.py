@@ -289,6 +289,44 @@ class BaseStorage(ABC):
         """List resources in a course, optionally filtered by type."""
         pass
 
+    # Tutor profile operations
+    async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get tutor profile for a student. Returns None if not found."""
+        return None
+
+    async def update_tutor_profile(self, student_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update tutor profile for a student. Returns updated profile."""
+        pass
+
+    # Paper operations (for researcher paper management)
+    async def create_paper(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new paper. Returns created paper data."""
+        raise NotImplementedError
+
+    async def get_paper(self, paper_id: int) -> Optional[Dict[str, Any]]:
+        """Get paper by ID. Returns None if not found."""
+        return None
+
+    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List papers, optionally filtered by user."""
+        return []
+
+    async def delete_paper(self, paper_id: int) -> bool:
+        """Delete paper. Returns True if successful."""
+        return False
+
+    async def update_paper(self, paper_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update paper data. Returns updated paper data."""
+        raise NotImplementedError
+
+    async def create_paper_chunks(self, paper_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create paper chunks. Returns count of chunks created."""
+        return 0
+
+    async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
+        """Get all chunks for a paper."""
+        return []
+
     # Health check
     @abstractmethod
     async def health_check(self) -> Dict[str, Any]:

@@ -86,6 +86,16 @@ const routes = [
     component: () => import('../pages/researcher/ResearchHotspot.vue'),
   },
   {
+    path: '/researcher/paper-search',
+    name: 'PaperSearch',
+    component: () => import('../pages/researcher/PaperSearch.vue'),
+  },
+  {
+    path: '/researcher/paper-library',
+    name: 'PaperLibrary',
+    component: () => import('../pages/researcher/PaperLibrary.vue'),
+  },
+  {
     path: '/researcher/writing-assistant',
     name: 'WritingAssistant',
     component: () => import('../pages/researcher/WritingAssistant.vue'),

@@ -68,12 +68,18 @@ async def init_database(config: Optional[DatabaseConfig] = None) -> None:
         expire_on_commit=False,
     )
 
-    # Test connection
+    # Test connection and create tables
     try:
         from sqlalchemy import text
         async with _engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         logger.info("Database connection established successfully")
+
+        # Auto-create tables if they don't exist
+        from nanobot.models.base import Base
+        async with _engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables ensured")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")
         raise

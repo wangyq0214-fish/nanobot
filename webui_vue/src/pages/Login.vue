@@ -89,50 +89,43 @@ async function handleLogin() {
 <style scoped>
 .login-screen {
   display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; background: #f8f6f1;
+  min-height: 100vh; background: var(--bg-page);
 }
 .login-card {
-  background: #fff; border-radius: 16px; padding: 40px; width: 400px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  background: var(--bg-card); border-radius: var(--radius-lg); padding: 40px; width: 400px;
+  box-shadow: var(--shadow-md); border: 1px solid var(--border-light);
 }
 .login-header { text-align: center; margin-bottom: 28px; }
-.login-logo { font-size: 1.6rem; font-weight: 700; color: #2c2c2c; }
-.login-logo .dot { display: inline-block; width: 10px; height: 10px; background: #5b8def; border-radius: 50%; margin-right: 6px; }
-.login-subtitle { color: #888; font-size: 0.88rem; margin-top: 6px; }
+.login-logo { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.login-logo .dot { display: inline-block; width: 10px; height: 10px; background: var(--color-primary); border-radius: 50%; }
+.login-subtitle { color: var(--text-muted); font-size: 0.88rem; margin-top: 6px; }
 .login-roles { display: flex; gap: 10px; margin-bottom: 20px; }
 .role-btn {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 14px 8px; border: 2px solid #e8e4db; border-radius: 12px;
-  background: #fff; cursor: pointer; transition: all 0.2s;
+  padding: 14px 8px; border: 2px solid var(--border-light); border-radius: var(--radius-md);
+  background: var(--bg-card); cursor: pointer; transition: all 0.2s;
 }
-.role-btn:hover { border-color: #ccc; }
-.role-btn.active { border-color: #5b8def; background: #f0f4ff; }
+.role-btn:hover { border-color: var(--border-input); }
+.role-btn.active { border-color: var(--color-primary); background: var(--color-primary-soft); }
 .role-icon { font-size: 1.5rem; }
-.role-label { font-size: 0.8rem; font-weight: 600; color: #555; }
+.role-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); }
 .login-input {
-  width: 100%; padding: 12px 16px; border: 1.5px solid #e0dcd5; border-radius: 10px;
+  width: 100%; padding: 12px 16px; border: 1.5px solid var(--border-input); border-radius: var(--radius-md);
   font-size: 0.92rem; outline: none; box-sizing: border-box;
+  background: var(--bg-input); color: var(--text-primary);
 }
-.login-input:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91,141,239,0.1); }
-.login-error { color: #e74c3c; font-size: 0.82rem; margin-top: 8px; }
+.login-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-glow); }
+.login-error { color: var(--color-error); font-size: 0.82rem; margin-top: 8px; }
 .login-submit {
-  width: 100%; padding: 12px; background: #5b8def; color: #fff; border: none;
-  border-radius: 10px; font-size: 0.92rem; font-weight: 600; cursor: pointer;
+  width: 100%; padding: 12px; background: var(--color-primary); color: #fff; border: none;
+  border-radius: var(--radius-md); font-size: 0.92rem; font-weight: 600; cursor: pointer;
   margin-top: 14px; transition: background 0.2s;
 }
-.login-submit:hover { background: #4a7de0; }
+.login-submit:hover { background: var(--color-primary-hover); }
 .login-submit:disabled { opacity: 0.5; cursor: not-allowed; }
 .login-toggle {
   width: 100%; padding: 8px; background: none; border: none;
-  color: #5b8def; font-size: 0.82rem; cursor: pointer; margin-top: 8px;
+  color: var(--color-primary); font-size: 0.82rem; cursor: pointer; margin-top: 8px;
 }
 .login-toggle:hover { text-decoration: underline; }
-
-:global(body.dark) .login-screen { background: #12121a; }
-:global(body.dark) .login-card { background: #1e1e2e; }
-:global(body.dark) .login-logo { color: #e0e0e0; }
-:global(body.dark) .role-btn { background: #252535; border-color: #444; }
-:global(body.dark) .role-btn.active { border-color: #5b8def; background: #1a2a4a; }
-:global(body.dark) .role-label { color: #ccc; }
-:global(body.dark) .login-input { background: #2a2a3a; border-color: #444; color: #e0e0e0; }
 </style>

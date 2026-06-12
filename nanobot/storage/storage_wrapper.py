@@ -427,3 +427,59 @@ class StorageWrapper:
         """Add multiple questions to the question bank."""
         results = await self.storage.batch_add_to_question_bank(questions)
         return [self._normalize_question_bank(q) for q in results]
+
+    # Tutor profile operations
+    @staticmethod
+    def _normalize_tutor_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert tutor profile data to camelCase for frontend compatibility."""
+        if not profile:
+            return profile
+        return {
+            "studentId": profile.get("student_id", ""),
+            "knowledgePoints": profile.get("knowledge_points", []),
+            "errorRecords": profile.get("error_records", []),
+            "strategies": profile.get("strategies", []),
+            "totalSubmissions": profile.get("total_submissions", 0),
+            "lastActive": profile.get("last_active", ""),
+            "recommendedQuestions": profile.get("recommended_questions", []),
+            "recommendedAt": profile.get("recommended_at", ""),
+        }
+
+    async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get tutor profile for a student."""
+        profile = await self.storage.get_tutor_profile(student_id)
+        return self._normalize_tutor_profile(profile) if profile else None
+
+    async def update_tutor_profile(self, student_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update tutor profile for a student."""
+        profile = await self.storage.update_tutor_profile(student_id, data)
+        return self._normalize_tutor_profile(profile)
+
+    # Paper operations (for researcher paper management)
+    async def create_paper(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new paper."""
+        return await self.storage.create_paper(paper_data)
+
+    async def get_paper(self, paper_id: int) -> Optional[Dict[str, Any]]:
+        """Get paper by ID."""
+        return await self.storage.get_paper(paper_id)
+
+    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List papers, optionally filtered by user."""
+        return await self.storage.list_papers(user_id)
+
+    async def delete_paper(self, paper_id: int) -> bool:
+        """Delete paper and its chunks."""
+        return await self.storage.delete_paper(paper_id)
+
+    async def update_paper(self, paper_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update paper data."""
+        return await self.storage.update_paper(paper_id, data)
+
+    async def create_paper_chunks(self, paper_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create paper chunks."""
+        return await self.storage.create_paper_chunks(paper_id, chunks)
+
+    async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
+        """Get all chunks for a paper."""
+        return await self.storage.get_paper_chunks(paper_id)

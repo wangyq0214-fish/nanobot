@@ -28,6 +28,8 @@ from ..models import (
     Notification,
     AuditLog,
     QuestionBank,
+    Paper,
+    PaperChunk,
 )
 
 logger = logging.getLogger(__name__)
@@ -669,6 +671,153 @@ class DatabaseStorage(BaseStorage):
             result = await session.execute(query)
             resources = result.scalars().all()
             return [resource.to_dict() for resource in resources]
+
+    # Tutor profile operations
+    async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get tutor profile for a student. Returns None if not found."""
+        async with get_session() as session:
+            from ..models.tutor_profile import TutorProfile
+            result = await session.execute(
+                select(TutorProfile).where(TutorProfile.student_id == student_id)
+            )
+            profile = result.scalar_one_or_none()
+            return profile.to_dict() if profile else None
+
+    async def update_tutor_profile(self, student_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update tutor profile for a student. Returns updated profile."""
+        async with get_session() as session:
+            from ..models.tutor_profile import TutorProfile
+            result = await session.execute(
+                select(TutorProfile).where(TutorProfile.student_id == student_id)
+            )
+            profile = result.scalar_one_or_none()
+
+            if profile is None:
+                profile = TutorProfile(
+                    student_id=student_id,
+                    knowledge_points=data.get("knowledge_points", []),
+                    error_records=data.get("error_records", []),
+                    strategies=data.get("strategies", []),
+                    total_submissions=data.get("total_submissions", 0),
+                )
+                session.add(profile)
+            else:
+                if "knowledge_points" in data:
+                    profile.knowledge_points = data["knowledge_points"]
+                if "error_records" in data:
+                    profile.error_records = data["error_records"]
+                if "strategies" in data:
+                    profile.strategies = data["strategies"]
+                if "total_submissions" in data:
+                    profile.total_submissions = data["total_submissions"]
+                if "recommended_questions" in data:
+                    profile.recommended_questions = data["recommended_questions"]
+                if "recommended_at" in data:
+                    profile.recommended_at = data["recommended_at"]
+
+            from datetime import datetime
+            profile.last_active = datetime.utcnow()
+            await session.flush()
+            await session.refresh(profile)
+            return profile.to_dict()
+
+    # Paper operations (for researcher paper management)
+    async def create_paper(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new paper. Returns created paper data."""
+        async with get_session() as session:
+            # Filter to valid fields
+            valid_fields = {
+                'title', 'authors', 'abstract', 'year', 'doi', 'citation_count', 'venue',
+                'file_path', 'file_name', 'page_count', 'full_text',
+                'source', 'source_id', 'pdf_url', 'url',
+                'ai_summary', 'user_id', 'is_favorite', 'tags',
+            }
+            data = {k: v for k, v in paper_data.items() if k in valid_fields}
+            # Ensure tags is a JSON string
+            if 'tags' in data and isinstance(data['tags'], list):
+                import json
+                data['tags'] = json.dumps(data['tags'], ensure_ascii=False)
+
+            paper = Paper(**data)
+            session.add(paper)
+            await session.flush()
+            await session.refresh(paper)
+            logger.info(f"Created paper: {paper.id} - {paper.title[:50]}")
+            return paper.to_dict()
+
+    async def get_paper(self, paper_id: int) -> Optional[Dict[str, Any]]:
+        """Get paper by ID. Returns None if not found."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(Paper).where(Paper.id == paper_id)
+            )
+            paper = result.scalar_one_or_none()
+            return paper.to_dict() if paper else None
+
+    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List papers, optionally filtered by user."""
+        async with get_session() as session:
+            query = select(Paper)
+            if user_id:
+                query = query.where(Paper.user_id == user_id)
+            query = query.order_by(Paper.created_at.desc())
+            result = await session.execute(query)
+            papers = result.scalars().all()
+            return [p.to_summary_dict() for p in papers]
+
+    async def delete_paper(self, paper_id: int) -> bool:
+        """Delete paper and its chunks. Returns True if successful."""
+        async with get_session() as session:
+            # Delete chunks first
+            await session.execute(
+                delete(PaperChunk).where(PaperChunk.paper_id == paper_id)
+            )
+            result = await session.execute(
+                delete(Paper).where(Paper.id == paper_id)
+            )
+            return result.rowcount > 0
+
+    async def update_paper(self, paper_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update paper data. Returns updated paper data."""
+        async with get_session() as session:
+            # Handle tags serialization
+            if 'tags' in data and isinstance(data['tags'], list):
+                import json
+                data['tags'] = json.dumps(data['tags'], ensure_ascii=False)
+            data['updated_at'] = datetime.utcnow()
+            await session.execute(
+                update(Paper).where(Paper.id == paper_id).values(**data)
+            )
+            await session.flush()
+            return await self.get_paper(paper_id)
+
+    async def create_paper_chunks(self, paper_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create paper chunks. Returns count of chunks created."""
+        async with get_session() as session:
+            count = 0
+            for chunk in chunks:
+                pc = PaperChunk(
+                    paper_id=paper_id,
+                    chunk_index=chunk.get("chunk_index", 0),
+                    page_number=chunk.get("page_number", 0),
+                    content=chunk.get("content", ""),
+                )
+                session.add(pc)
+                count += 1
+            await session.flush()
+            logger.info(f"Created {count} chunks for paper {paper_id}")
+            return count
+
+    async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
+        """Get all chunks for a paper."""
+        async with get_session() as session:
+            result = await session.execute(
+                select(PaperChunk)
+                .where(PaperChunk.paper_id == paper_id)
+                .order_by(PaperChunk.chunk_index)
+            )
+            chunks = result.scalars().all()
+            return [c.to_dict() for c in chunks]
 
     # Health check
     async def health_check(self) -> Dict[str, Any]:

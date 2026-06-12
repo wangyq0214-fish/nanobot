@@ -46,6 +46,8 @@ from nanobot.api.handlers import (
     handle_courses_create,
     handle_courses_join,
     handle_courses_list,
+    handle_delete_paper,
+    handle_get_paper,
     handle_homework_create,
     handle_homework_delete,
     handle_homework_detail,
@@ -54,14 +56,21 @@ from nanobot.api.handlers import (
     handle_homework_publish,
     handle_homework_submissions,
     handle_homework_submit,
+    handle_import_paper,
     handle_lesson_detail,
     handle_lessons_list,
+    handle_list_papers,
     handle_question_bank_add,
     handle_question_bank_batch_add,
     handle_question_bank_delete,
     handle_question_bank_list,
     handle_question_bank_update,
+    handle_search_papers,
     handle_submission_detail,
+    handle_toggle_favorite,
+    handle_tutor_profile,
+    handle_update_tags,
+    handle_upload_paper,
 )
 from nanobot.api.router import Router
 from nanobot.api.utils import (
@@ -591,6 +600,48 @@ class WebSocketChannel(BaseChannel):
         r.add(
             r"/api/courses/(?P<course_id>[^/]+)",
             handle_course_detail, is_async=True, name="course-detail",
+        )
+
+        # -- Tutor profile -------------------------------------------------
+        r.add(
+            "/api/tutor/profile",
+            handle_tutor_profile, is_async=True, name="tutor-profile",
+        )
+
+        # -- Researcher: Paper management ----------------------------------
+        r.add(
+            r"/api/researcher/papers/upload",
+            handle_upload_paper, is_async=True, name="paper-upload",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/favorite",
+            handle_toggle_favorite, is_async=True, name="paper-favorite",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/tags",
+            handle_update_tags, is_async=True, name="paper-tags",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/delete",
+            handle_delete_paper, is_async=True, name="paper-delete",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)",
+            handle_get_paper, is_async=True, name="paper-detail",
+        )
+        r.add(
+            r"/api/researcher/papers",
+            handle_list_papers, is_async=True, name="paper-list",
+        )
+
+        # -- Researcher: Paper search --------------------------------------
+        r.add(
+            r"/api/researcher/search/import",
+            handle_import_paper, is_async=True, name="search-import",
+        )
+        r.add(
+            r"/api/researcher/search",
+            handle_search_papers, is_async=True, name="search-papers",
         )
 
         # -- Media fetch (sync, HMAC-signed URLs) --------------------------

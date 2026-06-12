@@ -8,6 +8,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@guolao/vue-monaco-editor": "^1.6.0",
+    "@monaco-editor/loader": "^1.7.0",
+    "@tiptap/extension-image": "^3.26.0",
+    "@tiptap/extension-table": "^3.26.0",
+    "@tiptap/extension-table-cell": "^3.26.0",
+    "@tiptap/extension-table-header": "^3.26.0",
+    "@tiptap/extension-table-row": "^3.26.0",
+    "@tiptap/extension-underline": "^3.26.0",
+    "@tiptap/starter-kit": "^3.26.0",
+    "@tiptap/vue-3": "^3.26.0",
     "axios": "^1.6.0",
     "echarts": "^6.1.0",
     "katex": "^0.16.46",

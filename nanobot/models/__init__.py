@@ -4,16 +4,18 @@ Database models for nanobot.
 SQLAlchemy ORM models for PostgreSQL storage.
 """
 
-from .base import Base
-from .user import User
-from .course import Course, CourseMember
-from .lesson import CourseLesson, TeacherLesson
-from .homework import Homework, Question, Submission
-from .resource import CourseResource
-from .progress import LearningProgress
-from .notification import Notification
 from .audit import AuditLog
+from .base import Base
+from .course import Course, CourseMember
+from .homework import Homework, Question, Submission
+from .lesson import CourseLesson, TeacherLesson
+from .notification import Notification
+from .paper import Paper, PaperChunk
+from .progress import LearningProgress
 from .question_bank import QuestionBank
+from .resource import CourseResource
+from .tutor_profile import TutorProfile
+from .user import User
 
 __all__ = [
     "Base",
@@ -30,4 +32,7 @@ __all__ = [
     "Notification",
     "AuditLog",
     "QuestionBank",
+    "TutorProfile",
+    "Paper",
+    "PaperChunk",
 ]

@@ -50,9 +50,9 @@ def http_response(
 
 
 def http_error(status: int, message: str | None = None) -> Response:
-    """Return an HTTP error response."""
-    body = (message or http.HTTPStatus(status).phrase).encode("utf-8")
-    return http_response(body, status=status)
+    """Return an HTTP error response as JSON."""
+    body = json.dumps({"error": message or http.HTTPStatus(status).phrase}, ensure_ascii=False).encode("utf-8")
+    return http_response(body, status=status, content_type="application/json; charset=utf-8")
 
 
 def parse_query(path_with_query: str) -> dict[str, list[str]]:

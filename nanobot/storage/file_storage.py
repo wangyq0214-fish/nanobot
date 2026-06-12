@@ -891,6 +891,181 @@ class FileStorage(BaseStorage):
         resources.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return resources
 
+    # Tutor profile operations
+    async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
+        """Get tutor profile for a student. Returns None if not found."""
+        profile_file = self.base_path / "users" / "student" / student_id / "tutor_profile.json"
+        return self._load_json(profile_file)
+
+    async def update_tutor_profile(self, student_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update tutor profile for a student. Returns updated profile."""
+        profile_file = self.base_path / "users" / "student" / student_id / "tutor_profile.json"
+        profile = self._load_json(profile_file) or {
+            "student_id": student_id,
+            "knowledge_points": [],
+            "error_records": [],
+            "strategies": [],
+            "total_submissions": 0,
+        }
+        profile.update(data)
+        profile["student_id"] = student_id
+        profile["last_active"] = datetime.utcnow().isoformat()
+        self._save_json(profile_file, profile)
+        return profile
+
+    # Paper operations (for researcher paper management)
+    async def create_paper(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new paper. Returns created paper data."""
+        papers_dir = self.base_path / "papers"
+        papers_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate paper ID
+        paper_id = len(list(papers_dir.glob("*.json"))) + 1
+        paper_data["id"] = paper_id
+        paper_data["created_at"] = datetime.utcnow().isoformat()
+        paper_data["updated_at"] = datetime.utcnow().isoformat()
+
+        # Normalize keys to camelCase for frontend
+        paper_record = {
+            "id": paper_id,
+            "title": paper_data.get("title", ""),
+            "authors": paper_data.get("authors", ""),
+            "abstract": paper_data.get("abstract", ""),
+            "year": paper_data.get("year", 0),
+            "doi": paper_data.get("doi", ""),
+            "citationCount": paper_data.get("citation_count", 0),
+            "venue": paper_data.get("venue", ""),
+            "filePath": paper_data.get("file_path", ""),
+            "fileName": paper_data.get("file_name", ""),
+            "pageCount": paper_data.get("page_count", 0),
+            "source": paper_data.get("source", "upload"),
+            "sourceId": paper_data.get("source_id", ""),
+            "pdfUrl": paper_data.get("pdf_url", ""),
+            "userId": paper_data.get("user_id", ""),
+            "isFavorite": False,
+            "tags": [],
+            "createdAt": paper_data["created_at"],
+            "updatedAt": paper_data["updated_at"],
+        }
+
+        # Save paper data
+        paper_file = papers_dir / f"{paper_id}.json"
+        self._save_json(paper_file, paper_record)
+
+        # Save full text separately (too large for main JSON)
+        full_text = paper_data.get("full_text", "")
+        if full_text:
+            text_file = papers_dir / f"{paper_id}_text.txt"
+            text_file.write_text(full_text, encoding="utf-8")
+
+        logger.info(f"Created paper: {paper_id} - {paper_record['title']}")
+        return paper_record
+
+    async def get_paper(self, paper_id: int) -> Optional[Dict[str, Any]]:
+        """Get paper by ID. Returns None if not found."""
+        paper_file = self.base_path / "papers" / f"{paper_id}.json"
+        if not paper_file.exists():
+            return None
+        return self._load_json(paper_file)
+
+    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List papers, optionally filtered by user."""
+        papers_dir = self.base_path / "papers"
+        if not papers_dir.exists():
+            return []
+
+        papers = []
+        for paper_file in papers_dir.glob("*.json"):
+            if paper_file.name.endswith("_text.json"):
+                continue
+            paper = self._load_json(paper_file)
+            if paper:
+                if user_id and paper.get("userId") != user_id:
+                    continue
+                papers.append(paper)
+
+        # Sort by created_at descending
+        papers.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+        return papers
+
+    async def delete_paper(self, paper_id: int) -> bool:
+        """Delete paper and its chunks. Returns True if successful."""
+        papers_dir = self.base_path / "papers"
+        paper_file = papers_dir / f"{paper_id}.json"
+
+        if not paper_file.exists():
+            return False
+
+        # Delete main file
+        paper_file.unlink()
+
+        # Delete text file if exists
+        text_file = papers_dir / f"{paper_id}_text.txt"
+        if text_file.exists():
+            text_file.unlink()
+
+        # Delete chunks file if exists
+        chunks_file = papers_dir / f"{paper_id}_chunks.json"
+        if chunks_file.exists():
+            chunks_file.unlink()
+
+        logger.info(f"Deleted paper: {paper_id}")
+        return True
+
+    async def update_paper(self, paper_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update paper data. Returns updated paper data."""
+        papers_dir = self.base_path / "papers"
+        paper_file = papers_dir / f"{paper_id}.json"
+
+        if not paper_file.exists():
+            raise ValueError(f"Paper not found: {paper_id}")
+
+        paper = self._load_json(paper_file)
+
+        # Map snake_case keys to camelCase
+        key_map = {
+            "is_favorite": "isFavorite",
+            "citation_count": "citationCount",
+        }
+
+        for key, value in data.items():
+            camel_key = key_map.get(key, key)
+            paper[camel_key] = value
+
+        paper["updatedAt"] = datetime.utcnow().isoformat()
+        self._save_json(paper_file, paper)
+
+        logger.info(f"Updated paper: {paper_id}")
+        return paper
+
+    async def create_paper_chunks(self, paper_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create paper chunks. Returns count of chunks created."""
+        papers_dir = self.base_path / "papers"
+        chunks_file = papers_dir / f"{paper_id}_chunks.json"
+
+        # Load existing chunks or create new list
+        existing_chunks = self._load_json(chunks_file) or []
+
+        # Add new chunks
+        for chunk in chunks:
+            chunk["paper_id"] = paper_id
+            existing_chunks.append(chunk)
+
+        self._save_json(chunks_file, existing_chunks)
+
+        logger.info(f"Created {len(chunks)} chunks for paper {paper_id}")
+        return len(chunks)
+
+    async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
+        """Get all chunks for a paper."""
+        papers_dir = self.base_path / "papers"
+        chunks_file = papers_dir / f"{paper_id}_chunks.json"
+
+        if not chunks_file.exists():
+            return []
+
+        return self._load_json(chunks_file) or []
+
     # Health check
     async def health_check(self) -> Dict[str, Any]:
         """Check storage health. Returns health status dictionary."""

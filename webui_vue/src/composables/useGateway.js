@@ -27,6 +27,12 @@ const pendingAiGrade = new Map()
 const pendingAiGenerate = new Map()
 // Pending create_homework requests: Map<request_id, {resolve, reject, timer}>
 const pendingCreateHomework = new Map()
+// Pending ai_tutor_evaluate requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiTutorEvaluate = new Map()
+// Pending ai_generate_derivation requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiDerivation = new Map()
+// Pending ai_tutor_recommend requests: Map<request_id, {resolve, reject, timer}>
+const pendingTutorRecommend = new Map()
 let reconnectTimer = null
 let reconnectAttempts = 0
 let intentionallyClosed = false
@@ -194,6 +200,65 @@ function _doConnect(url) {
       return
     }
 
+    // Handle ai_tutor_evaluate_result (request/response correlation)
+    if (data.event === 'ai_tutor_evaluate_result' && data.request_id) {
+      const pending = pendingAiTutorEvaluate.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiTutorEvaluate.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            isCorrect: data.is_correct,
+            score: data.score,
+            analysis: data.analysis,
+            knowledgePoints: data.knowledge_points,
+            errorType: data.error_type,
+            errorDetail: data.error_detail,
+            strategy: data.strategy,
+            totalSubmissions: data.total_submissions,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle ai_generate_derivation_result (request/response correlation)
+    if (data.event === 'ai_generate_derivation_result' && data.request_id) {
+      const pending = pendingAiDerivation.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiDerivation.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            steps: data.steps,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle ai_tutor_recommend_result (request/response correlation)
+    if (data.event === 'ai_tutor_recommend_result' && data.request_id) {
+      const pending = pendingTutorRecommend.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingTutorRecommend.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            questions: data.questions,
+            totalPoints: data.total_points,
+          })
+        }
+      }
+      return
+    }
+
     // Fan out all other events to per-chat handlers
     if (data.chat_id) {
       _dispatch(data.chat_id, data)
@@ -224,6 +289,12 @@ export function useGateway() {
     intentionallyClosed = false
     currentRole = opts.role || ''
     currentUserId = opts.userId || ''
+
+    if (!currentRole || !currentUserId) {
+      const msg = '连接失败：缺少用户信息，请重新登录'
+      connectionError.value = msg
+      throw new Error(msg)
+    }
 
     // 1. Bootstrap
     const params = new URLSearchParams()
@@ -470,5 +541,85 @@ export function useGateway() {
     })
   }
 
-  return { connected, connectionError, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework }
+  /**
+   * AI-evaluate a student's answer in tutor mode.
+   * Returns Promise<{isCorrect, score, analysis, knowledgePoints, errorType, errorDetail, strategy, totalSubmissions}>.
+   */
+  function sendAiTutorEvaluate(params, timeoutMs = 90000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'ate_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiTutorEvaluate.delete(requestId)
+        reject(new Error('AI 辅导评估超时'))
+      }, timeoutMs)
+      pendingAiTutorEvaluate.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_tutor_evaluate',
+        request_id: requestId,
+        question: params.question,
+        student_answer: params.studentAnswer,
+        reference_answer: params.referenceAnswer || '',
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * Generate a derivation chain for a topic via AI.
+   * Returns Promise<{steps}>.
+   */
+  function sendAiGenerateDerivation(params, timeoutMs = 120000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'agd_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiDerivation.delete(requestId)
+        reject(new Error('AI 生成推导链超时'))
+      }, timeoutMs)
+      pendingAiDerivation.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_generate_derivation',
+        request_id: requestId,
+        topic: params.topic,
+        mode: params.mode || 'formula',
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * AI tutor recommend — generate practice questions based on student's tutor profile.
+   * Returns Promise<{questions, totalPoints}>.
+   */
+  function sendAiTutorRecommend(params, timeoutMs = 180000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'atr_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingTutorRecommend.delete(requestId)
+        reject(new Error('AI 推题超时'))
+      }, timeoutMs)
+      pendingTutorRecommend.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_tutor_recommend',
+        request_id: requestId,
+        content: params.content || '',
+        num_questions: params.numQuestions || 5,
+        type_distribution: params.typeDistribution || {},
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  return { connected, connectionError, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework, sendAiTutorEvaluate, sendAiGenerateDerivation, sendAiTutorRecommend }
 }

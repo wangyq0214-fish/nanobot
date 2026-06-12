@@ -1,23 +1,29 @@
 <template>
-  <nav class="student-nav">
+  <nav class="app-nav">
     <div class="nav-left">
-      <span class="nav-logo"><span class="dot"></span>Nanobot</span>
+      <span class="nav-logo">Nano<span class="logo-accent">bot</span></span>
     </div>
     <div class="nav-center">
-      <span class="nav-tab" :class="{ active: activeTab === 'learning-path' }" @click="$router.push('/student/learning-path')">个性化学情</span>
-      <span class="nav-tab" :class="{ active: activeTab === 'formula-derivation' }" @click="$router.push('/student/formula-derivation')">推导链</span>
-      <span class="nav-tab" :class="{ active: activeTab === 'tutoring-assistant' }" @click="$router.push('/student/tutoring-assistant')">学伴辅导</span>
-      <span class="nav-tab" :class="{ active: activeTab === 'courses' }" @click="$router.push('/student/courses')">课程</span>
+      <div class="nav-tabs">
+        <span class="nav-tab" :class="{ active: activeTab === 'learning-path' }" @click="$router.push('/student/learning-path')">个性化学情</span>
+        <span class="nav-tab" :class="{ active: activeTab === 'formula-derivation' }" @click="$router.push('/student/formula-derivation')">推导链</span>
+        <span class="nav-tab" :class="{ active: activeTab === 'tutoring-assistant' }" @click="$router.push('/student/tutoring-assistant')">学伴辅导</span>
+        <span class="nav-tab" :class="{ active: activeTab === 'courses' }" @click="$router.push('/student/courses')">课程</span>
+      </div>
     </div>
     <div class="nav-right">
-      <button class="nav-icon" @click="toggleTheme" title="切换主题">
-        <svg v-if="!isDark" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"/><path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.5 4.5l1.5 1.5m8 8l1.5 1.5M4.5 15.5l1.5-1.5m8-8l1.5-1.5"/></svg>
-        <svg v-else viewBox="0 0 20 20"><path d="M10 2a8 8 0 1 0 0 16 7 7 0 0 1 0-14"/></svg>
+      <div class="conn-capsule" :class="{ online: connected }">
+        <span class="conn-dot"></span>
+        <span class="conn-text">{{ connected ? '已连接' : '未连接' }}</span>
+      </div>
+      <button class="icon-circle" @click="toggleTheme" :title="isDark ? '切换到亮色模式' : '切换到暗色模式'">
+        <svg v-if="isDark" class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/></svg>
+        <svg v-else class="ui-icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       </button>
-      <button class="nav-icon" @click="handleLogout" title="退出登录">
-        <svg viewBox="0 0 20 20"><path d="M7 17H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3M13 14l4-4-4-4M17 10H7"/></svg>
+      <button class="icon-circle" @click="handleLogout" title="退出登录">
+        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
       </button>
-      <div class="nav-avatar" :title="user?.userId || ''">{{ user?.userId?.[0] || '?' }}</div>
+      <div class="avatar-circle" :title="user?.userId || ''">{{ user?.userId?.[0] || '?' }}</div>
     </div>
   </nav>
 </template>
@@ -26,6 +32,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth.js'
+import { useGateway } from '../composables/useGateway.js'
 
 defineProps({
   activeTab: { type: String, default: 'learning-path' },
@@ -33,6 +40,7 @@ defineProps({
 
 const router = useRouter()
 const { user, logout } = useAuth()
+const { connected } = useGateway()
 const isDark = ref(false)
 
 function toggleTheme() {
@@ -47,39 +55,132 @@ function handleLogout() {
 </script>
 
 <style scoped>
-.student-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px; height: 52px; flex-shrink: 0;
-  background: #fff; border-bottom: 1px solid #e8e4db;
-}
-.nav-left { display: flex; align-items: center; }
-.nav-logo { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 6px; color: #2c2c2c; }
-.dot { width: 8px; height: 8px; background: #5b8def; border-radius: 50%; display: inline-block; }
-.nav-center { display: flex; gap: 4px; }
-.nav-tab {
-  padding: 6px 16px; font-size: 0.82rem; font-weight: 600; color: #888;
-  cursor: pointer; border-radius: 6px; transition: all 0.2s;
-}
-.nav-tab:hover { background: #f0ede8; }
-.nav-tab.active { color: #5b8def; background: #eef4ff; }
-.nav-right { display: flex; align-items: center; gap: 8px; }
-.nav-icon {
-  background: none; border: none; cursor: pointer; padding: 6px;
-  border-radius: 6px; color: #666; display: flex; align-items: center;
-}
-.nav-icon:hover { background: #f0ede8; }
-.nav-icon svg { width: 18px; height: 18px; }
-.nav-avatar {
-  width: 30px; height: 30px; border-radius: 50%; background: #5b8def;
-  color: #fff; display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; font-weight: 600;
+.app-nav {
+  height: 64px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  flex-shrink: 0;
 }
 
-:global(body.dark) .student-nav { background: #1e1e2e; border-color: #333; }
-:global(body.dark) .nav-logo { color: #e0e0e0; }
-:global(body.dark) .nav-tab { color: #888; }
-:global(body.dark) .nav-tab:hover { background: #252535; }
-:global(body.dark) .nav-tab.active { background: #252535; color: #5b8def; }
-:global(body.dark) .nav-icon { color: #888; }
-:global(body.dark) .nav-icon:hover { background: #252535; }
+.nav-left { display: flex; align-items: center; }
+
+.nav-logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+.logo-accent { color: var(--color-primary); }
+
+.nav-center { display: flex; align-items: center; }
+
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tag);
+  padding: 4px;
+  border-radius: var(--radius-full);
+}
+
+.nav-tab {
+  padding: 7px 18px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.nav-tab:hover { color: var(--text-primary); }
+
+.nav-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.nav-right { display: flex; align-items: center; gap: 10px; }
+
+.conn-capsule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  background: var(--bg-tag);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+}
+.conn-capsule.online {
+  background: rgba(34,197,94,0.08);
+  border-color: rgba(34,197,94,0.25);
+}
+.conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.3s;
+}
+.conn-capsule.online .conn-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+}
+.conn-text {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.conn-capsule.online .conn-text { color: #16a34a; }
+
+.icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.icon-circle:hover {
+  background: var(--bg-tag);
+  color: var(--text-primary);
+  border-color: var(--border-input);
+}
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.avatar-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #60a5fa, var(--color-primary));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(59,130,246,0.15);
+  transition: transform 0.2s ease;
+}
+.avatar-circle:hover { transform: scale(1.05); }
 </style>

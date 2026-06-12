@@ -270,58 +270,57 @@ onUnmounted(() => {
 
 <style>
 :root {
-            --bg-root: #f6f5fc;
-            --bg-card: rgba(255, 255, 255, 0.7);
-            --bg-nav: rgba(255, 255, 255, 0.85);
-            --accent: #6C5CE7;
-            --accent-2: #7B5CFF;
-            --accent-light: rgba(108, 92, 231, 0.3);
-            --accent-soft: rgba(108, 92, 231, 0.08);
-            --accent-glow: rgba(108, 92, 231, 0.25);
-            --accent-deep: #5541c8;
-            --border-light: rgba(0, 0, 0, 0.06);
-            --border-medium: rgba(0, 0, 0, 0.12);
-            --border-active: #6C5CE7;
-            --text-primary: #1e1b2e;
-            --text-secondary: #48445a;
-            --text-muted: #7c7894;
-            --divider: rgba(0, 0, 0, 0.05);
-            --panel-radius: 16px;
-            --green: #00b894;
-            --red: #e17055;
-            --orange: #fdcb6e;
-            --annotation-bg: #fff9f0;
-            --annotation-border: #f0d9a8;
-            --annotation-text: #6b4e31;
-            --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.03);
-            --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.05);
-            --trans: 0.35s cubic-bezier(0.22, 0.08, 0.22, 1);
-            --scrollbar-thumb: rgba(108, 92, 231, 0.25);
-            --scrollbar-track: transparent;
-        }
-
-        body.dark {
-            --bg-root: #0c0b14;
-            --bg-card: rgba(20, 19, 31, 0.6);
-            --bg-nav: rgba(14, 13, 24, 0.9);
-            --accent: #9D8FFF;
-            --accent-light: rgba(157, 143, 255, 0.4);
-            --accent-soft: rgba(157, 143, 255, 0.1);
-            --accent-glow: rgba(157, 143, 255, 0.35);
-            --accent-deep: #7B6FE0;
-            --border-light: rgba(255, 255, 255, 0.07);
-            --border-medium: rgba(255, 255, 255, 0.14);
-            --border-active: #9D8FFF;
-            --text-primary: #e8e6f5;
-            --text-secondary: #a9a5c0;
-            --text-muted: #6e6a8a;
-            --divider: rgba(255, 255, 255, 0.06);
-            --annotation-bg: #2a2530;
-            --annotation-border: #5e4a3a;
-            --annotation-text: #d4ba8c;
-            --scrollbar-thumb: rgba(157, 143, 255, 0.35);
-            --scrollbar-track: rgba(255, 255, 255, 0.03);
-        }
+  --bg-root: #f8f6f1;
+  --bg-card: #ffffff;
+  --bg-nav: #ffffff;
+  --accent: #5b8def;
+  --accent-2: #7B5CFF;
+  --accent-light: rgba(91,141,239,0.3);
+  --accent-soft: #eef4ff;
+  --accent-glow: rgba(91,141,239,0.15);
+  --accent-deep: #4a7de0;
+  --border-light: #e8e4db;
+  --border-medium: #e0dcd5;
+  --border-active: #5b8def;
+  --text-primary: #2c2c2c;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --divider: #e8e4db;
+  --panel-radius: 16px;
+  --green: #16a34a;
+  --red: #e74c3c;
+  --orange: #f59e0b;
+  --annotation-bg: #fff9f0;
+  --annotation-border: #f0d9a8;
+  --annotation-text: #6b4e31;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+  --trans: 0.25s ease;
+  --scrollbar-thumb: rgba(91,141,239,0.25);
+  --scrollbar-track: transparent;
+}
+body.dark {
+  --bg-root: #12121a;
+  --bg-card: #1e1e2e;
+  --bg-nav: #1e1e2e;
+  --accent: #5b8def;
+  --accent-light: rgba(91,141,239,0.3);
+  --accent-soft: rgba(91,141,239,0.1);
+  --accent-glow: rgba(91,141,239,0.2);
+  --accent-deep: #4a7de0;
+  --border-light: #333333;
+  --border-medium: #444444;
+  --border-active: #5b8def;
+  --text-primary: #e0e0e0;
+  --text-secondary: #aaaaaa;
+  --text-muted: #777777;
+  --divider: #333333;
+  --annotation-bg: #2a2530;
+  --annotation-border: #5e4a3a;
+  --annotation-text: #d4ba8c;
+  --scrollbar-thumb: rgba(91,141,239,0.35);
+  --scrollbar-track: rgba(255,255,255,0.03);
+}
 
         * {
             margin: 0;
@@ -379,9 +378,7 @@ onUnmounted(() => {
             align-items: center;
             justify-content: space-between;
             background: var(--bg-nav);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 2px solid var(--accent);
+            border: 1px solid var(--border-light);
             border-radius: 24px;
             padding: 0 24px;
             box-shadow: 0 0 0 2px var(--accent-soft), 0 0 18px var(--accent-glow);
@@ -407,19 +404,6 @@ onUnmounted(() => {
             height: 7px;
             border-radius: 50%;
             background: var(--accent);
-            box-shadow: 0 0 12px var(--accent-glow);
-            animation: dotPulse 2s infinite;
-        }
-        @keyframes dotPulse {
-            0%,
-            100% {
-                transform: scale(1);
-                opacity: 1;
-            }
-            50% {
-                transform: scale(1.6);
-                opacity: 0.6;
-            }
         }
         .nav-center {
             display: flex;
@@ -508,9 +492,7 @@ onUnmounted(() => {
 
         .panel {
             background: var(--bg-card);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1.8px solid var(--accent);
+            border: 1px solid var(--border-light);
             border-radius: var(--panel-radius);
             box-shadow: 0 0 14px var(--accent-soft), var(--shadow-sm);
             position: relative;
@@ -556,108 +538,7 @@ onUnmounted(() => {
         }
 
         .panel-strip {
-            position: absolute;
-            pointer-events: none;
-            z-index: 1;
-        }
-        .panel-strip.top,
-        .panel-strip.bottom {
-            left: -100%;
-            width: 100%;
-            height: 1.5px;
-            background: linear-gradient(90deg, transparent, #C4B0FF, #7B5CFF, #C4B0FF, transparent);
-            box-shadow: 0 0 7px #C4B0FF;
-        }
-        .panel-strip.right,
-        .panel-strip.left {
-            top: -100%;
-            width: 1.5px;
-            height: 100%;
-            background: linear-gradient(180deg, transparent, #C4B0FF, #A78BFA, #C4B0FF, transparent);
-            box-shadow: 0 0 7px #C4B0FF;
-        }
-        .panel-strip.top {
-            top: 0;
-            animation: scanH 3.2s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
-        }
-        .panel-strip.right {
-            right: 0;
-            animation: scanV 3.2s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
-            animation-delay: 0.8s;
-        }
-        .panel-strip.bottom {
-            bottom: 0;
-            animation: scanHRev 3.2s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
-            animation-delay: 1.6s;
-        }
-        .panel-strip.left {
-            left: 0;
-            animation: scanVRev 3.2s infinite cubic-bezier(0.45, 0.05, 0.55, 0.95);
-            animation-delay: 2.4s;
-        }
-        @keyframes scanH {
-            0% {
-                left: -100%;
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                left: 100%;
-                opacity: 0;
-            }
-        }
-        @keyframes scanHRev {
-            0% {
-                left: 100%;
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                left: -100%;
-                opacity: 0;
-            }
-        }
-        @keyframes scanV {
-            0% {
-                top: -100%;
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                top: 100%;
-                opacity: 0;
-            }
-        }
-        @keyframes scanVRev {
-            0% {
-                top: 100%;
-                opacity: 0;
-            }
-            10% {
-                opacity: 1;
-            }
-            90% {
-                opacity: 1;
-            }
-            100% {
-                top: -100%;
-                opacity: 0;
-            }
+            display: none;
         }
 
         .panel-hd {
@@ -999,18 +880,6 @@ onUnmounted(() => {
             background: var(--accent);
             box-shadow: 0 0 14px var(--accent-glow);
             border: 2px solid white;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 14px var(--accent-glow);
-            }
-            50% {
-                box-shadow: 0 0 22px var(--accent-light);
-            }
-            100% {
-                box-shadow: 0 0 14px var(--accent-glow);
-            }
         }
         .path-node-dot.future {
             background: #dcdde1;

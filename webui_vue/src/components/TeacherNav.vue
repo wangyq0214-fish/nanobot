@@ -1,43 +1,45 @@
 <template>
-  <nav class="teacher-nav">
+  <nav class="app-nav">
     <div class="nav-left">
-      <span class="nav-logo"><span class="dot"></span>Nanobot</span>
+      <span class="nav-logo">Nano<span class="logo-accent">bot</span></span>
     </div>
     <div class="nav-center">
-      <span
-        class="nav-tab"
-        :class="{ active: activeTab === 'courses' }"
-        @click="$router.push('/teacher/courses')"
-      >课程管理</span>
-      <span
-        class="nav-tab"
-        :class="{ active: activeTab === 'lesson-plan' }"
-        @click="$router.push('/teacher/lesson-plan')"
-      >教案与活动</span>
-      <span
-        class="nav-tab"
-        :class="{ active: activeTab === 'homework' }"
-        @click="$router.push('/teacher/exam')"
-      >作业批改</span>
-      <span
-        class="nav-tab"
-        :class="{ active: activeTab === 'analytics' }"
-        @click="$router.push('/teacher/analytics')"
-      >学情分析</span>
+      <div class="nav-tabs">
+        <span
+          class="nav-tab"
+          :class="{ active: activeTab === 'courses' }"
+          @click="$router.push('/teacher/courses')"
+        >课程管理</span>
+        <span
+          class="nav-tab"
+          :class="{ active: activeTab === 'lesson-plan' }"
+          @click="$router.push('/teacher/lesson-plan')"
+        >教案与活动</span>
+        <span
+          class="nav-tab"
+          :class="{ active: activeTab === 'homework' }"
+          @click="$router.push('/teacher/exam')"
+        >作业批改</span>
+        <span
+          class="nav-tab"
+          :class="{ active: activeTab === 'analytics' }"
+          @click="$router.push('/teacher/analytics')"
+        >学情分析</span>
+      </div>
     </div>
     <div class="nav-right">
-      <span class="conn-status" :class="{ online: connected }" :title="connected ? 'Gateway 已连接' : 'Gateway 未连接'">
+      <div class="conn-capsule" :class="{ online: connected }">
         <span class="conn-dot"></span>
-        <span class="conn-label">{{ connected ? '已连接' : '未连接' }}</span>
-      </span>
-      <button class="nav-icon" @click="toggleTheme" title="切换主题">
-        <svg v-if="!isDark" viewBox="0 0 20 20"><path d="M10 2a8 8 0 1 0 0 16 7 7 0 0 1 0-14"/></svg>
-        <svg v-else viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"/><path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.5 4.5l1.5 1.5m8 8l1.5 1.5M4.5 15.5l1.5-1.5m8-8l1.5-1.5"/></svg>
+        <span class="conn-text">{{ connected ? '已连接' : '未连接' }}</span>
+      </div>
+      <button class="icon-circle" @click="toggleTheme" :title="isDark ? '切换到亮色模式' : '切换到暗色模式'">
+        <svg v-if="isDark" class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32 1.41-1.41"/></svg>
+        <svg v-else class="ui-icon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
       </button>
-      <button class="nav-icon" @click="handleLogout" title="退出登录">
-        <svg viewBox="0 0 20 20"><path d="M7 17H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h3M13 14l4-4-4-4M17 10H7"/></svg>
+      <button class="icon-circle" @click="handleLogout" title="退出登录">
+        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
       </button>
-      <div class="nav-avatar" :title="user?.userId || ''">{{ user?.userId?.[0] || '?' }}</div>
+      <div class="avatar-circle" :title="user?.userId || ''">{{ user?.userId?.[0] || '?' }}</div>
     </div>
   </nav>
 </template>
@@ -71,71 +73,135 @@ function handleLogout() {
 </script>
 
 <style scoped>
-.teacher-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 20px; height: 50px; flex-shrink: 0;
-  background: var(--bg-card, #fff); border-bottom: 1px solid var(--border-light, #e8e4db);
+.app-nav {
+  height: 64px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  flex-shrink: 0;
 }
-.nav-left { display: flex; align-items: center; }
-.nav-logo {
-  font-family: 'Playfair Display', 'Georgia', serif; font-style: italic;
-  font-weight: 700; font-size: 1.05rem; color: var(--text-primary, #2c2c2c);
-  display: flex; align-items: center; gap: 6px;
-}
-.dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--accent, #5b8def); box-shadow: 0 0 12px var(--accent-glow, rgba(91,141,239,0.4));
-}
-.nav-center { display: flex; align-items: center; gap: 3px; }
-.nav-tab {
-  padding: 6px 14px; border-radius: 13px; font-size: 0.82rem; font-weight: 500;
-  color: var(--text-secondary, #888); cursor: pointer; transition: all 0.25s;
-  border: 1.5px solid transparent; white-space: nowrap;
-}
-.nav-tab:hover { color: var(--text-primary, #2c2c2c); background: var(--bg-tag, #f0ede8); }
-.nav-tab.active {
-  color: var(--accent, #5b8def); background: var(--accent-soft, #eef4ff);
-  border-color: var(--accent-light, rgba(91,141,239,0.3));
-  box-shadow: 0 0 14px var(--accent-glow, rgba(91,141,239,0.2));
-}
-.nav-right { display: flex; align-items: center; gap: 8px; }
-.conn-status {
-  display: flex; align-items: center; gap: 5px; padding: 4px 10px;
-  border-radius: 12px; font-size: 0.72rem; color: var(--text-muted, #999);
-  border: 1px solid var(--border-light, #e8e4db); background: var(--bg-card, #fff);
-  cursor: default;
-}
-.conn-status.online { color: var(--green, #16a34a); border-color: rgba(22,163,74,0.25); }
-.conn-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--text-muted, #ccc); transition: all 0.3s;
-}
-.conn-status.online .conn-dot { background: var(--green, #16a34a); box-shadow: 0 0 6px rgba(22,163,74,0.5); }
-.conn-label { font-weight: 500; }
-.nav-icon {
-  background: none; border: none; cursor: pointer; padding: 6px;
-  border-radius: 8px; color: var(--text-secondary, #888);
-  display: flex; align-items: center; transition: all 0.2s;
-}
-.nav-icon:hover { background: var(--bg-tag, #f0ede8); color: var(--text-primary, #2c2c2c); }
-.nav-icon svg { width: 17px; height: 17px; }
-.nav-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: linear-gradient(135deg, #7B5CFF, #A78BFA);
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 600; font-size: 0.72rem; cursor: pointer;
-  border: 2px solid transparent; box-shadow: 0 0 16px var(--accent-glow, rgba(91,141,239,0.3));
-  transition: all 0.25s;
-}
-.nav-avatar:hover { transform: scale(1.06); }
 
-/* Dark theme */
-:global(body.dark) .teacher-nav { background: #1e1e2e; border-color: #333; }
-:global(body.dark) .nav-logo { color: #e0e0e0; }
-:global(body.dark) .nav-tab { color: #888; }
-:global(body.dark) .nav-tab:hover { background: #252535; color: #ccc; }
-:global(body.dark) .nav-tab.active { background: #1a2a4a; color: #5b8def; }
-:global(body.dark) .conn-status { background: #252535; border-color: #444; }
-:global(body.dark) .nav-icon { color: #888; }
-:global(body.dark) .nav-icon:hover { background: #252535; color: #ccc; }
+.nav-left { display: flex; align-items: center; }
+
+.nav-logo {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+}
+.logo-accent { color: var(--color-primary); }
+
+.nav-center { display: flex; align-items: center; }
+
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tag);
+  padding: 4px;
+  border-radius: var(--radius-full);
+}
+
+.nav-tab {
+  padding: 7px 18px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.nav-tab:hover { color: var(--text-primary); }
+
+.nav-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.nav-right { display: flex; align-items: center; gap: 10px; }
+
+/* Connection capsule */
+.conn-capsule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  background: var(--bg-tag);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+}
+.conn-capsule.online {
+  background: rgba(34,197,94,0.08);
+  border-color: rgba(34,197,94,0.25);
+}
+.conn-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.3s;
+}
+.conn-capsule.online .conn-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.15);
+}
+.conn-text {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.conn-capsule.online .conn-text { color: #16a34a; }
+
+/* Circle icon buttons */
+.icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.icon-circle:hover {
+  background: var(--bg-tag);
+  color: var(--text-primary);
+  border-color: var(--border-input);
+}
+.ui-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Avatar */
+.avatar-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #60a5fa, var(--color-primary));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(59,130,246,0.15);
+  transition: transform 0.2s ease;
+}
+.avatar-circle:hover { transform: scale(1.05); }
 </style>
