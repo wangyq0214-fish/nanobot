@@ -192,7 +192,7 @@ function handleLogout() {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #60a5fa, var(--color-primary));
+  background: var(--color-primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -200,7 +200,7 @@ function handleLogout() {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(59,130,246,0.15);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   transition: transform 0.2s ease;
 }
 .avatar-circle:hover { transform: scale(1.05); }

@@ -53,8 +53,8 @@ function renderBoard(md) {
 <style scoped>
 .section-board h2 {
   margin-bottom: 12px;
-  border-left: 3px solid #8b7355 !important;
-  color: var(--text-primary, #2c2c2c) !important;
+  border-left: 3px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
 }
 
 /* ── Chalkboard frame ── */
@@ -347,5 +347,16 @@ function renderBoard(md) {
   font-size: 1rem;
   margin: 6px 0;
   user-select: none;
+}
+
+/* Dark mode adjustments */
+:global(body.dark) .board-frame {
+  background: #2a2a2a;
+}
+:global(body.dark) .board-inner {
+  background: #1e1e1e;
+}
+:global(body.dark) .board-tray {
+  background: linear-gradient(to bottom, #333333, #2a2a2a);
 }
 </style>

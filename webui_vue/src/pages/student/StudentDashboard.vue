@@ -12,7 +12,8 @@
           <span class="role-label">{{ r.label }}</span>
         </button>
       </div>
-      <input class="login-input" v-model="loginUserId" placeholder="输入用户名" @keydown.enter="handleLogin" autofocus />
+      <input class="login-input" v-model="loginUserId" placeholder="输入用户名" @keydown.enter="$refs.loginPwd?.focus()" autofocus />
+      <input class="login-input" ref="loginPwd" v-model="loginPassword" type="password" placeholder="输入密码" @keydown.enter="handleLogin" />
       <p v-if="loginError" class="login-error">{{ loginError }}</p>
       <button class="login-submit" @click="handleLogin" :disabled="!loginRole || !loginUserId.trim() || loginLoading">
         {{ loginLoading ? '连接中...' : (authMode === 'login' ? '登录' : '注册') }}
@@ -203,6 +204,7 @@ const user = ref(null)
 const authMode = ref('login')
 const loginRole = ref('student')
 const loginUserId = ref('')
+const loginPassword = ref('')
 const loginError = ref('')
 const loginLoading = ref(false)
 const connected = ref(false)
@@ -222,12 +224,15 @@ function clearUser() { localStorage.removeItem(USER_KEY) }
 
 async function handleLogin() {
   const trimmed = loginUserId.value.trim()
+  const password = loginPassword.value
   if (!loginRole.value || !trimmed) return
   if (trimmed.length > 64) { loginError.value = '用户名过长'; return }
+  if (!password) { loginError.value = '请输入密码'; return }
+  if (password.length < 6) { loginError.value = '密码至少6位'; return }
   loginError.value = ''
   loginLoading.value = true
   try {
-    const params = new URLSearchParams({ role: loginRole.value, user_id: trimmed })
+    const params = new URLSearchParams({ role: loginRole.value, user_id: trimmed, password })
     const endpoint = authMode.value === 'register'
       ? `/api/users/register?${params}&display_name=${encodeURIComponent(trimmed)}`
       : `/api/users/validate?${params}`

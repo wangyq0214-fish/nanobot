@@ -730,13 +730,15 @@ class DatabaseStorage(BaseStorage):
                 'title', 'authors', 'abstract', 'year', 'doi', 'citation_count', 'venue',
                 'file_path', 'file_name', 'page_count', 'full_text',
                 'source', 'source_id', 'pdf_url', 'url',
-                'ai_summary', 'user_id', 'is_favorite', 'tags',
+                'ai_summary', 'user_id', 'is_favorite', 'tags', 'annotations',
             }
             data = {k: v for k, v in paper_data.items() if k in valid_fields}
-            # Ensure tags is a JSON string
+            # Ensure JSON fields are serialized
+            import json
             if 'tags' in data and isinstance(data['tags'], list):
-                import json
                 data['tags'] = json.dumps(data['tags'], ensure_ascii=False)
+            if 'annotations' in data and isinstance(data['annotations'], list):
+                data['annotations'] = json.dumps(data['annotations'], ensure_ascii=False)
 
             paper = Paper(**data)
             session.add(paper)
@@ -780,10 +782,12 @@ class DatabaseStorage(BaseStorage):
     async def update_paper(self, paper_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
         """Update paper data. Returns updated paper data."""
         async with get_session() as session:
-            # Handle tags serialization
+            # Handle JSON field serialization
+            import json
             if 'tags' in data and isinstance(data['tags'], list):
-                import json
                 data['tags'] = json.dumps(data['tags'], ensure_ascii=False)
+            if 'annotations' in data and isinstance(data['annotations'], list):
+                data['annotations'] = json.dumps(data['annotations'], ensure_ascii=False)
             data['updated_at'] = datetime.utcnow()
             await session.execute(
                 update(Paper).where(Paper.id == paper_id).values(**data)

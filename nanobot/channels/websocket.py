@@ -41,6 +41,7 @@ from nanobot.api.handlers import (
     handle_ai_generate_questions,
     handle_ai_grade,
     handle_ai_grade_question,
+    handle_analytics_summary,
     handle_course_detail,
     handle_course_members,
     handle_courses_create,
@@ -48,6 +49,8 @@ from nanobot.api.handlers import (
     handle_courses_list,
     handle_delete_paper,
     handle_get_paper,
+    handle_get_paper_chunks,
+    handle_get_paper_pdf,
     handle_homework_create,
     handle_homework_delete,
     handle_homework_detail,
@@ -69,6 +72,7 @@ from nanobot.api.handlers import (
     handle_submission_detail,
     handle_toggle_favorite,
     handle_tutor_profile,
+    handle_update_annotations,
     handle_update_tags,
     handle_upload_paper,
 )
@@ -485,9 +489,10 @@ class WebSocketChannel(BaseChannel):
         r = Router()
 
         # -- Auth endpoints (sync, delegate to AuthManager) ----------------
-        r.add("/webui/bootstrap", self.auth.handle_webui_bootstrap, name="webui-bootstrap")
-        r.add("/api/users/register", self.auth.handle_users_register, is_async=True, name="users-register")
-        r.add("/api/users/validate", self.auth.handle_users_validate, is_async=True, name="users-validate")
+        r.add("/webui/bootstrap", self.auth.handle_webui_bootstrap, name="webui-bootstrap", auth_required=False)
+        r.add("/api/users/register", self.auth.handle_users_register, is_async=True, name="users-register", auth_required=False)
+        r.add("/api/users/validate", self.auth.handle_users_validate, is_async=True, name="users-validate", auth_required=False)
+        r.add("/api/auth/logout", self.auth.handle_logout, is_async=True, name="auth-logout")
 
         # -- Session management (sync, local methods) ----------------------
         r.add("/api/sessions", self._handle_sessions_list, name="sessions-list")
@@ -496,8 +501,9 @@ class WebSocketChannel(BaseChannel):
 
         # -- Agent management (sync, local methods) ------------------------
         r.add("/api/agents/current", self._handle_agents_current, name="agents-current")
+        r.add("/api/agents/upsert", self._handle_agents_upsert, name="agents-upsert")
         r.add("/api/agents", self._handle_agents_list, name="agents-list")
-        r.add(r"/api/agents/(?P<agent_id>[^/]+)/switch", self._handle_agents_switch, name="agents-switch")
+        r.add(r"/api/agents/(?P<agent_name>[^/]+)/switch", self._handle_agents_switch, name="agents-switch")
 
         # -- Source file browsing (sync, local methods) --------------------
         r.add("/api/source", self._handle_source_list, name="source-list")
@@ -608,6 +614,12 @@ class WebSocketChannel(BaseChannel):
             handle_tutor_profile, is_async=True, name="tutor-profile",
         )
 
+        # -- Analytics -----------------------------------------------------
+        r.add(
+            "/api/analytics/summary",
+            handle_analytics_summary, is_async=True, name="analytics-summary",
+        )
+
         # -- Researcher: Paper management ----------------------------------
         r.add(
             r"/api/researcher/papers/upload",
@@ -622,8 +634,20 @@ class WebSocketChannel(BaseChannel):
             handle_update_tags, is_async=True, name="paper-tags",
         )
         r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/annotations",
+            handle_update_annotations, is_async=True, name="paper-annotations",
+        )
+        r.add(
             r"/api/researcher/papers/(?P<paper_id>\d+)/delete",
             handle_delete_paper, is_async=True, name="paper-delete",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/chunks",
+            handle_get_paper_chunks, is_async=True, name="paper-chunks",
+        )
+        r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/pdf",
+            handle_get_paper_pdf, is_async=True, name="paper-pdf",
         )
         r.add(
             r"/api/researcher/papers/(?P<paper_id>\d+)",
@@ -644,10 +668,10 @@ class WebSocketChannel(BaseChannel):
             handle_search_papers, is_async=True, name="search-papers",
         )
 
-        # -- Media fetch (sync, HMAC-signed URLs) --------------------------
+        # -- Media fetch (sync, HMAC-signed URLs, self-authenticating) ------
         r.add(
             r"/api/media/(?P<sig>[A-Za-z0-9_-]+)/(?P<payload>[A-Za-z0-9_-]+)",
-            self._handle_media_fetch, name="media-fetch", takes_request=False,
+            self._handle_media_fetch, name="media-fetch", takes_request=False, auth_required=False,
         )
 
         return r
@@ -659,7 +683,11 @@ class WebSocketChannel(BaseChannel):
 
         got = normalize_path(request.path)
         query = parse_query(request.path)
-        logger.info("[dispatch_http] path={!r} normalized={!r} query_keys={}", request.path, got, list(query.keys()))
+        auth_header = request.headers.get("Authorization") or request.headers.get("authorization") or ""
+        logger.info(
+            "[dispatch_http] path={!r} normalized={!r} query_keys={} has_auth={}",
+            request.path, got, list(query.keys()), bool(auth_header),
+        )
 
         # 1. Token issue endpoint (legacy, optional, gated by configured secret).
         #    Dynamic path from config — not suitable for the static route table.
@@ -674,6 +702,7 @@ class WebSocketChannel(BaseChannel):
             context={
                 "storage": self.storage,
                 "check_token": self.auth.check_api_token,
+                "check_identity": self.auth.check_api_token_with_identity,
                 "model_name": _read_webui_model_name(),
             },
         )
@@ -691,7 +720,7 @@ class WebSocketChannel(BaseChannel):
                 client_id = client_id[:128]
             if not self.is_allowed(client_id):
                 return connection.respond(403, "Forbidden")
-            return self._authorize_websocket_handshake(connection, query)
+            return self._authorize_websocket_handshake(connection, query, request.headers)
 
         # 4. Static SPA serving (only if a build directory was wired in).
         if self._static_dist_path is not None:
@@ -703,22 +732,21 @@ class WebSocketChannel(BaseChannel):
 
     # -- Source file HTTP handlers -------------------------------------------
 
-    def _resolve_source_dir(self, request: WsRequest) -> Path | Response:
+    def _resolve_source_dir(self, identity: dict[str, str]) -> Path | Response:
         """Resolve the source directory for a user, or return an error response."""
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
-        query = parse_query(request.path)
-        role = query_first(query, "role") or ""
-        user_id = query_first(query, "user_id") or ""
+        role = identity.get("role", "")
+        user_id = identity.get("user_id", "")
+        logger.debug("[source] _resolve_source_dir: identity={}", identity)
         if not role or not user_id:
+            logger.warning("[source] _resolve_source_dir: missing role or user_id, identity={}", identity)
             return http_error(400, "role and user_id are required")
         source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
         if not source_dir.is_dir():
             return http_error(404, "Source directory not found")
         return source_dir
 
-    def _handle_source_list(self, request: WsRequest) -> Response:
-        result = self._resolve_source_dir(request)
+    def _handle_source_list(self, request: WsRequest, *, identity: dict[str, str]) -> Response:
+        result = self._resolve_source_dir(identity)
         if isinstance(result, Response):
             return result
         source_dir = result
@@ -734,12 +762,12 @@ class WebSocketChannel(BaseChannel):
                 })
         return http_json_response({"files": files})
 
-    def _handle_source_file(self, request: WsRequest, file_path: str) -> Response:
+    def _handle_source_file(self, request: WsRequest, file_path: str, *, identity: dict[str, str]) -> Response:
         file_path = unquote(file_path)
         # Security: reject path traversal
         if ".." in file_path:
             return http_error(400, "Invalid path")
-        result = self._resolve_source_dir(request)
+        result = self._resolve_source_dir(identity)
         if isinstance(result, Response):
             return result
         source_dir = result
@@ -754,14 +782,10 @@ class WebSocketChannel(BaseChannel):
         content = target.read_text(encoding="utf-8")
         return http_json_response({"content": content})
 
-    def _handle_sessions_list(self, request: WsRequest) -> Response:
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
-
+    def _handle_sessions_list(self, request: WsRequest, *, identity: dict[str, str]) -> Response:
         # Parse role/user_id from query for per-user session lookup
-        query = parse_query(request.path)
-        role = query_first(query, "role") or ""
-        user_id = query_first(query, "user_id") or ""
+        role = identity.get("role", "")
+        user_id = identity.get("user_id", "")
 
         # Determine sessions directory: user workspace or global
         if role and user_id:
@@ -790,11 +814,33 @@ class WebSocketChannel(BaseChannel):
                 display_key = key[len(user_prefix.replace("_", ":")):]
             else:
                 display_key = key
+
+            # Read metadata and last user message for preview
+            created_at = None
+            updated_at = None
+            preview = ""
+            try:
+                with open(f, encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        entry = json.loads(line)
+                        if entry.get("_type") == "metadata":
+                            created_at = entry.get("created_at")
+                            updated_at = entry.get("updated_at")
+                        elif entry.get("role") == "user":
+                            content = entry.get("content", "")
+                            if isinstance(content, str) and content.strip():
+                                preview = content.strip()[:80]
+            except Exception:
+                pass
+
             sessions.append({
                 "key": display_key,
-                "created_at": None,
-                "updated_at": None,
-                "preview": "",
+                "created_at": created_at,
+                "updated_at": updated_at or f.stat().st_mtime,
+                "preview": preview,
             })
 
         return http_json_response({"sessions": sessions})
@@ -804,9 +850,7 @@ class WebSocketChannel(BaseChannel):
         """Return True when *key* belongs to the webui's websocket-only surface."""
         return key.startswith("websocket:")
 
-    def _handle_session_messages(self, request: WsRequest, key: str) -> Response:
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
+    def _handle_session_messages(self, request: WsRequest, key: str, *, identity: dict[str, str]) -> Response:
         if self._session_manager is None:
             return http_error(503, "session manager unavailable")
         decoded_key = _decode_api_key(key)
@@ -819,9 +863,8 @@ class WebSocketChannel(BaseChannel):
             return http_error(404, "session not found")
 
         # Parse role/user_id to find user workspace
-        query = parse_query(request.path)
-        role = query_first(query, "role") or ""
-        user_id = query_first(query, "user_id") or ""
+        role = identity.get("role", "")
+        user_id = identity.get("user_id", "")
 
         if role and user_id:
             # Reconstruct full key with user prefix for user workspace
@@ -994,9 +1037,8 @@ class WebSocketChannel(BaseChannel):
             ],
         )
 
-    def _handle_session_delete(self, request: WsRequest, key: str) -> Response:
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
+    def _handle_session_delete(self, request: WsRequest, key: str, *, identity: dict[str, str]) -> Response:
+        logger.debug("[session-delete] called with key={}, identity={}", key, identity)
         if self._session_manager is None:
             return http_error(503, "session manager unavailable")
         decoded_key = _decode_api_key(key)
@@ -1009,60 +1051,200 @@ class WebSocketChannel(BaseChannel):
             return http_error(404, "session not found")
 
         # Parse role/user_id to find user workspace
+        role = identity.get("role", "")
+        user_id = identity.get("user_id", "")
+        logger.debug("[session-delete] role={}, user_id={}", role, user_id)
+
+        try:
+            if role and user_id:
+                # Reconstruct full key with user prefix for user workspace
+                full_key = f"{role}:{user_id}:{decoded_key}"
+                user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+                # Use safe_key to match file naming convention (colons -> underscores)
+                from nanobot.session.manager import SessionManager
+                safe_key = SessionManager.safe_key(full_key)
+                session_file = user_sessions_dir / f"{safe_key}.jsonl"
+                logger.debug("[session-delete] full_key={}, safe_key={}, session_file={}", full_key, safe_key, session_file)
+                if not session_file.exists():
+                    logger.debug("[session-delete] file does not exist: {}", session_file)
+                    return http_json_response({"deleted": False})
+                try:
+                    session_file.unlink()
+                    return http_json_response({"deleted": True})
+                except OSError as e:
+                    logger.warning("Failed to delete user session {}: {}", full_key, e)
+                    return http_error(500, "Failed to delete session")
+            else:
+                deleted = self._session_manager.delete_session(decoded_key)
+                return http_json_response({"deleted": bool(deleted)})
+        except Exception as e:
+            logger.error("[session-delete] unexpected error: {}", e, exc_info=True)
+            return http_error(500, f"Internal error: {e}")
+
+    def _get_agent_manager(self, *, refresh: bool = False) -> Any:
+        manager = getattr(self, "_agent_manager", None)
+        if manager is not None and not refresh:
+            return manager
+        try:
+            from nanobot.agent.manager import SimpleAgentManager, manager_config_from_defaults
+            from nanobot.config.loader import load_config
+
+            defaults = load_config().agents.defaults
+            if not defaults.agents:
+                return None
+            manager = SimpleAgentManager(manager_config_from_defaults(defaults))
+            self._agent_manager = manager
+            return manager
+        except Exception as e:
+            logger.warning("[agents] failed to load default agent config: {}", e)
+            return None
+
+    def _read_json_body(self, request: WsRequest) -> dict[str, Any]:
         query = parse_query(request.path)
-        role = query_first(query, "role") or ""
-        user_id = query_first(query, "user_id") or ""
+        raw_data = query_first(query, "data")
+        if raw_data:
+            data = json.loads(unquote(raw_data))
+            if not isinstance(data, dict):
+                raise ValueError("JSON data must be an object")
+            return data
 
-        if role and user_id:
-            # Reconstruct full key with user prefix for user workspace
-            full_key = f"{role}:{user_id}:{decoded_key}"
-            user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
-            # Use safe_key to match file naming convention (colons -> underscores)
-            from nanobot.session.manager import SessionManager
-            safe_key = SessionManager.safe_key(full_key)
-            session_file = user_sessions_dir / f"{safe_key}.jsonl"
-            if not session_file.exists():
-                return http_json_response({"deleted": False})
-            try:
-                session_file.unlink()
-                return http_json_response({"deleted": True})
-            except OSError as e:
-                logger.warning("Failed to delete user session {}: {}", full_key, e)
-                return http_error(500, "Failed to delete session")
+        raw = getattr(request, "body", b"") or b""
+        if isinstance(raw, str):
+            text = raw
         else:
-            deleted = self._session_manager.delete_session(decoded_key)
-            return http_json_response({"deleted": bool(deleted)})
+            text = raw.decode("utf-8", errors="replace")
+        if not text.strip():
+            return {}
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError("JSON body must be an object")
+        return data
 
-    def _handle_agents_list(self, request: WsRequest) -> Response:
+    def _handle_agents_list(self, request: WsRequest, *, identity: dict[str, str]) -> Response:
         """List all available agents."""
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
-        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+        manager = self._get_agent_manager()
+        if manager is None:
             return http_json_response({"agents": [], "has_multi_agent": False})
-        agents = self._agent_manager.list_agents()
-        return http_json_response({"agents": agents, "has_multi_agent": True})
+        role = identity.get("role") or ""
+        agents = manager.list_agents(role or None)
+        if role and not agents:
+            manager = self._get_agent_manager(refresh=True)
+            agents = manager.list_agents(role or None) if manager is not None else []
+        return http_json_response({"agents": agents, "has_multi_agent": True, "role": role})
 
-    def _handle_agents_current(self, request: WsRequest) -> Response:
+    def _handle_agents_current(self, request: WsRequest, *, identity: dict[str, str]) -> Response:
         """Get the current active agent."""
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
-        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+        manager = self._get_agent_manager()
+        if manager is None:
             return http_json_response({"agent": None, "has_multi_agent": False})
-        active_agent = self._agent_manager.get_active_agent()
+        role = identity.get("role") or ""
+        active_agent = manager.get_active_agent(role or None)
+        if role and (
+            active_agent is None
+            or not manager.is_agent_allowed_for_role(active_agent.name, role)
+        ):
+            manager = self._get_agent_manager(refresh=True)
+            active_agent = manager.get_active_agent(role or None) if manager is not None else None
         if active_agent:
-            return http_json_response({"agent": active_agent.to_dict(), "has_multi_agent": True})
-        return http_json_response({"agent": None, "has_multi_agent": True})
+            return http_json_response({"agent": active_agent.to_dict(), "has_multi_agent": True, "role": role})
+        return http_json_response({"agent": None, "has_multi_agent": True, "role": role})
 
-    def _handle_agents_switch(self, request: WsRequest, agent_name: str) -> Response:
+    def _handle_agents_switch(self, request: WsRequest, agent_name: str, *, identity: dict[str, str]) -> Response:
         """Switch to a different agent."""
-        if not self.auth.check_api_token(request):
-            return http_error(401, "Unauthorized")
-        if not hasattr(self, '_agent_manager') or self._agent_manager is None:
+        manager = self._get_agent_manager()
+        if manager is None:
             return http_error(503, "multi-agent system not configured")
-        success = self._agent_manager.switch_agent(agent_name)
+        role = identity.get("role") or ""
+        success = manager.switch_agent(agent_name, role=role or None)
         if success:
-            return http_json_response({"success": True, "agent": agent_name})
+            return http_json_response({"success": True, "agent": agent_name, "role": role})
         return http_error(404, "agent not found")
+
+    def _handle_agents_upsert(self, request: WsRequest, *, identity: dict[str, str]) -> Response:
+        """Create or update an agent profile for the current role."""
+        manager = self._get_agent_manager()
+        if manager is None:
+            return http_error(503, "multi-agent system not configured")
+        try:
+            body = self._read_json_body(request)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as e:
+            return http_error(400, f"invalid JSON body: {e}")
+
+        raw_name = str(body.get("name") or "").strip()
+        display_name = str(body.get("display_name") or body.get("displayName") or raw_name).strip()
+        name = re.sub(r"[^A-Za-z0-9_-]+", "_", raw_name).strip("_").lower()
+        if not name:
+            base = re.sub(r"[^A-Za-z0-9_-]+", "_", display_name).strip("_").lower()
+            name = base or f"agent_{uuid.uuid4().hex[:8]}"
+        role_text = str(body.get("role") or "").strip()
+        description = str(body.get("description") or "").strip()
+        prompt = body.get("system_prompt_override", body.get("systemPromptOverride"))
+        if prompt is not None:
+            prompt = str(prompt)
+        temperature = body.get("temperature")
+
+        if len(name) < 2:
+            name = f"agent_{name}"
+        if len(name) > 64:
+            name = name[:64].strip("_-") or f"agent_{uuid.uuid4().hex[:8]}"
+        if not display_name:
+            return http_error(400, "display_name is required")
+        if not prompt or not str(prompt).strip():
+            return http_error(400, "system_prompt_override is required")
+
+        config: dict[str, Any] = {
+            "name": name,
+            "displayName": display_name,
+            "role": role_text,
+            "description": description,
+            "systemPromptOverride": str(prompt).strip(),
+            "enabled": True,
+        }
+        if temperature is not None and temperature != "":
+            try:
+                config["temperature"] = float(temperature)
+            except (TypeError, ValueError):
+                return http_error(400, "temperature must be a number")
+
+        role = identity.get("role") or ""
+        agent = manager.upsert_agent(config, role=role or None)
+        try:
+            from nanobot.config.loader import load_config, save_config
+
+            cfg = load_config()
+            data = cfg.model_dump(mode="json", by_alias=True)
+            defaults = data.setdefault("agents", {}).setdefault("defaults", {})
+            profiles = defaults.setdefault("agents", [])
+            profiles = [p for p in profiles if p.get("name") != agent.name]
+            profiles.append(config)
+            defaults["agents"] = profiles
+
+            if role:
+                role_agents = defaults.setdefault("roleAgents", {})
+                role_cfg = role_agents.setdefault(role, {
+                    "defaultAgent": agent.name,
+                    "availableAgents": [],
+                    "traversalFlow": [],
+                })
+                role_cfg.setdefault("defaultAgent", agent.name)
+                role_cfg.setdefault("availableAgents", [])
+                role_cfg.setdefault("traversalFlow", [])
+                if agent.name not in role_cfg["availableAgents"]:
+                    role_cfg["availableAgents"].append(agent.name)
+                if agent.name not in role_cfg["traversalFlow"]:
+                    role_cfg["traversalFlow"].append(agent.name)
+
+            from nanobot.config.schema import Config
+
+            save_config(Config.model_validate(data))
+        except Exception as e:
+            logger.warning("[agents] saved runtime agent but failed to persist config: {}", e)
+
+        return http_json_response({
+            "success": True,
+            "agent": agent.to_dict(),
+            "role": role,
+        })
 
     def _serve_static(self, request_path: str) -> Response | None:
         """Resolve *request_path* against the built SPA directory; SPA fallback to index.html."""
@@ -1108,8 +1290,8 @@ class WebSocketChannel(BaseChannel):
             extra_headers=[("Cache-Control", cache)],
         )
 
-    def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
-        return self.auth.authorize_websocket_handshake(connection, query)
+    def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]], headers: Any = None) -> Any:
+        return self.auth.authorize_websocket_handshake(connection, query, headers)
 
     async def start(self) -> None:
         self._running = True
@@ -1172,23 +1354,35 @@ class WebSocketChannel(BaseChannel):
             logger.warning("websocket: client_id too long ({} chars), truncating", len(client_id))
             client_id = client_id[:128]
 
-        # Extract role/user_id from token metadata
-        token = query_first(query, "token") or ""
+        # Extract role/user_id from token metadata.
+        # Priority 1: metadata stored during handshake (most reliable)
+        # Priority 2: re-extract from query params (fallback)
         conn_meta: dict[str, str] = {}
-        if token:
-            conn_meta = self.auth.get_token_metadata(token)
+        # Check for metadata stored during handshake authorization
+        handshake_meta = getattr(connection, '_handshake_meta', None)
+        if handshake_meta:
+            conn_meta = handshake_meta
             logger.info(
-                "websocket: token={}, metadata={}, all_metadata_keys={}",
-                token[:20] + "..." if len(token) > 20 else token,
-                conn_meta,
-                list(self.auth._token_metadata.keys())[:5],
+                "websocket: using handshake metadata for role={}, user_id={}",
+                conn_meta.get("role"), conn_meta.get("user_id"),
             )
-            if conn_meta:
-                logger.info("websocket: token metadata loaded for role={}, user_id={}", conn_meta.get("role"), conn_meta.get("user_id"))
-            else:
-                logger.warning("websocket: no metadata found for token")
         else:
-            logger.warning("websocket: no token in WS URL")
+            # Fallback: extract from query parameters
+            token = query_first(query, "token") or ""
+            if token:
+                conn_meta = self.auth.get_token_metadata(token)
+                logger.info(
+                    "websocket: token={}, metadata={}, all_metadata_keys={}",
+                    token[:20] + "..." if len(token) > 20 else token,
+                    conn_meta,
+                    list(self.auth._token_metadata.keys())[:5],
+                )
+                if conn_meta:
+                    logger.info("websocket: token metadata loaded for role={}, user_id={}", conn_meta.get("role"), conn_meta.get("user_id"))
+                else:
+                    logger.warning("websocket: no metadata found for token")
+            else:
+                logger.warning("websocket: no token in WS URL")
         # Store per-connection metadata for use in _dispatch_envelope
         self._conn_metadata: dict[Any, dict[str, str]] = getattr(self, '_conn_metadata', {})
         self._conn_metadata[connection] = conn_meta
@@ -1388,6 +1582,7 @@ class WebSocketChannel(BaseChannel):
     ) -> None:
         conns = list(self._subs.get(chat_id, ()))
         if not conns:
+            logger.debug("[stream] No subscribers for chat_id={}", chat_id)
             return
         meta = metadata or {}
         if meta.get("_stream_end"):
@@ -1401,5 +1596,6 @@ class WebSocketChannel(BaseChannel):
         if meta.get("_stream_id") is not None:
             body["stream_id"] = meta["_stream_id"]
         raw = json.dumps(body, ensure_ascii=False)
+        logger.debug("[stream] Sending to {} connections: {}", len(conns), body.get("event"))
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" stream ")

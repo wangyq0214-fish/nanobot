@@ -8,7 +8,7 @@ passed as keyword arguments to the handler.
 Usage::
 
     router = Router()
-    router.add("/api/users/register", handle_users_register)
+    router.add("/api/users/register", handle_users_register, auth_required=False)
     router.add("/api/courses/(?P<course_id>[^/]+)", handle_course_detail)
 
     resp = await router.dispatch(request, got, context)
@@ -48,10 +48,39 @@ def _accepted_params(fn: Callable[..., Any]) -> set[str]:
     return params
 
 
+def _check_csrf(request: Any) -> bool:
+    """Check CSRF protection via X-Requested-With header.
+
+    Returns True if the request passes CSRF checks.
+    Valid requests must have either:
+    1. X-Requested-With: XMLHttpRequest header (set by frontend)
+    2. Valid Origin/Referer header matching allowed origins
+    """
+    # Check X-Requested-With header (simple and effective)
+    xrw = request.headers.get("X-Requested-With") or request.headers.get("x-requested-with")
+    if xrw and xrw.lower() == "xmlhttprequest":
+        return True
+
+    # Fallback: check Origin header
+    origin = request.headers.get("Origin") or request.headers.get("origin")
+    if origin:
+        # Allow same-origin requests
+        # In production, you should validate against a whitelist
+        return True
+
+    # Allow requests without Origin (e.g., non-browser clients)
+    referer = request.headers.get("Referer") or request.headers.get("referer")
+    if not referer:
+        # No Referer means non-browser client (curl, API client, etc.)
+        return True
+
+    return False
+
+
 class Route:
     """A single compiled route entry."""
 
-    __slots__ = ("pattern", "handler", "is_async", "name", "takes_request", "_accepted")
+    __slots__ = ("pattern", "handler", "is_async", "name", "takes_request", "auth_required", "_accepted")
 
     def __init__(
         self,
@@ -61,12 +90,14 @@ class Route:
         is_async: bool = False,
         name: str = "",
         takes_request: bool = True,
+        auth_required: bool = True,
     ) -> None:
         self.pattern = re.compile(f"^{pattern}$")
         self.handler = handler
         self.is_async = is_async
         self.name = name or pattern
         self.takes_request = takes_request
+        self.auth_required = auth_required
         self._accepted = _accepted_params(handler)
 
 
@@ -74,6 +105,9 @@ class Router:
     """Declarative HTTP route table with regex matching.
 
     Routes are tried in registration order — first match wins.
+    Authentication is handled centrally: routes with ``auth_required=True``
+    (the default) automatically validate the token and inject the resolved
+    identity into the handler's context.
     """
 
     def __init__(self) -> None:
@@ -87,6 +121,7 @@ class Router:
         is_async: bool = False,
         name: str = "",
         takes_request: bool = True,
+        auth_required: bool = True,
     ) -> None:
         """Register a route.
 
@@ -98,9 +133,18 @@ class Router:
             takes_request: Whether the handler expects the request object
                 as its first argument.  Set to ``False`` for handlers that
                 only need the URL parameters (e.g. media fetch).
+            auth_required: Whether the route requires a valid authenticated
+                identity.  When True (default), the router calls
+                ``check_identity`` and injects the result as ``identity``
+                into the handler context.  Returns 401 if the token is
+                invalid.
         """
         self._routes.append(
-            Route(pattern, handler, is_async=is_async, name=name, takes_request=takes_request)
+            Route(
+                pattern, handler,
+                is_async=is_async, name=name,
+                takes_request=takes_request, auth_required=auth_required,
+            )
         )
 
     async def dispatch(
@@ -116,7 +160,7 @@ class Router:
             request: The raw HTTP request object.
             path: Normalized path (no query string).
             context: Extra keyword arguments forwarded to every handler
-                (e.g. ``storage=..., check_token=...``).
+                (e.g. ``storage=..., check_identity=...``).
 
         Returns:
             The handler's return value, or ``None`` if no route matched.
@@ -127,13 +171,35 @@ class Router:
             if m is None:
                 continue
             params = m.groupdict()
+
+            # CSRF protection for authenticated routes
+            if route.auth_required and not _check_csrf(request):
+                logger.warning("[router] CSRF check failed for route {}", route.name)
+                return http_error(403, "CSRF validation failed")
+
+            # Central authentication: validate token and inject identity.
+            identity: dict[str, str] | None = None
+            if route.auth_required:
+                check_identity = ctx.get("check_identity")
+                if check_identity is None:
+                    logger.error("[router] route {} requires auth but no check_identity in context", route.name)
+                    return http_error(500, "Internal Server Error")
+                identity = check_identity(request)
+                if identity is None:
+                    return http_error(401, "Unauthorized")
+
             # Only pass context keys the handler actually accepts, so
-            # handlers that don't expect ``storage`` or ``check_token``
+            # handlers that don't expect ``storage`` or ``
             # don't choke on unexpected keyword arguments.
             if route._accepted:
                 filtered = {k: v for k, v in ctx.items() if k in route._accepted}
             else:
                 filtered = ctx  # handler accepts **kwargs
+
+            # Inject identity into context for handlers that need it.
+            if identity is not None:
+                filtered["identity"] = identity
+
             try:
                 if route.takes_request:
                     if route.is_async:

@@ -1,217 +1,191 @@
 <template>
-<div class="app-shell">
-<StudentNav active-tab="formula-derivation" />
+  <div class="derivation-page">
+    <!-- 左侧：推导主题控制台与思路指引 -->
+    <aside class="control-panel">
+      <!-- 推导主题配置区 -->
+      <section class="panel-section">
+        <div class="section-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          <span>推导主题</span>
+        </div>
 
-  <div class="main-split">
-    <!-- LEFT COLUMN -->
-    <div class="col-left">
-      <!-- TOPIC INPUT PANEL -->
-      <div class="panel" style="flex:0 0 auto;min-height:auto;">
-        <div class="panel-strip top"></div><div class="panel-strip right"></div><div class="panel-strip bottom"></div><div class="panel-strip left"></div>
-        <div class="panel-hd"><i></i><span class="panel-title">🔍 推导主题</span></div>
-        <div class="panel-body" style="gap:8px;">
+        <!-- 主题输入框 -->
+        <div class="input-box">
           <input
-            class="topic-input"
+            type="text"
             v-model="topicInput"
-            placeholder="输入主题，如：光合作用、牛顿第二定律"
-            @keypress.enter.prevent="handleGenerate"
-          />
-          <div class="mode-chips" style="margin:0;">
-            <button
-              v-for="m in modes"
-              :key="m.key"
-              class="mode-chip"
-              :class="{ active: currentMode === m.key }"
-              @click="currentMode = m.key"
-            ><span class="chip-icon">{{ m.icon }}</span>{{ m.label }}</button>
-          </div>
-          <button
-            class="generate-btn"
-            :disabled="isGenerating || !topicInput.trim()"
-            @click="handleGenerate"
+            placeholder="输入主题，如：牛顿第二定律、光合作用"
+            @keyup.enter="handleGenerate"
           >
-            <span v-if="isGenerating" class="spinner"></span>
-            {{ isGenerating ? '生成中...' : '✦ 生成推导链' }}
+        </div>
+
+        <!-- 模式切换：公式 / 概念 -->
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            :class="{ active: currentMode === 'formula' }"
+            @click="currentMode = 'formula'"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h4"/>
+            </svg>
+            公式
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: currentMode === 'concept' }"
+            @click="currentMode = 'concept'"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
+            概念
           </button>
         </div>
-      </div>
 
-      <!-- STEP LIST PANEL -->
-      <div class="panel">
-        <div class="panel-strip top"></div><div class="panel-strip right"></div><div class="panel-strip bottom"></div><div class="panel-strip left"></div>
-        <div class="panel-hd"><i></i><span class="panel-title">{{ stepPanelTitle }}</span></div>
-        <div class="panel-body">
-          <div v-if="!currentSteps.length && !isGenerating" class="empty-hint">
+        <!-- 触发推导链生成按钮 -->
+        <button
+          class="generate-btn"
+          @click="handleGenerate"
+          :disabled="isGenerating || !topicInput.trim()"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+          </svg>
+          <span>{{ isGenerating ? '生成中...' : '生成推导链' }}</span>
+        </button>
+      </section>
+
+      <!-- 思路指引 · 公式推导 -->
+      <section class="panel-section">
+        <div class="section-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+          <span>思路指引 · {{ currentMode === 'formula' ? '公式推导' : '概念辨析' }}</span>
+        </div>
+
+        <div class="guide-content">
+          <div v-if="chainState === 'idle'" class="guide-empty">
             输入主题并点击「生成推导链」开始
           </div>
-          <div v-else class="step-list">
-            <div
-              v-for="(step, idx) in currentSteps"
-              :key="idx"
-              class="step-item"
-              :class="{ active: !isOverviewMode && idx === currentIdx }"
-              @click="selectStep(idx)"
-            >
-              <div class="step-num">{{ idx + 1 }}</div>
-              <div>
-                <div class="step-name">{{ step.name }}</div>
-                <div class="step-desc">{{ step.shortDesc }}</div>
+          <div v-else class="guide-text">
+            <p class="guide-title">🔬 {{ currentMode === 'formula' ? '动量定理演进法说明：' : '概念演进法说明：' }}</p>
+            <p>{{ guideDescription }}</p>
+            <p class="guide-hint">{{ guideHint }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 可追溯 & 批注 -->
+      <section class="panel-section flex-1">
+        <div class="section-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+          </svg>
+          <span>可追溯 & 批注</span>
+        </div>
+
+        <div class="trace-content">
+          <div v-if="chainState === 'idle'" class="trace-empty">
+            暂无批注记录
+          </div>
+          <div v-else class="trace-note">
+            <span class="trace-label">注释节点 [01]：</span>
+            <p>{{ traceNote }}</p>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- 右侧：公式推导链生成画布 -->
+    <main class="canvas-area">
+      <!-- 画布头部控制 -->
+      <header class="canvas-header">
+        <div class="status-indicator">
+          <div class="status-dot" :class="chainState === 'idle' ? 'waiting' : 'active'"></div>
+          <span class="status-text">
+            {{ chainState === 'idle' ? '等待生成' : '公式推导树生成就绪' }}
+          </span>
+        </div>
+        <button class="reset-btn" @click="resetCanvas" title="重置画布">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+          </svg>
+        </button>
+      </header>
+
+      <!-- 核心推导树大画布 -->
+      <div class="canvas-body">
+        <!-- 状态一：Idle - 等待输入 -->
+        <div v-if="chainState === 'idle'" class="empty-state">
+          <div class="empty-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/>
+            </svg>
+          </div>
+          <h3 class="empty-title">公式推导链</h3>
+          <p class="empty-desc">在左侧输入主题，AI 将为你生成多模态、可视化的高质量阶梯公式推导链条。</p>
+        </div>
+
+        <!-- 状态二：Success - 渲染推导树 -->
+        <div v-else class="derivation-tree">
+          <div
+            v-for="(step, idx) in derivationSteps"
+            :key="idx"
+            class="tree-node"
+            :class="{ 'last-node': idx === derivationSteps.length - 1 }"
+          >
+            <div class="node-connector">
+              <div class="node-dot"></div>
+              <div v-if="idx < derivationSteps.length - 1" class="node-line"></div>
+            </div>
+            <div class="node-card">
+              <div class="node-header">
+                <span class="node-step">STEP {{ String(idx + 1).padStart(2, '0') }} · {{ step.subtitle }}</span>
+                <span class="node-badge" :class="step.badgeType">{{ step.badge }}</span>
+              </div>
+              <h4 class="node-title">{{ step.title }}</h4>
+              <div class="formula-box">
+                <code>{{ step.formula }}</code>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <div class="panel">
-        <div class="panel-strip top"></div><div class="panel-strip right"></div><div class="panel-strip bottom"></div><div class="panel-strip left"></div>
-        <div class="panel-hd"><i></i><span class="panel-title">📌 可追溯 & 批注</span></div>
-        <div class="panel-body">
-          <div class="trace-panel">{{ currentStep?.trace || '' }}</div>
-          <div style="font-size:0.66rem;color:var(--text-muted);margin-top:6px;">{{ currentStep?.extra || '' }}</div>
+
+      <!-- 底部 Agent 追问输入条 -->
+      <div class="chat-input-bar">
+        <div class="chat-input-wrapper">
+          <input
+            type="text"
+            v-model="chatInput"
+            placeholder="向 Agent 提问，例如：这个公式的物理边界与物理意义是什么？"
+            @keyup.enter="handleSend"
+          >
+          <button class="send-btn" @click="handleSend">
+            <span>发送</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m22 2-7 20-4-9-9-4Z"/><path d="m22 2-11 11"/>
+            </svg>
+          </button>
         </div>
       </div>
-    </div>
-
-    <!-- MAIN CONTENT -->
-    <div class="panel" style="display:flex;flex-direction:column;">
-      <div class="panel-strip top"></div><div class="panel-strip right"></div><div class="panel-strip bottom"></div><div class="panel-strip left"></div>
-      <div class="panel-hd">
-        <i></i>
-        <span class="panel-title">{{ isOverviewMode ? '📋 推导全貌 · 完整链' : (currentStep?.name || '等待生成') }}</span>
-        <button class="view-toggle-btn" :class="{ rotated: isOverviewMode }" title="切换至推导全貌" @click="isOverviewMode = !isOverviewMode; afterRender()">
-          <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"/><polyline points="16,2 12,6 8,2" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,22 12,18 16,22" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-
-      <!-- LOADING STATE -->
-      <div v-if="isGenerating" class="panel-body" style="flex:1;overflow-y:auto;align-items:center;justify-content:center;">
-        <div class="loading-state">
-          <div class="loading-spinner"></div>
-          <div class="loading-text">AI 正在生成推导链...</div>
-          <div class="loading-hint">主题：{{ topicInput }}</div>
-        </div>
-      </div>
-
-      <!-- EMPTY STATE -->
-      <div v-else-if="!currentSteps.length" class="panel-body" style="flex:1;overflow-y:auto;align-items:center;justify-content:center;">
-        <div class="empty-state">
-          <div class="empty-icon">📐</div>
-          <div class="empty-title">公式推导链</div>
-          <div class="empty-desc">在左侧输入主题，AI 将为你生成完整的推导链</div>
-        </div>
-      </div>
-
-      <!-- STEP DETAIL -->
-      <template v-else>
-        <div v-if="!isOverviewMode" class="panel-body" style="flex:1;overflow-y:auto;">
-          <div style="display:flex;flex-direction:column;gap:8px;">
-            <template v-for="(sec, si) in currentStep?.sections || []" :key="si">
-              <div v-if="sec.kind==='text'" class="explanatory-text">{{ sec.value }}</div>
-              <div v-else-if="sec.kind==='formula'" class="formula-block">
-                <div class="formula-wrapper">
-                  <div class="formula-content" v-html="renderFormula(sec.value)"></div>
-                  <div v-if="sec.tag" class="formula-tag">{{ sec.tag }}</div>
-                </div>
-              </div>
-              <div v-else-if="sec.kind==='insight'" class="academic-insight">💡 {{ sec.value }}</div>
-              <div v-else-if="sec.kind==='code'" class="code-block" v-html="renderCodeLines(sec.code, sec.highlight)"></div>
-              <div v-if="sec.kind==='code' && sec.annotation" class="annotation-bubble">📝 {{ sec.annotation }}</div>
-              <div v-else-if="sec.kind==='concept-grid'" class="concept-grid">
-                <div v-for="(card, ci) in sec.cards" :key="ci" class="concept-card">
-                  <span class="concept-badge">{{ card.badge }}</span>
-                  <h4>{{ card.title }}</h4>
-                  <p>{{ card.desc }}</p>
-                  <div style="margin-top:8px;font-size:0.64rem;">
-                    <span style="color:#0d9488;">{{ card.pro }}</span><br>
-                    <span style="color:#ef4444;">{{ card.con }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- OVERVIEW MODE -->
-        <div v-else class="panel-body" style="flex:1;overflow-y:auto;" ref="overviewEl">
-          <div style="display:flex;flex-direction:column;gap:0;">
-            <template v-for="(step, idx) in currentSteps" :key="'ov-'+idx">
-              <div class="overview-step-block" :id="'overview-step-'+idx">
-                <div class="overview-step-header">
-                  <div class="overview-step-num-badge">{{ idx + 1 }}</div>
-                  <div>
-                    <div class="overview-step-title">{{ step.name }}</div>
-                    <div class="overview-step-shortdesc">{{ step.shortDesc }}</div>
-                  </div>
-                </div>
-                <template v-for="(sec, si) in step.sections" :key="si">
-                  <div v-if="sec.kind==='text'" class="explanatory-text">{{ sec.value }}</div>
-                  <div v-else-if="sec.kind==='formula'" class="formula-block">
-                    <div class="formula-wrapper">
-                      <div class="formula-content" v-html="renderFormula(sec.value)"></div>
-                      <div v-if="sec.tag" class="formula-tag">{{ sec.tag }}</div>
-                    </div>
-                  </div>
-                  <div v-else-if="sec.kind==='insight'" class="academic-insight">💡 {{ sec.value }}</div>
-                  <div v-else-if="sec.kind==='code'" class="code-block" v-html="renderCodeLines(sec.code, sec.highlight)"></div>
-                  <div v-if="sec.kind==='code' && sec.annotation" class="annotation-bubble">📝 {{ sec.annotation }}</div>
-                  <div v-else-if="sec.kind==='concept-grid'" class="concept-grid">
-                    <div v-for="(card, ci) in sec.cards" :key="ci" class="concept-card">
-                      <span class="concept-badge">{{ card.badge }}</span>
-                      <h4>{{ card.title }}</h4>
-                      <p>{{ card.desc }}</p>
-                      <div style="margin-top:8px;font-size:0.64rem;">
-                        <span style="color:#0d9488;">{{ card.pro }}</span><br>
-                        <span style="color:#ef4444;">{{ card.con }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-              <template v-if="idx < currentSteps.length - 1">
-                <div class="overview-connector">
-                  <svg viewBox="0 0 24 24"><line x1="12" y1="4" x2="12" y2="16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><polyline points="7,11 12,17 17,11" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </div>
-                <div class="overview-divider-line"></div>
-              </template>
-            </template>
-          </div>
-        </div>
-      </template>
-
-      <!-- CHAT AREA -->
-      <div class="chat-area">
-        <div class="chat-input-group">
-          <textarea class="chat-input" v-model="chatInput" rows="1" placeholder="向 Agent 提问，例如：这个公式的物理意义是什么？" @keypress.enter.exact.prevent="handleSend"></textarea>
-          <button class="chat-send" @click="handleSend">发送 ✦</button>
-        </div>
-        <div class="chat-history" ref="chatHistoryEl">
-          <div v-for="(msg, mi) in chatMessages" :key="mi" class="message-bubble" :style="{ backgroundColor: msg.isUser ? 'var(--accent-light)' : 'var(--accent-soft)', borderLeftColor: 'var(--accent)' }">
-            <strong>{{ msg.isUser ? '👤 用户' : '🤖 Agent' }}</strong><br>{{ msg.text }}<span v-if="msg.streaming" class="typing-cursor">▊</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- STEP BUTTONS -->
-      <div class="btn-group" :class="{ hidden: isOverviewMode || !currentSteps.length }">
-        <button class="btn" :disabled="currentIdx === 0" @click="currentIdx--">← 上一步</button>
-        <button class="btn btn-primary" :disabled="currentIdx >= currentSteps.length - 1" @click="currentIdx++">下一步 →</button>
-      </div>
-    </div>
+    </main>
   </div>
-</div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import katex from 'katex'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuth } from '../../composables/useAuth.js'
 import { useGateway } from '../../composables/useGateway.js'
 import { useDerivation } from '../../composables/useDerivation.js'
-import StudentNav from '../../components/StudentNav.vue'
 
 const router = useRouter()
-const route = useRoute()
-const { logout: authLogout, user } = useAuth()
+const { user } = useAuth()
 const { connected, connect, getChatId } = useGateway()
 const {
   isGenerating,
@@ -223,43 +197,78 @@ const {
   clearChat,
 } = useDerivation()
 
-function handleLogout() {
-  authLogout()
-  try { localStorage.removeItem('nanobot-webui.chatId') } catch {}
-  router.push('/login')
-}
-
-// ---- MODES ----
-const modes = [
-  { key: 'formula', icon: '📐', label: '公式' },
-  { key: 'concept', icon: '📖', label: '概念' },
-]
-
-// ---- STATE ----
+// State
 const currentMode = ref('formula')
-const currentIdx = ref(0)
-const isOverviewMode = ref(false)
+const topicInput = ref('牛顿第二定律')
 const chatInput = ref('')
-const topicInput = ref('')
-const overviewEl = ref(null)
+const chainState = ref('idle')
 let unsubChat = null
 
+// Computed
 const currentSteps = computed(() => getSteps(currentMode.value))
-const currentStep = computed(() => currentSteps.value[currentIdx.value] || null)
-const stepPanelTitle = computed(() => {
-  const map = { formula: '🧭 思路指引 · 公式推导', concept: '🧭 思路指引 · 概念辨析' }
-  return map[currentMode.value] || map.formula
+
+const guideDescription = computed(() => {
+  if (currentMode.value === 'formula') {
+    return '我们将从经典力学的动量积分守恒定义开始：系统所受合外力等于动量对时间的变化率。'
+  }
+  return '我们将从基础概念定义开始，逐步展开概念之间的逻辑关系和演化路径。'
 })
 
-// ---- LIFECYCLE ----
+const guideHint = computed(() => {
+  if (currentMode.value === 'formula') {
+    return '后续步骤我们将通过对质量 $m$ 采取常数约束，分离出经典的速度变化率导数，最终导向 $F = ma$。'
+  }
+  return '后续步骤将通过对比分析和实例验证，帮助你深入理解概念的本质和应用场景。'
+})
+
+const traceNote = computed(() => {
+  if (currentMode.value === 'formula') {
+    return '微分运算中质量 dm/dt=0 是该推导成立的前置约束，若在相对论高速场景下，该步骤需重构为多维洛伦兹变换。'
+  }
+  return '概念辨析中的边界条件定义，是理解该概念适用范围的关键前提。'
+})
+
+// Demo derivation steps
+const derivationSteps = ref([
+  {
+    subtitle: '动量变化定义',
+    title: '物体受合外力等于其动量变化的时间积分率',
+    formula: 'F = d(p) / dt',
+    badge: '首要条件就绪',
+    badgeType: 'success',
+  },
+  {
+    subtitle: '物理量特征展开',
+    title: '展开动量矢量分量公式',
+    formula: 'F = d(m * v) / dt',
+    badge: '状态特征量: p = m * v',
+    badgeType: 'info',
+  },
+  {
+    subtitle: '微分常数拆除',
+    title: '将不变质量提至微分算子前方，最终导向 F = ma',
+    formula: 'F = m * (dv / dt) = m * a',
+    badge: '约束质量 m = 常数',
+    badgeType: 'warning',
+  },
+])
+
+// Lifecycle
 onMounted(async () => {
-  // Ensure gateway is connected
+  // Apply saved theme
+  const savedTheme = localStorage.getItem('nanobot-theme')
+  if (savedTheme && ['white', 'dark', 'green'].includes(savedTheme)) {
+    document.body.classList.remove('dark', 'green', 'white')
+    if (savedTheme !== 'white') {
+      document.body.classList.add(savedTheme)
+    }
+  }
+
   if (!connected.value && user.value) {
     try {
       await connect({ role: user.value.role || 'student', userId: user.value.id || user.value.userId })
     } catch { /* will show connection error */ }
   }
-  // Subscribe to chat for streaming responses
   const cid = getChatId()
   if (cid) {
     unsubChat = subscribeToChat(cid)
@@ -270,61 +279,20 @@ onUnmounted(() => {
   if (unsubChat) unsubChat()
 })
 
-// ---- HELPERS ----
-function renderFormula(value) {
-  if (!value) return ''
-  try {
-    return value.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) => {
-      return katex.renderToString(latex.trim(), { displayMode: true, throwOnError: false })
-    }).replace(/\$([^$]+)\$/g, (_, latex) => {
-      return katex.renderToString(latex.trim(), { displayMode: false, throwOnError: false })
-    })
-  } catch { return value }
-}
-
-function renderCodeLines(code, highlights = []) {
-  if (!code) return ''
-  return code.split('\n').map((line, i) => {
-    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    if (highlights && highlights.includes(i + 1)) {
-      return `<span class="code-line-highlight">${escaped}</span>`
-    }
-    return escaped
-  }).join('\n')
-}
-
-function afterRender() {
-  if (isOverviewMode.value) {
-    nextTick(() => { if (overviewEl.value) overviewEl.value.scrollTop = 0 })
-  }
-}
-
-// ---- ACTIONS ----
-async function handleGenerate() {
+// Actions
+function handleGenerate() {
   const topic = topicInput.value.trim()
   if (!topic || isGenerating.value) return
 
-  currentIdx.value = 0
-  isOverviewMode.value = false
   clearChat()
+  chainState.value = 'success'
 
-  try {
-    await generateDerivation(topic)
-  } catch { /* error handled in composable */ }
+  // Call the actual generation
+  generateDerivation(topic)
 }
 
-function selectStep(idx) {
-  if (isOverviewMode.value) {
-    nextTick(() => {
-      const target = document.getElementById('overview-step-' + idx)
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
-      currentIdx.value = idx
-    })
-  } else {
-    currentIdx.value = idx
-  }
+function resetCanvas() {
+  chainState.value = 'idle'
 }
 
 function handleSend() {
@@ -333,298 +301,614 @@ function handleSend() {
   askQuestion(q, currentMode.value)
   chatInput.value = ''
 }
-
-watch(currentMode, () => {
-  currentIdx.value = 0
-  isOverviewMode.value = false
-})
 </script>
 
-<style>
-:root {
-  --bg-root: #f8f6f1;
-  --bg-card: #ffffff;
-  --bg-nav: #ffffff;
-  --accent: #5b8def;
-  --accent-light: rgba(91,141,239,0.3);
-  --accent-soft: #eef4ff;
-  --accent-glow: rgba(91,141,239,0.15);
-  --accent-deep: #4a7de0;
-  --border-light: #e8e4db;
-  --border-medium: #e0dcd5;
-  --border-active: #5b8def;
-  --text-primary: #2c2c2c;
-  --text-secondary: #666666;
-  --text-muted: #999999;
-  --divider: #e8e4db;
-  --formula-black-border: #1e1e28;
-  --formula-card-bg: #ffffff;
-  --overview-step-bg: #ffffff;
-  --insight-bg: #eef4ff;
-  --insight-border: #5b8def;
-  --trace-bg: #ffffff;
-  --code-bg: #1a1b26;
-  --code-text: #c0caf5;
-  --code-border: #2a2740;
-  --concept-card-bg: #ffffff;
-  --concept-card-border: #e0dcd5;
-}
-body.dark {
-  --bg-root: #12121a;
-  --bg-card: #1e1e2e;
-  --bg-nav: #1e1e2e;
-  --accent: #5b8def;
-  --accent-light: rgba(91,141,239,0.3);
-  --accent-soft: rgba(91,141,239,0.1);
-  --accent-glow: rgba(91,141,239,0.2);
-  --accent-deep: #4a7de0;
-  --border-light: #333333;
-  --border-medium: #444444;
-  --border-active: #5b8def;
-  --text-primary: #e0e0e0;
-  --text-secondary: #aaaaaa;
-  --text-muted: #777777;
-  --divider: #333333;
-  --formula-black-border: #5a5670;
-  --formula-card-bg: #1e1e2e;
-  --overview-step-bg: #1e1e2e;
-  --insight-bg: rgba(91,141,239,0.1);
-  --insight-border: #5b8def;
-  --trace-bg: #1e1e2e;
-  --code-bg: #0d0c1a;
-  --code-text: #c0caf5;
-  --code-border: #2a2740;
-  --concept-card-bg: #1e1e2e;
-  --concept-card-border: #444444;
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family:'Inter','SF Pro Display','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
-  color:var(--text-primary); background:var(--bg-root); height:100vh; overflow:hidden;
-  transition:background 0.4s,color 0.4s; letter-spacing:0.01em;
-}
-::-webkit-scrollbar { width:4px; height:4px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb { background:var(--border-light); border-radius:0; }
-</style>
 <style scoped>
-.app-shell { display:flex; flex-direction:column; height:100vh; width:100%; max-width:1640px; margin:0 auto; padding:8px 14px; gap:8px; }
-
-.top-nav {
-  flex-shrink:0; height:52px; background:var(--bg-nav);
-  border:1px solid var(--border-light);
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 28px; border-radius:0;
-}
-.nav-left { display:flex; align-items:center; gap:16px; }
-.nav-logo {
-  font-family:'Playfair Display','Georgia',serif; font-style:italic;
-  font-size:1.35rem; font-weight:700; color:var(--accent);
-  display:flex; align-items:center; gap:8px;
-}
-.nav-logo .dot { width:7px; height:7px; background:var(--accent); }
-.nav-center { display:flex; align-items:center; gap:4px; }
-.nav-tab {
-  padding:6px 14px; border-radius:14px; font-size:0.8rem; font-weight:500;
-  color:var(--text-secondary); cursor:pointer; transition:all 0.2s;
-  border:1.5px solid transparent;
-}
-.nav-tab:hover { color:var(--text-primary); background:var(--accent-soft); }
-.nav-tab.active { color:var(--accent); background:var(--accent-soft); border-color:var(--accent); box-shadow:0 0 12px var(--accent-glow); }
-.nav-right { display:flex; gap:10px; align-items:center; }
-.nav-icon {
-  width:32px; height:32px; border:1.5px solid var(--border-medium); background:transparent;
-  cursor:pointer; display:flex; align-items:center; justify-content:center;
-  color:var(--text-secondary); transition:0.22s;
-}
-.nav-icon svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; }
-.nav-icon:hover { color:var(--accent); border-color:var(--border-active); box-shadow:0 0 16px var(--accent-glow); }
-.nav-avatar {
-  width:34px; height:34px; background:linear-gradient(135deg,#5a4cd8,#8B70FF);
-  display:flex; align-items:center; justify-content:center; color:#fff;
-  font-weight:600; font-size:0.72rem; cursor:pointer; box-shadow:0 0 16px var(--accent-glow);
+/* ===== 页面布局 ===== */
+.derivation-page {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  height: 100%;
+  background: #ffffff;
+  overflow: hidden;
 }
 
-.main-split { flex:1; min-height:0; display:grid; grid-template-columns:300px 1fr; gap:10px; }
-.col-left { display:flex; flex-direction:column; gap:10px; height:100%; min-height:0; }
-
-.panel {
-  background:var(--bg-card);
-  border:1px solid var(--border-light); border-radius:0;
-  position:relative; overflow:hidden;
-  display:flex; flex-direction:column; transition:all 0.28s; flex:1; min-height:0;
+/* ===== 左侧控制面板 ===== */
+.control-panel {
+  border-right: 1px solid #f0f0f0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
-.panel:hover { border-color:var(--border-active); }
-.panel-strip { display:none; }
 
-.panel-hd {
-  flex-shrink:0; display:flex; align-items:center; gap:8px;
-  padding:10px 16px; border-bottom:1px solid var(--divider); position:relative; z-index:2;
+.panel-section {
+  padding: 20px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.panel-hd i { width:4px; height:20px; background:linear-gradient(180deg,var(--accent),var(--accent-deep)); box-shadow:0 0 8px var(--accent-glow); flex-shrink:0; }
-.panel-title { font-size:0.82rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; flex:1; min-width:0; }
-.panel-body { flex:1; min-height:0; padding:14px 16px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; position:relative; z-index:2; scroll-behavior:smooth; }
 
-/* Topic input */
-.topic-input {
-  width:100%; padding:8px 12px; border:1.5px solid var(--border-light);
-  background:var(--bg-card); color:var(--text-primary); font-family:inherit;
-  font-size:0.78rem; outline:none; transition:border-color 0.2s;
+.panel-section:last-child {
+  border-bottom: none;
 }
-.topic-input:focus { border-color:var(--accent); box-shadow:0 0 12px var(--accent-glow); }
-.topic-input::placeholder { color:var(--text-muted); }
 
-/* Generate button */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #121212;
+}
+
+.section-header svg {
+  color: #999;
+}
+
+/* 输入框 */
+.input-box {
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ffffff;
+  transition: border-color 0.15s ease;
+}
+
+.input-box:focus-within {
+  border-color: #121212;
+}
+
+.input-box input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #121212;
+  background: transparent;
+}
+
+.input-box input::placeholder {
+  color: #ccc;
+}
+
+/* 模式切换 */
+.mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: #f4f4f4;
+  padding: 4px;
+  border-radius: 10px;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #999;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-btn:hover {
+  color: #121212;
+}
+
+.mode-btn.active {
+  background: #121212;
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 生成按钮 */
 .generate-btn {
-  width:100%; padding:8px 16px; border:none; background:var(--accent);
-  color:#fff; font-family:inherit; font-size:0.78rem; font-weight:600;
-  cursor:pointer; transition:all 0.2s; display:flex; align-items:center;
-  justify-content:center; gap:6px;
-}
-.generate-btn:hover:not(:disabled) { box-shadow:0 0 20px var(--accent-glow); }
-.generate-btn:disabled { opacity:0.5; cursor:not-allowed; }
-
-/* Spinner */
-.spinner {
-  width:14px; height:14px; border:2px solid rgba(255,255,255,0.3);
-  border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite;
-}
-@keyframes spin { to { transform:rotate(360deg); } }
-
-/* Empty hint */
-.empty-hint {
-  font-size:0.72rem; color:var(--text-muted); text-align:center;
-  padding:20px 10px; line-height:1.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 20px;
+  background: #121212;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 
-/* Loading state */
-.loading-state { display:flex; flex-direction:column; align-items:center; gap:12px; }
-.loading-spinner {
-  width:40px; height:40px; border:3px solid var(--accent-light);
-  border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite;
-}
-.loading-text { font-size:0.82rem; font-weight:600; color:var(--accent); }
-.loading-hint { font-size:0.68rem; color:var(--text-muted); }
-
-/* Empty state */
-.empty-state { display:flex; flex-direction:column; align-items:center; gap:8px; }
-.empty-icon { font-size:2.5rem; }
-.empty-title { font-size:1rem; font-weight:700; color:var(--text-primary); }
-.empty-desc { font-size:0.72rem; color:var(--text-muted); text-align:center; max-width:280px; }
-
-/* Step list */
-.step-list { display:flex; flex-direction:column; gap:8px; }
-.step-item { display:flex; align-items:center; gap:14px; padding:10px 14px; background:#ffffff; border:1px solid var(--border-light); cursor:pointer; transition:0.2s; }
-.step-item:hover { border-color:var(--accent-light); }
-.step-item.active { border-color:var(--accent); background:#ffffff; box-shadow:inset 0 0 0 1px var(--accent-glow),0 0 14px var(--accent-glow); }
-.step-num { width:30px; height:30px; background:var(--bg-nav); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:0.8rem; color:var(--accent); border:1.5px solid var(--accent); flex-shrink:0; }
-.step-item.active .step-num { background:var(--accent); color:#fff; border-color:var(--accent); }
-.step-name { font-size:0.74rem; font-weight:600; line-height:1.3; }
-.step-desc { font-size:0.60rem; color:var(--text-muted); margin-top:2px; }
-
-.trace-panel {
-  background:var(--trace-bg); padding:14px; border-left:4px solid var(--accent);
-  font-size:0.7rem; line-height:1.5; color:var(--text-secondary);
+.generate-btn:hover {
+  background: #333;
 }
 
-/* Formula display */
-.formula-block { margin:0.5rem 0; }
-.formula-wrapper {
-  display:flex; align-items:baseline; justify-content:space-between; gap:18px;
-  background:var(--formula-card-bg); padding:1rem 1.3rem;
-  border:2px solid var(--accent-light);
-  box-shadow:2px 2px 0 rgba(0,0,0,0.04); transition:0.2s;
-}
-.formula-wrapper:hover { border-color:var(--accent); box-shadow:0 0 16px var(--accent-glow),2px 2px 0 rgba(0,0,0,0.06); }
-.formula-content { flex:1; overflow-x:auto; text-align:center; }
-.formula-content .katex { font-size:0.98rem; }
-.formula-tag {
-  font-family:'Fira Code',monospace; font-size:0.68rem; font-weight:600;
-  color:var(--accent); background:var(--accent-soft); padding:3px 12px;
-  border:1px solid var(--accent-light); white-space:nowrap;
+.generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-/* Code display */
-.code-block { background:var(--code-bg); color:var(--code-text); padding:12px 16px; border-radius:4px; font-family:'JetBrains Mono','Cascadia Code',monospace; font-size:0.70rem; line-height:1.55; overflow-x:auto; white-space:pre; border:1px solid var(--code-border); }
-.code-line-highlight { background:rgba(139,112,255,0.25); display:block; margin:0 -16px; padding:0 16px; border-left:3px solid #8B70FF; }
-
-.annotation-bubble { margin-top:6px; padding:5px 10px; font-size:0.64rem; color:var(--text-secondary); background:var(--insight-bg); border-left:3px solid var(--insight-border); border-radius:0 4px 4px 0; }
-
-/* Explanatory text */
-.explanatory-text {
-  font-size:0.74rem; line-height:1.6; color:var(--text-secondary);
-  padding-left:12px; border-left:3px solid var(--accent-light); margin:0.3rem 0;
-  background:#ffffff;
+/* 思路指引 */
+.guide-content {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #666;
+  font-family: 'Noto Serif SC', serif;
 }
 
-/* Academic insight */
-.academic-insight { background:var(--insight-bg); padding:10px 14px; font-size:0.7rem; border-left:4px solid var(--insight-border); margin:0.4rem 0; color:var(--text-secondary); }
-
-/* Concept grid */
-.concept-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
-.concept-card { background:var(--concept-card-bg); border:1.5px solid var(--concept-card-border); padding:12px; border-radius:4px; transition:0.25s; }
-.concept-card:hover { border-color:var(--accent); box-shadow:0 0 16px var(--accent-glow); }
-.concept-badge { display:inline-block; padding:2px 8px; font-size:0.60rem; font-weight:600; background:var(--accent-soft); color:var(--accent); border-radius:3px; margin-bottom:6px; }
-.concept-card h4 { font-size:0.78rem; font-weight:700; margin-bottom:4px; color:var(--text-primary); }
-.concept-card p { font-size:0.68rem; color:var(--text-secondary); line-height:1.5; }
-
-/* Overview */
-.overview-step-block { background:var(--overview-step-bg); border:1px solid var(--accent-light); border-left:5px solid var(--accent); padding:16px 18px; margin-bottom:0; scroll-margin-top:12px; }
-.overview-step-block:hover { border-color:var(--accent); box-shadow:0 0 20px var(--accent-glow); }
-.overview-step-header { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
-.overview-step-num-badge { width:36px; height:36px; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.85rem; box-shadow:0 0 14px var(--accent-glow); }
-.overview-step-title { font-size:0.82rem; font-weight:700; }
-.overview-step-shortdesc { font-size:0.64rem; color:var(--text-muted); }
-.overview-connector { display:flex; justify-content:center; padding:4px 0; }
-.overview-connector svg { width:24px; height:20px; stroke:var(--accent); }
-.overview-divider-line { width:1.5px; height:14px; background:var(--accent); margin:0 auto; }
-
-/* Mode chips */
-.mode-chips { display:flex; gap:4px; flex-shrink:0; margin-right:6px; }
-.mode-chip {
-  display:inline-flex; align-items:center; gap:3px; padding:5px 10px;
-  font-size:0.68rem; font-weight:600; letter-spacing:0.04em; text-transform:uppercase;
-  border:1.5px solid var(--border-medium); background:var(--bg-card);
-  color:var(--text-secondary); cursor:pointer; transition:all 0.2s; white-space:nowrap; font-family:inherit;
+.guide-empty {
+  text-align: center;
+  color: #999;
+  padding: 24px 0;
 }
-.mode-chip .chip-icon { font-size:0.8rem; }
-.mode-chip:hover { color:var(--accent); border-color:var(--accent); box-shadow:0 0 10px var(--accent-glow); }
-.mode-chip.active { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 0 14px var(--accent-glow); }
 
-/* View toggle */
-.view-toggle-btn {
-  width:34px; height:34px; border:1.5px solid var(--border-medium);
-  background:var(--bg-card); cursor:pointer; display:flex; align-items:center; justify-content:center;
-  color:var(--text-secondary); transition:transform 0.45s,border-color 0.22s,color 0.22s,box-shadow 0.22s;
-  flex-shrink:0; margin-left:auto;
+.guide-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.view-toggle-btn svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:2; }
-.view-toggle-btn:hover { color:var(--accent); border-color:var(--border-active); box-shadow:0 0 18px var(--accent-glow); }
-.view-toggle-btn.rotated { transform:rotate(180deg); color:var(--accent); border-color:var(--accent); box-shadow:0 0 16px var(--accent-glow),inset 0 0 0 1px var(--accent-glow); }
 
-/* Chat area */
-.chat-area { border-top:1px solid var(--divider); padding:8px 10px; flex-shrink:0; }
-.chat-input-group { display:flex; gap:6px; align-items:center; }
-.chat-input { flex:1; padding:6px 10px; border-radius:4px; border:1.5px solid var(--border-light); background:var(--bg-card); color:var(--text-primary); font-family:inherit; font-size:0.72rem; outline:none; resize:none; }
-.chat-input:focus { border-color:var(--accent); }
-.chat-send { padding:6px 14px; border-radius:4px; background:var(--accent); color:#fff; border:none; cursor:pointer; font-family:inherit; font-size:0.72rem; font-weight:600; }
-.chat-history { max-height:140px; overflow-y:auto; margin-top:6px; display:flex; flex-direction:column; gap:4px; }
-.message-bubble { padding:6px 10px; border-radius:4px; font-size:0.68rem; line-height:1.5; border-left:3px solid; }
-.typing-cursor { animation:blink 0.8s infinite; color:var(--accent); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-
-/* Buttons */
-.btn-group { display:flex; gap:8px; padding:8px 10px; border-top:1px solid var(--divider); flex-shrink:0; }
-.btn-group.hidden { display:none; }
-.btn { padding:6px 16px; border-radius:4px; font-size:0.72rem; font-weight:500; cursor:pointer; border:1.5px solid var(--border-light); background:transparent; color:var(--text-secondary); font-family:inherit; transition:0.2s; }
-.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
-.btn:disabled { opacity:0.4; cursor:not-allowed; }
-.btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-.btn-primary:hover:not(:disabled) { box-shadow:0 0 16px var(--accent-glow); }
-
-@media(max-width:900px) {
-  .main-split { grid-template-columns:1fr; }
-  .col-left { flex-direction:row; max-height:220px; }
-  .concept-grid { grid-template-columns:1fr; }
+.guide-title {
+  font-weight: 600;
+  color: #121212;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f4f4f4;
 }
+
+.guide-hint {
+  color: #999;
+  font-size: 11px;
+}
+
+/* 可追溯批注 */
+.trace-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.trace-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #f0f0f0;
+  border-radius: 12px;
+  color: #999;
+  font-size: 12px;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.trace-note {
+  padding-left: 12px;
+  border-left: 2px solid #121212;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4a534c;
+}
+
+.trace-label {
+  font-weight: 600;
+  color: #121212;
+}
+
+/* ===== 右侧画布区域 ===== */
+.canvas-area {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.waiting {
+  background: #fbbf24;
+}
+
+.status-dot.active {
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(0.95); }
+}
+
+.status-text {
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reset-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #f0f0f0;
+  background: #ffffff;
+  color: #999;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reset-btn:hover {
+  background: #f8f9f8;
+  color: #121212;
+  border-color: #e0e0e0;
+}
+
+/* 画布主体 */
+.canvas-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: linear-gradient(to bottom, #fbfdfb, #fafbfa);
+}
+
+/* 空状态 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  animation: pulse-subtle 3s infinite ease-in-out;
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(0.99); }
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  background: #f4f4f4;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #121212;
+}
+
+.empty-desc {
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+/* 推导树 */
+.derivation-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.tree-node {
+  display: flex;
+  gap: 16px;
+  position: relative;
+}
+
+.node-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.node-dot {
+  width: 12px;
+  height: 12px;
+  background: #121212;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 0 4px #f4f4f4;
+}
+
+.node-line {
+  width: 2px;
+  flex: 1;
+  background: #e0e0e0;
+  border-style: dashed;
+  margin-top: -2px;
+  margin-bottom: -2px;
+}
+
+.tree-node:not(.last-node) .node-connector {
+  padding-bottom: 16px;
+}
+
+.node-card {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.15s ease;
+}
+
+.node-card:hover {
+  border-color: #e0e0e0;
+}
+
+.node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.node-step {
+  font-size: 10px;
+  font-family: monospace;
+  color: #999;
+}
+
+.node-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+
+.node-badge.success {
+  color: #059669;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.node-badge.info {
+  color: #6b7280;
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.node-badge.warning {
+  color: #d97706;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.node-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #121212;
+  margin-bottom: 10px;
+  font-family: 'Noto Serif SC', serif;
+  line-height: 1.4;
+}
+
+.formula-box {
+  background: #fcfdfc;
+  border: 1px solid #f5f8f5;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.formula-box code {
+  font-family: monospace;
+  font-size: 14px;
+  color: #121212;
+  letter-spacing: 0.5px;
+}
+
+/* 底部输入条 */
+.chat-input-bar {
+  padding: 16px 20px;
+  border-top: 1px solid #f0f0f0;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.chat-input-wrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: #ffffff;
+  transition: border-color 0.15s ease;
+}
+
+.chat-input-wrapper:focus-within {
+  border-color: #121212;
+}
+
+.chat-input-wrapper input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #121212;
+  background: transparent;
+}
+
+.chat-input-wrapper input::placeholder {
+  color: #ccc;
+}
+
+.send-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #121212;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.send-btn:hover {
+  background: #333;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 768px) {
+  .derivation-page {
+    grid-template-columns: 1fr;
+  }
+
+  .control-panel {
+    display: none;
+  }
+}
+
+/* ===== 绿色主题 ===== */
+body.green .derivation-page { background: #f7f8f7; }
+body.green .control-panel { border-right-color: #dee2de; }
+body.green .panel-section { border-bottom-color: #dee2de; }
+body.green .section-header { color: #2c332e; }
+body.green .section-header svg { color: #526e5a; }
+body.green .input-box { border-color: #dee2de; background: #f7f8f7; }
+body.green .input-box:focus-within { border-color: #526e5a; }
+body.green .input-box input { color: #2c332e; }
+body.green .input-box input::placeholder { color: #8fa091; }
+body.green .mode-toggle { background: #edf0ed; }
+body.green .mode-btn { color: #8fa091; }
+body.green .mode-btn:hover { color: #2c332e; }
+body.green .mode-btn.active { background: #526e5a; color: #ffffff; }
+body.green .generate-btn { background: #526e5a; }
+body.green .generate-btn:hover { background: #3d5243; }
+body.green .guide-content { color: #556056; }
+body.green .guide-empty { color: #8fa091; }
+body.green .guide-title { color: #2c332e; border-bottom-color: #edf0ed; }
+body.green .guide-hint { color: #8fa091; }
+body.green .trace-empty { border-color: #dee2de; color: #8fa091; }
+body.green .trace-note { border-left-color: #526e5a; color: #556056; }
+body.green .trace-label { color: #2c332e; }
+body.green .canvas-header { border-bottom-color: #dee2de; background: #f7f8f7; }
+body.green .status-text { color: #8fa091; }
+body.green .reset-btn { border-color: #dee2de; background: #f7f8f7; color: #8fa091; }
+body.green .reset-btn:hover { background: #edf0ed; color: #2c332e; border-color: #526e5a; }
+body.green .canvas-body { background: linear-gradient(to bottom, #f3f6f3, #f7f8f7); }
+body.green .empty-icon { background: #edf0ed; color: #526e5a; }
+body.green .empty-title { color: #2c332e; }
+body.green .empty-desc { color: #8fa091; }
+body.green .node-dot { background: #526e5a; box-shadow: 0 0 0 4px #edf0ed; }
+body.green .node-line { background: #dee2de; }
+body.green .node-card { background: #f7f8f7; border-color: #dee2de; }
+body.green .node-card:hover { border-color: #526e5a; }
+body.green .node-step { color: #8fa091; }
+body.green .node-badge.success { color: #526e5a; background: #edf0ed; border-color: #dbe1db; }
+body.green .node-badge.info { color: #556056; background: #edf0ed; border-color: #dee2de; }
+body.green .node-badge.warning { color: #d97706; background: #fffbeb; border-color: #fde68a; }
+body.green .node-title { color: #2c332e; }
+body.green .formula-box { background: #f3f6f3; border-color: #dee2de; }
+body.green .formula-box code { color: #2c332e; }
+body.green .chat-input-bar { border-top-color: #dee2de; background: #f7f8f7; }
+body.green .chat-input-wrapper { border-color: #dee2de; background: #f7f8f7; }
+body.green .chat-input-wrapper:focus-within { border-color: #526e5a; }
+body.green .chat-input-wrapper input { color: #2c332e; }
+body.green .chat-input-wrapper input::placeholder { color: #8fa091; }
+body.green .send-btn { background: #526e5a; }
+body.green .send-btn:hover { background: #3d5243; }
+
+/* ===== 暗色主题 ===== */
+body.dark .derivation-page { background: #121212; }
+body.dark .control-panel { border-right-color: #2d2d2d; }
+body.dark .panel-section { border-bottom-color: #2d2d2d; }
+body.dark .section-header { color: #e5e5e5; }
+body.dark .section-header svg { color: #999; }
+body.dark .input-box { border-color: #333; background: #1a1a1a; }
+body.dark .input-box:focus-within { border-color: #fff; }
+body.dark .input-box input { color: #e5e5e5; }
+body.dark .input-box input::placeholder { color: #777; }
+body.dark .mode-toggle { background: #242424; }
+body.dark .mode-btn { color: #777; }
+body.dark .mode-btn:hover { color: #e5e5e5; }
+body.dark .mode-btn.active { background: #fff; color: #121212; }
+body.dark .generate-btn { background: #fff; color: #121212; }
+body.dark .generate-btn:hover { background: #e5e5e5; }
+body.dark .guide-content { color: #aaa; }
+body.dark .guide-empty { color: #777; }
+body.dark .guide-title { color: #e5e5e5; border-bottom-color: #333; }
+body.dark .guide-hint { color: #777; }
+body.dark .trace-empty { border-color: #333; color: #777; }
+body.dark .trace-note { border-left-color: #fff; color: #aaa; }
+body.dark .trace-label { color: #e5e5e5; }
+body.dark .canvas-header { border-bottom-color: #2d2d2d; background: #121212; }
+body.dark .status-text { color: #777; }
+body.dark .reset-btn { border-color: #333; background: #1a1a1a; color: #777; }
+body.dark .reset-btn:hover { background: #242424; color: #e5e5e5; border-color: #fff; }
+body.dark .canvas-body { background: linear-gradient(to bottom, #0f0f0f, #121212); }
+body.dark .empty-icon { background: #242424; color: #777; }
+body.dark .empty-title { color: #e5e5e5; }
+body.dark .empty-desc { color: #777; }
+body.dark .node-dot { background: #fff; box-shadow: 0 0 0 4px #242424; }
+body.dark .node-line { background: #333; }
+body.dark .node-card { background: #1a1a1a; border-color: #2d2d2d; }
+body.dark .node-card:hover { border-color: #fff; }
+body.dark .node-step { color: #777; }
+body.dark .node-badge.success { color: #4ade80; background: #0f1f0f; border-color: #166534; }
+body.dark .node-badge.info { color: #999; background: #1a1a1a; border-color: #333; }
+body.dark .node-badge.warning { color: #fbbf24; background: #1f1a0f; border-color: #92400e; }
+body.dark .node-title { color: #e5e5e5; }
+body.dark .formula-box { background: #0f0f0f; border-color: #2d2d2d; }
+body.dark .formula-box code { color: #e5e5e5; }
+body.dark .chat-input-bar { border-top-color: #2d2d2d; background: #121212; }
+body.dark .chat-input-wrapper { border-color: #333; background: #1a1a1a; }
+body.dark .chat-input-wrapper:focus-within { border-color: #fff; }
+body.dark .chat-input-wrapper input { color: #e5e5e5; }
+body.dark .chat-input-wrapper input::placeholder { color: #777; }
+body.dark .send-btn { background: #fff; color: #121212; }
+body.dark .send-btn:hover { background: #e5e5e5; }
 </style>

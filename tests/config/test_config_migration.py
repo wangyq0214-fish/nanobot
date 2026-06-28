@@ -38,6 +38,58 @@ def test_load_config_keeps_max_tokens_and_ignores_legacy_memory_window(tmp_path)
     assert not hasattr(config.agents.defaults, "memory_window")
 
 
+def test_load_config_backfills_default_agent_profiles(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({}), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.agents.defaults.active_agent == "teacher_lesson_planner"
+    assert [agent.name for agent in config.agents.defaults.agents] == [
+        "student_tutor",
+        "student_practice_coach",
+        "teacher_lesson_planner",
+        "teacher_grading_assistant",
+        "researcher_literature_tracker",
+        "researcher_writing_assistant",
+    ]
+    assert config.agents.defaults.role_agents["student"].default_agent == "student_tutor"
+
+
+def test_load_config_keeps_explicit_agent_profiles(tmp_path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "agents": {
+                    "defaults": {
+                        "activeAgent": "custom_agent",
+                        "agents": [
+                            {
+                                "name": "custom_agent",
+                                "displayName": "Custom Agent",
+                            }
+                        ],
+                        "roleAgents": {
+                            "custom": {
+                                "defaultAgent": "custom_agent",
+                                "availableAgents": ["custom_agent"],
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.agents.defaults.active_agent == "custom_agent"
+    assert [agent.name for agent in config.agents.defaults.agents] == ["custom_agent"]
+    assert list(config.agents.defaults.role_agents) == ["custom"]
+
+
 def test_save_config_writes_context_window_tokens_but_not_memory_window(tmp_path) -> None:
     config_path = tmp_path / "config.json"
     config_path.write_text(

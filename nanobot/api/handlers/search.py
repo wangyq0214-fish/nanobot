@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Callable
+from pathlib import Path
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -21,7 +21,6 @@ from ..utils import (
     http_json_response,
     parse_mutation_data,
     parse_query,
-    query_first,
 )
 
 # --- API endpoints ---
@@ -374,12 +373,9 @@ async def handle_search_papers(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Search papers across multiple academic data sources."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
     query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
@@ -417,14 +413,11 @@ async def handle_import_paper(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Import a paper from a URL (download PDF, parse, and store)."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
+    user_id = identity.get("user_id", "")
     query = parse_query(request.path)
-    user_id = query_first(query, "user_id") or ""
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -445,6 +438,7 @@ async def handle_import_paper(
 
     # Download PDF
     import httpx
+
     from nanobot.services.pdf_service import chunk_pages, extract_pdf_text
 
     upload_dir = Path.home() / ".nanobot" / "uploads" / "papers"

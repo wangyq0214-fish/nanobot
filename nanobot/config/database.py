@@ -79,6 +79,11 @@ async def init_database(config: Optional[DatabaseConfig] = None) -> None:
         from nanobot.models.base import Base
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Add annotations column if missing (migration for existing databases)
+            try:
+                await conn.execute(text("ALTER TABLE papers ADD COLUMN annotations TEXT DEFAULT '[]'"))
+            except Exception:
+                pass  # Column already exists
         logger.info("Database tables ensured")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")

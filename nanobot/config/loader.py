@@ -3,6 +3,7 @@
 import json
 import os
 import re
+from importlib.resources import files as pkg_files
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from nanobot.config.schema import Config
 
 # Global variable to store current config path (for multi-instance support)
 _current_config_path: Path | None = None
+_DEFAULT_AGENT_CONFIG = "default_agents.json"
 
 
 def set_config_path(path: Path) -> None:
@@ -47,10 +49,13 @@ def load_config(config_path: Path | None = None) -> Config:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             data = _migrate_config(data)
+            data = _merge_default_agent_config(data)
             config = Config.model_validate(data)
         except (json.JSONDecodeError, ValueError, pydantic.ValidationError) as e:
             logger.warning(f"Failed to load config from {path}: {e}")
             logger.warning("Using default configuration.")
+    else:
+        config = Config.model_validate(_merge_default_agent_config({}))
 
     _apply_ssrf_whitelist(config)
     return config
@@ -170,3 +175,45 @@ def _migrate_config(data: dict) -> dict:
             tools.pop("mySet", None)
 
     return data
+
+
+def _merge_default_agent_config(data: dict[str, Any]) -> dict[str, Any]:
+    """Fill missing agent profile fields from the bundled agent-only defaults."""
+    default_agents = _load_default_agent_config()
+    if not default_agents:
+        return data
+
+    merged = dict(data)
+    agents = dict(merged.get("agents") or {})
+    defaults = dict(agents.get("defaults") or {})
+    default_defaults = default_agents.get("agents", {}).get("defaults", {})
+
+    for key in ("activeAgent", "roleAgents"):
+        if key not in defaults and key in default_defaults:
+            defaults[key] = default_defaults[key]
+
+    default_profiles = default_defaults.get("agents") or []
+    configured_profiles = defaults.get("agents") or []
+    if default_profiles:
+        profiles_by_name = {
+            profile.get("name"): profile
+            for profile in default_profiles
+            if isinstance(profile, dict) and profile.get("name")
+        }
+        for profile in configured_profiles:
+            if isinstance(profile, dict) and profile.get("name"):
+                profiles_by_name[profile["name"]] = profile
+        defaults["agents"] = list(profiles_by_name.values())
+
+    agents["defaults"] = defaults
+    merged["agents"] = agents
+    return merged
+
+
+def _load_default_agent_config() -> dict[str, Any]:
+    try:
+        path = pkg_files("nanobot.config") / _DEFAULT_AGENT_CONFIG
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Failed to load default agent config: {e}")
+        return {}

@@ -76,6 +76,14 @@ class AgentProfile(Base):
     enabled: bool = True
 
 
+class RoleAgentConfig(Base):
+    """Agent selection rules for one user role."""
+
+    default_agent: str = Field(default="", alias="defaultAgent")
+    available_agents: list[str] = Field(default_factory=list, alias="availableAgents")
+    traversal_flow: list[str] = Field(default_factory=list, alias="traversalFlow")
+
+
 class AgentDefaults(Base):
     """Default agent configuration."""
 
@@ -106,6 +114,8 @@ class AgentDefaults(Base):
     # 新增：多智能体配置
     active_agent: str = Field(default="", alias="activeAgent")  # 当前激活的智能体
     agents: list[AgentProfile] = Field(default_factory=list)  # 智能体列表
+
+    role_agents: dict[str, RoleAgentConfig] = Field(default_factory=dict, alias="roleAgents")
 
 
 class AgentsConfig(Base):

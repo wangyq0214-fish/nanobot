@@ -49,6 +49,7 @@ class Paper(Base):
     user_id: Mapped[str] = mapped_column(String(64), default="")
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[str] = mapped_column(Text, default="[]")
+    annotations: Mapped[str] = mapped_column(Text, default="[]")
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
@@ -60,6 +61,12 @@ class Paper(Base):
         tags = []
         try:
             tags = json.loads(self.tags) if self.tags else []
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        annotations = []
+        try:
+            annotations = json.loads(self.annotations) if self.annotations else []
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -75,6 +82,7 @@ class Paper(Base):
             "filePath": self.file_path,
             "fileName": self.file_name,
             "pageCount": self.page_count,
+            "fullText": self.full_text,
             "source": self.source,
             "sourceId": self.source_id,
             "pdfUrl": self.pdf_url,
@@ -83,6 +91,7 @@ class Paper(Base):
             "userId": self.user_id,
             "isFavorite": self.is_favorite,
             "tags": tags,
+            "annotations": annotations,
             "createdAt": self.created_at.isoformat() if self.created_at else None,
             "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -90,6 +99,7 @@ class Paper(Base):
     def to_summary_dict(self) -> Dict[str, Any]:
         """Convert paper to summary dictionary (without full_text)."""
         d = self.to_dict()
+        d.pop("fullText", None)
         return d
 
     def __repr__(self) -> str:

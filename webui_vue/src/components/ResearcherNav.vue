@@ -9,7 +9,7 @@
         <span class="nav-tab" :class="{ active: activeTab === 'paper-search' }" @click="$router.push('/researcher/paper-search')">论文检索</span>
         <span class="nav-tab" :class="{ active: activeTab === 'paper-library' }" @click="$router.push('/researcher/paper-library')">论文库</span>
         <span class="nav-tab" :class="{ active: activeTab === 'writing-assistant' }" @click="$router.push('/researcher/writing-assistant')">写作辅导</span>
-        <span class="nav-tab" :class="{ active: activeTab === 'datalab' }" @click="$router.push('/researcher/datalab')">实验可视化</span>
+        <span class="nav-tab" :class="{ active: activeTab === 'toolbench' }" @click="$router.push('/researcher/toolbench')">工具台中心</span>
       </div>
     </div>
     <div class="nav-right">
@@ -174,7 +174,7 @@ function handleLogout() {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #60a5fa, var(--color-primary));
+  background: var(--color-primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -182,7 +182,7 @@ function handleLogout() {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(59,130,246,0.15);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   transition: transform 0.2s ease;
   flex-shrink: 0;
 }

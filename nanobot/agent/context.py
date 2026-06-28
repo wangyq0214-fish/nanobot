@@ -35,6 +35,7 @@ class ContextBuilder:
         agent_profile: dict | None = None,
         agent_manager: Any = None,
         role_workspace: Path | None = None,
+        role: str | None = None,
     ):
         # user_workspace: USER.md, memory/, sessions/
         self.workspace = workspace
@@ -45,6 +46,7 @@ class ContextBuilder:
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
         self.agent_profile = agent_profile or {}  # 新增：智能体配置
         self.agent_manager = agent_manager  # 新增：智能体管理器引用
+        self.role = role or ""
 
     def build_system_prompt(
         self,
@@ -55,7 +57,7 @@ class ContextBuilder:
         # 动态获取当前激活的智能体配置
         current_agent_profile = None
         if self.agent_manager:
-            active_agent = self.agent_manager.get_active_agent()
+            active_agent = self.agent_manager.get_active_agent(self.role or None)
             if active_agent:
                 current_agent_profile = active_agent.to_dict()
 
@@ -176,10 +178,18 @@ class ContextBuilder:
         chat_id: str | None = None,
         current_role: str = "user",
         session_summary: str | None = None,
+        mode: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         runtime_ctx = self._build_runtime_context(channel, chat_id, self.timezone, session_summary=session_summary)
         user_content = self._build_user_content(current_message, media)
+
+        # Build system prompt with optional mode prefix
+        system_prompt = self.build_system_prompt(skill_names, channel=channel)
+        if mode == "deep":
+            system_prompt = "[深度推理模式] 请进行多源交叉验证，引用具体文献和数据，生成结构化分析报告。\n\n" + system_prompt
+        elif mode == "quick":
+            system_prompt = "[快速响应模式] 请简洁明了地回答，适合快速了解要点。\n\n" + system_prompt
 
         # Merge runtime context and user content into a single user message
         # to avoid consecutive same-role messages that some providers reject.
@@ -188,7 +198,7 @@ class ContextBuilder:
         else:
             merged = [{"type": "text", "text": runtime_ctx}] + user_content
         messages = [
-            {"role": "system", "content": self.build_system_prompt(skill_names, channel=channel)},
+            {"role": "system", "content": system_prompt},
             *history,
         ]
         if messages[-1].get("role") == current_role:

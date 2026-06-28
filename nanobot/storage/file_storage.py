@@ -964,10 +964,20 @@ class FileStorage(BaseStorage):
 
     async def get_paper(self, paper_id: int) -> Optional[Dict[str, Any]]:
         """Get paper by ID. Returns None if not found."""
-        paper_file = self.base_path / "papers" / f"{paper_id}.json"
+        papers_dir = self.base_path / "papers"
+        paper_file = papers_dir / f"{paper_id}.json"
         if not paper_file.exists():
             return None
-        return self._load_json(paper_file)
+        paper = self._load_json(paper_file)
+        if paper:
+            # Load full text from separate file if it exists
+            text_file = papers_dir / f"{paper_id}_text.txt"
+            if text_file.exists():
+                try:
+                    paper["fullText"] = text_file.read_text(encoding="utf-8")
+                except Exception:
+                    pass
+        return paper
 
     async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """List papers, optionally filtered by user."""

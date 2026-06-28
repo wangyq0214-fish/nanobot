@@ -1,7 +1,5 @@
 <template>
-  <div class="app-shell">
-    <TeacherNav active-tab="courses" @logout="onLogout" />
-    <div class="main-area">
+  <div class="main-area">
       <div class="analytics-page">
         <button class="back-btn" @click="$router.push(`/teacher/courses/${courseId}`)">← 返回课程</button>
 
@@ -99,7 +97,6 @@
         </div>
       </div>
     </div>
-  </div>
 </template>
 
 <script setup>
@@ -110,7 +107,6 @@ import echarts from '../../utils/echarts.js'
 import { useAuth } from '../../composables/useAuth.js'
 import { useCourse } from '../../composables/useCourse.js'
 import { useGateway } from '../../composables/useGateway.js'
-import TeacherNav from '../../components/TeacherNav.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -229,6 +225,23 @@ body.dark {
   --text-secondary: #a09cb8;
   --text-muted: #6d6a88;
   --divider: rgba(255, 255, 255, 0.07);
+}
+body.green {
+  --bg-root: #f7f8f7;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --accent: #526e5a;
+  --accent-deep: #415848;
+  --accent-soft: rgba(82, 110, 90, 0.09);
+  --accent-glow: rgba(82, 110, 90, 0.22);
+  --border-light: rgba(0, 0, 0, 0.06);
+  --border-medium: rgba(0, 0, 0, 0.1);
+  --text-primary: #1e2720;
+  --text-secondary: #556056;
+  --text-muted: #8fa091;
+  --divider: rgba(0, 0, 0, 0.05);
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --success: #0d9488;
 }
 
 /* ========== 布局 ========== */

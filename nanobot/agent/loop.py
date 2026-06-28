@@ -695,6 +695,7 @@ class AgentLoop:
             agent_profile=None,
             agent_manager=self.agent_manager,
             role_workspace=template_dir,
+            role=role,
         )
         sessions = SessionManager(user_ws)
         self._user_workspaces[cache_key] = (ctx, sessions)
@@ -709,16 +710,16 @@ class AgentLoop:
         logger.debug("Dispatch: role={}, user_id={}, metadata={}", role, user_id, metadata)
         user_ctx_sessions = self._resolve_user_context(role, user_id)
 
-        # Switch agent based on role
+        # Switch agent based on role configuration.
         if role and self.agent_manager:
-            role_agent_map = {
-                "student": "student_agent",
-                "teacher": "teacher_agent",
-                "researcher": "researcher_agent",
-            }
-            target = role_agent_map.get(role)
+            target = None
+            if hasattr(self.agent_manager, "get_active_agent"):
+                active = self.agent_manager.get_active_agent(role)
+                target = active.name if active else None
+            if not target and hasattr(self.agent_manager, "get_default_agent_for_role"):
+                target = self.agent_manager.get_default_agent_for_role(role)
             if target:
-                self.agent_manager.switch_agent(target)
+                self.agent_manager.switch_agent(target, role=role)
 
         # Per-user session key: prefix with role:user_id for isolation
         if role and user_id:
@@ -950,6 +951,7 @@ class AgentLoop:
                 chat_id=chat_id,
                 session_summary=pending,
                 current_role=current_role,
+                mode=msg.metadata.get("mode") if msg.metadata else None,
             )
             final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
                 messages, session=session, channel=channel, chat_id=chat_id,
@@ -1025,6 +1027,7 @@ class AgentLoop:
                 media=msg.media if msg.media else None,
                 channel=msg.channel,
                 chat_id=msg.chat_id,
+                mode=msg.metadata.get("mode") if msg.metadata else None,
             )
 
         async def _bus_progress(
@@ -1208,6 +1211,11 @@ class AgentLoop:
                     if not filtered:
                         continue
                     entry["content"] = filtered
+            # Preserve metadata (e.g., mode) from inbound messages
+            if hasattr(m, 'metadata') and isinstance(m.metadata, dict):
+                entry["metadata"] = m.metadata
+            elif isinstance(m, dict) and "metadata" in m:
+                entry["metadata"] = m["metadata"]
             entry.setdefault("timestamp", datetime.now().isoformat())
             session.messages.append(entry)
         session.updated_at = datetime.now()

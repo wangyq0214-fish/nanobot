@@ -1,77 +1,115 @@
 <template>
-<div class="app">
-  <ResearcherNav active-tab="datalab" />
-
-  <div class="main-layout">
-    <div class="panel-left thin-scrollbar">
-      <div class="section-title">数据源</div>
-      <div class="upload-area" @click="triggerUpload" @dragover.prevent @drop.prevent="onDrop">
-        <div class="upload-label">点击上传或拖拽文件</div>
-        <div class="upload-hint">支持 CSV / Excel (.xlsx .xls)</div>
-        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" @change="onFileChange" style="display:none">
-        <div class="file-name" v-if="fileName">{{ fileName }}</div>
-      </div>
-      <button class="btn" @click="loadSampleData">加载园艺实验数据</button>
-
-      <div class="section-title">变量选择</div>
-      <div class="select-group">
-        <label>X 轴变量</label>
-        <select v-model="xCol" @change="updateAll">
-          <option v-for="c in columns" :key="c" :value="c">{{ c }}</option>
-          <option v-if="columns.length === 0">请先上传数据</option>
-        </select>
-      </div>
-      <div class="select-group">
-        <label>Y 轴变量（可选）</label>
-        <select v-model="yCol" @change="updateAll">
-          <option value="">— 不选择 —</option>
-          <option v-for="c in numericCols" :key="c" :value="c">{{ c }}</option>
-        </select>
+<div class="data-lab">
+  <!-- Left: Controls Panel -->
+  <section class="controls-panel">
+    <div class="controls-content">
+      <button class="back-btn" @click="emit('back')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        <span>返回工具选单</span>
+      </button>
+      <div class="control-section">
+        <label class="control-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
+          </svg>
+          <span>数据源导入</span>
+        </label>
+        <div class="upload-area" @click="triggerUpload" @dragover.prevent @drop.prevent="onDrop">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+          </svg>
+          <div class="upload-text">点击或拖拽解析矩阵文件</div>
+          <div class="upload-hint" v-if="fileName">{{ fileName }}</div>
+          <div class="upload-hint" v-else>支持 CSV / Excel (.xlsx .xls)</div>
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" @change="onFileChange" style="display:none">
+        </div>
+        <button class="btn-sample" @click="loadSampleData">加载园艺实验数据</button>
       </div>
 
-      <div class="section-title">图表类型</div>
-      <div class="chart-type-grid">
-        <button
-          v-for="ct in chartTypes"
-          :key="ct.key"
-          class="chart-type-btn"
-          :class="{ active: currentChartType === ct.key }"
-          @click="switchChartType(ct.key)"
-        >{{ ct.label }}</button>
+      <div class="control-section">
+        <label class="control-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="2" x2="6" y1="14" y2="14"/><line x1="10" x2="14" y1="8" y2="8"/><line x1="18" x2="22" y1="16" y2="16"/>
+          </svg>
+          <span>映射变量选择</span>
+        </label>
+        <div class="select-group">
+          <span class="select-label">X 轴映射变量</span>
+          <div class="select-wrapper">
+            <select v-model="xCol" @change="updateAll">
+              <option v-for="c in columns" :key="c" :value="c">{{ c }}</option>
+              <option v-if="columns.length === 0">请先上传数据</option>
+            </select>
+            <svg class="select-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
+        <div class="select-group">
+          <span class="select-label">Y 轴映射变量 (可选)</span>
+          <div class="select-wrapper">
+            <select v-model="yCol" @change="updateAll">
+              <option value="">— 不选择 —</option>
+              <option v-for="c in numericCols" :key="c" :value="c">{{ c }}</option>
+            </select>
+            <svg class="select-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
       </div>
-      <button class="btn" @click="updateAll">刷新图表</button>
 
-      <div class="data-preview">
-        <div class="section-title">数据预览</div>
-        <div v-if="rawData.length === 0" style="font-size:0.72rem;color:var(--text3);">暂无数据</div>
-        <template v-else>
-          <table class="preview-table">
-            <thead><tr><th v-for="c in previewCols" :key="c">{{ c }}</th></tr></thead>
-            <tbody>
-              <tr v-for="(row, i) in previewRows" :key="i">
-                <td v-for="c in previewCols" :key="c">{{ row[c] ?? '' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-if="rawData.length > 8" style="font-size:0.72rem;color:var(--text3);margin-top:4px;">显示前8行，共 {{ rawData.length }} 条记录</div>
-        </template>
+      <div class="control-section">
+        <span class="select-label">图表流派类型</span>
+        <div class="chart-type-grid">
+          <button
+            v-for="ct in chartTypes"
+            :key="ct.key"
+            class="chart-type-btn"
+            :class="{ active: currentChartType === ct.key }"
+            @click="switchChartType(ct.key)"
+          >{{ ct.label }}</button>
+        </div>
       </div>
     </div>
 
-    <div class="panel-right">
-      <div class="chart-card">
-        <div class="chart-header">
-          <span>{{ chartTitle }}</span>
-          <span style="font-size:0.72rem;color:var(--text3);">滚轮缩放 · 拖拽平移</span>
-        </div>
-        <div ref="chartEl" id="mainChart"></div>
+    <button class="btn-render" @click="updateAll">
+      同步更新渲染
+    </button>
+  </section>
+
+  <!-- Main: Visualization Area -->
+  <main class="main-content">
+    <div class="chart-area">
+      <div class="chart-header">
+        <span class="chart-title">{{ chartTitle }}</span>
+        <span class="chart-hint">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/>
+          </svg>
+          <span>支持画布自由视差拖拽 / 滚轮缩放</span>
+        </span>
       </div>
-      <div class="insight-row">
-        <div class="insight-card hide-scrollbar">
-          <div class="insight-card-title">描述性统计</div>
-          <div v-if="numericCols.length === 0" style="color:var(--text3);">未检测到数值列</div>
-          <table v-else class="stat-table">
-            <thead><tr><th>变量</th><th>样本数</th><th>均值</th><th>中位数</th><th>标准差</th><th>范围</th></tr></thead>
+      <div ref="chartEl" class="chart-container"></div>
+    </div>
+
+    <div class="insights-row">
+      <div class="insight-card stats-card">
+        <div class="insight-header">
+          <div class="insight-bar"></div>
+          <span>描述性静态核验矩阵</span>
+        </div>
+        <div class="stats-table-wrapper">
+          <table class="stats-table" v-if="numericCols.length > 0">
+            <thead>
+              <tr>
+                <th>变量</th>
+                <th>样本数</th>
+                <th>均值</th>
+                <th>中位数</th>
+                <th>标准差</th>
+              </tr>
+            </thead>
             <tbody>
               <tr v-for="col in numericCols" :key="col">
                 <td class="var-name">{{ col }}</td>
@@ -79,50 +117,43 @@
                 <td>{{ stats[col]?.mean ?? '-' }}</td>
                 <td>{{ stats[col]?.median ?? '-' }}</td>
                 <td>{{ stats[col]?.std ?? '-' }}</td>
-                <td>{{ stats[col]?.min ?? '-' }} — {{ stats[col]?.max ?? '-' }}</td>
               </tr>
             </tbody>
           </table>
-        </div>
-        <div class="insight-card hide-scrollbar">
-          <div class="insight-card-title">相关性分析</div>
-          <div v-if="!corrResult" style="color:var(--text3);">请选择两个数值变量以计算相关性</div>
-          <template v-else>
-            <div class="corr-vars">{{ corrResult.xCol }} <span class="corr-arrow">↔</span> {{ corrResult.yCol }}</div>
-            <div class="corr-main">
-              <span class="corr-r">r = {{ corrResult.r }}</span>
-              <span v-if="corrResult.significant" class="corr-sig">显著</span>
-            </div>
-            <div class="corr-stats">
-              <span>n = {{ corrResult.n }}</span>
-              <span>t = {{ corrResult.t }}</span>
-              <span>p {{ corrResult.p }}</span>
-            </div>
-            <div class="corr-conclusion">→ {{ corrResult.conclusion }}</div>
-          </template>
+          <div v-else class="empty-hint">未检测到数值列</div>
         </div>
       </div>
+
+      <div class="insight-card corr-card">
+        <div class="insight-header">
+          <div class="insight-bar"></div>
+          <span>智能相关性推论</span>
+        </div>
+        <div v-if="!corrResult" class="empty-hint">请选择两个数值变量以计算相关性</div>
+        <template v-else>
+          <div class="corr-vars">{{ corrResult.xCol }} ↔ {{ corrResult.yCol }}</div>
+          <div class="corr-main">
+            <span class="corr-r">r = {{ corrResult.r }}</span>
+            <span v-if="corrResult.significant" class="corr-badge">显著相关</span>
+          </div>
+          <div class="corr-stats">
+            <span>n = {{ corrResult.n }}</span>
+            <span>t = {{ corrResult.t }}</span>
+            <span>p {{ corrResult.p }}</span>
+          </div>
+          <div class="corr-conclusion">→ {{ corrResult.conclusion }}</div>
+        </template>
+      </div>
     </div>
-  </div>
+  </main>
 </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import echarts from '../../utils/echarts.js'
-import { useAuth } from '../../composables/useAuth.js'
-import ResearcherNav from '../../components/ResearcherNav.vue'
 
-const router = useRouter()
-const route = useRoute()
-const { logout: authLogout } = useAuth()
-function handleLogout() {
-  authLogout()
-  try { localStorage.removeItem('nanobot-webui.chatId') } catch {}
-  router.push('/login')
-}
-const isDark = ref(false)
+const emit = defineEmits(['back'])
 
 const rawData = ref([])
 const columns = ref([])
@@ -135,28 +166,21 @@ const chartEl = ref(null)
 let chartInstance = null
 
 const chartTypes = [
-  { key: 'scatter', label: '散点图' },
-  { key: 'bar', label: '柱状图' },
-  { key: 'boxplot', label: '箱线图' },
-  { key: 'heatmap', label: '热力图' },
-  { key: 'radar', label: '雷达图' },
-  { key: 'parallel', label: '平行坐标' },
+  { key: 'scatter', label: '散点趋势图' },
+  { key: 'bar', label: '柱状分布图' },
+  { key: 'boxplot', label: '箱线变异图' },
+  { key: 'parallel', label: '多维平行坐标' },
 ]
 
 const chartTitle = computed(() => {
   const titles = {
-    scatter: `散点图 · ${xCol.value} vs ${yCol.value || '?'}`,
-    bar: `柱状图 · ${xCol.value} / ${yCol.value || '?'}`,
-    boxplot: `箱线图 · ${xCol.value} / ${yCol.value || '?'}`,
-    heatmap: `热力图 · ${xCol.value} / ${yCol.value || '?'}`,
-    radar: '雷达图 · 多变量',
+    scatter: `散点谱系 · ${xCol.value} vs ${yCol.value || '?'}`,
+    bar: `柱状分布 · ${xCol.value} / ${yCol.value || '?'}`,
+    boxplot: `箱线变异 · ${xCol.value} / ${yCol.value || '?'}`,
     parallel: '平行坐标 · 多变量',
   }
   return titles[currentChartType.value] || ''
 })
-
-const previewCols = computed(() => columns.value.slice(0, 5))
-const previewRows = computed(() => rawData.value.slice(0, 8))
 
 const stats = computed(() => {
   const result = {}
@@ -188,10 +212,10 @@ const corrResult = computed(() => {
   const sig = pVal < 0.05
   const absR = Math.abs(r)
   let conclusion = ''
-  if (absR >= 0.8) conclusion = '极强相关，可能存在共线性，建议进一步检验'
-  else if (absR >= 0.6) conclusion = '强相关，具有重要生物学意义'
-  else if (absR >= 0.4) conclusion = '中等程度相关，可结合其他变量综合判断'
-  else conclusion = '弱相关或无线性关系，建议尝试非线性模型'
+  if (absR >= 0.8) conclusion = '矩阵判定该指数具备极强正相关，可能存在多重共线性风险，建议执行进一步的偏相关消融核验。'
+  else if (absR >= 0.6) conclusion = '强相关，具有重要生物学意义，建议结合领域知识进一步验证。'
+  else if (absR >= 0.4) conclusion = '中等程度相关，可结合其他变量综合判断。'
+  else conclusion = '弱相关或无线性关系，建议尝试非线性模型或增加样本量。'
   return {
     xCol: xCol.value, yCol: yCol.value,
     r: r.toFixed(4), n,
@@ -302,21 +326,22 @@ function initChart() {
 }
 
 function getTextColor() {
-  return getComputedStyle(document.body).getPropertyValue('--text2').trim() || '#4a4658'
+  return '#556056'
 }
 
 function buildTooltip() {
   return {
     trigger: 'item',
-    backgroundColor: 'rgba(30, 10, 60, 0.92)',
-    borderColor: '#8B70FF',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderColor: '#e8ebe8',
     borderWidth: 1,
-    textStyle: { color: '#f2eaff', fontSize: 11 }
+    textStyle: { color: '#1e2720', fontSize: 11 },
+    padding: [8, 12]
   }
 }
 
 function getGrid() {
-  return { left: 55, right: 25, top: 20, bottom: 35, containLabel: true }
+  return { left: 55, right: 25, top: 20, bottom: 45, containLabel: true }
 }
 
 function renderChart() {
@@ -337,9 +362,23 @@ function renderChart() {
       backgroundColor: 'transparent',
       tooltip: buildTooltip(),
       grid: getGrid(),
-      xAxis: { type: 'value', name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
-      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
-      series: [{ type: 'scatter', data, symbolSize: 8, itemStyle: { color: '#8B70FF', opacity: 0.8 } }]
+      xAxis: {
+        type: 'value', name: x,
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } },
+        splitLine: { lineStyle: { color: '#f3f6f3', type: 'dashed' } }
+      },
+      yAxis: {
+        type: 'value', name: y || '',
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } },
+        splitLine: { lineStyle: { color: '#f3f6f3', type: 'dashed' } }
+      },
+      series: [{
+        type: 'scatter', data, symbolSize: 10,
+        itemStyle: { color: '#526e5a', opacity: 0.7 },
+        emphasis: { itemStyle: { opacity: 1, borderColor: '#526e5a', borderWidth: 2 } }
+      }]
     }, opts)
   } else if (ct === 'bar') {
     const groups = [...new Set(dataArr.map(r => r[x]))]
@@ -351,11 +390,20 @@ function renderChart() {
       backgroundColor: 'transparent',
       tooltip: buildTooltip(),
       grid: getGrid(),
-      xAxis: { type: 'category', data: groups, name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
-      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
+      xAxis: {
+        type: 'category', data: groups, name: x,
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } }
+      },
+      yAxis: {
+        type: 'value', name: y || '',
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } },
+        splitLine: { lineStyle: { color: '#f3f6f3', type: 'dashed' } }
+      },
       series: [{
         type: 'bar', data: values, barMaxWidth: 48,
-        itemStyle: { color: '#5a4cd8', borderRadius: [6, 6, 0, 0] }
+        itemStyle: { color: '#526e5a', borderRadius: [4, 4, 0, 0] }
       }]
     }, opts)
   } else if (ct === 'boxplot') {
@@ -388,70 +436,20 @@ function renderChart() {
         }
       },
       grid: getGrid(),
-      xAxis: { type: 'category', data: usedGroups, name: x, nameTextStyle: { color: textColor, fontSize: 10 } },
-      yAxis: { type: 'value', name: y || '', nameTextStyle: { color: textColor, fontSize: 10 } },
+      xAxis: {
+        type: 'category', data: usedGroups, name: x,
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } }
+      },
+      yAxis: {
+        type: 'value', name: y || '',
+        nameTextStyle: { color: textColor, fontSize: 10 },
+        axisLine: { lineStyle: { color: '#dee3de' } },
+        splitLine: { lineStyle: { color: '#f3f6f3', type: 'dashed' } }
+      },
       series: [{
         type: 'boxplot', data: boxData,
-        itemStyle: { color: '#8B70FF', borderColor: '#5a4cd8', borderWidth: 2 }
-      }]
-    }, opts)
-  } else if (ct === 'heatmap') {
-    const xVals = [...new Set(dataArr.map(r => r[x]))]
-    const yVals = [...new Set(dataArr.map(r => r[y]))]
-    const data = []
-    let maxVal = 0
-    xVals.forEach((xv, i) => yVals.forEach((yv, j) => {
-      const cnt = dataArr.filter(r => r[x] === xv && r[y] === yv).length
-      data.push([i, j, cnt])
-      if (cnt > maxVal) maxVal = cnt
-    }))
-    chartInstance.setOption({
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        formatter: function(p) {
-          return xVals[p.data[0]] + ' × ' + yVals[p.data[1]] + '<br/>计数: ' + p.data[2]
-        }
-      },
-      grid: { left: 80, right: 30, top: 20, bottom: 55 },
-      xAxis: { type: 'category', data: xVals, axisLabel: { rotate: 30, fontSize: 10, color: textColor } },
-      yAxis: { type: 'category', data: yVals, axisLabel: { fontSize: 10, color: textColor } },
-      visualMap: {
-        min: 0, max: Math.max(maxVal, 1),
-        orient: 'horizontal', bottom: 4, left: 'center',
-        calculable: true,
-        inRange: { color: ['#f2f0fa', '#b8acf0', '#8B70FF', '#5a4cd8', '#3a28b0'] },
-        textStyle: { color: textColor, fontSize: 10 }
-      },
-      series: [{
-        type: 'heatmap', data,
-        emphasis: {
-          itemStyle: { shadowBlur: 10, shadowColor: 'rgba(90, 76, 216, 0.5)' }
-        },
-        itemStyle: { borderColor: 'rgba(255,255,255,0.3)', borderWidth: 1 }
-      }]
-    }, opts)
-  } else if (ct === 'radar') {
-    const inds = numericCols.value.slice(0, 6)
-    const indicator = inds.map(c => ({ name: c, max: Math.max(...dataArr.map(r => Number(r[c])).filter(v => !isNaN(v))) * 1.2 }))
-    const values = indicator.map(ind => {
-      const vals = dataArr.map(r => Number(r[ind.name])).filter(v => !isNaN(v))
-      return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : 0
-    })
-    chartInstance.setOption({
-      backgroundColor: 'transparent',
-      tooltip: buildTooltip(),
-      radar: {
-        indicator,
-        center: ['50%', '55%'], radius: '65%',
-        axisName: { color: textColor, fontSize: 9 },
-        splitArea: { areaStyle: { color: ['rgba(139,112,255,0.04)', 'rgba(139,112,255,0.02)'] } }
-      },
-      series: [{
-        type: 'radar',
-        data: [{ value: values, name: '均值', areaStyle: { color: 'rgba(139,112,255,0.15)' } }],
-        itemStyle: { color: '#8B70FF' },
-        lineStyle: { color: '#8B70FF', width: 2 }
+        itemStyle: { color: '#526e5a', borderColor: '#415848', borderWidth: 2 }
       }]
     }, opts)
   } else if (ct === 'parallel') {
@@ -468,8 +466,8 @@ function renderChart() {
       })),
       series: [{
         type: 'parallel', data,
-        lineStyle: { color: '#8B70FF', opacity: 0.5, width: 1.5 },
-        emphasis: { lineStyle: { color: '#c4b5fd', width: 2.5 } }
+        lineStyle: { color: '#526e5a', opacity: 0.5, width: 1.5 },
+        emphasis: { lineStyle: { color: '#415848', width: 2.5 } }
       }]
     }, opts)
   }
@@ -482,18 +480,6 @@ function updateChart() {
 
 function updateAll() {
   nextTick(() => updateChart())
-}
-
-function toggleTheme() {
-  isDark.value = !isDark.value
-  document.body.classList.toggle('dark', isDark.value)
-  nextTick(() => {
-    if (chartInstance) {
-      chartInstance.dispose()
-      chartInstance = null
-      initChart()
-    }
-  })
 }
 
 function onResize() {
@@ -569,196 +555,562 @@ onUnmounted(() => {
 })
 </script>
 
-<style>
-:root {
-  --bg: #f8f6f1;
-  --card: #ffffff;
-  --card-solid: #ffffff;
-  --accent: #5b8def;
-  --accent-deep: #4a7de0;
-  --accent-light: rgba(91,141,239,0.15);
-  --accent-glow: rgba(91,141,239,0.15);
-  --border: #e8e4db;
-  --text: #2c2c2c;
-  --text2: #666666;
-  --text3: #999999;
-  --radius: 16px;
-  --divider: #e8e4db;
+<style scoped>
+.data-lab {
+  display: flex;
+  height: 100%;
+  background: #f8f8f8;
+  overflow: hidden;
 }
-body.dark {
-  --bg: #12121a;
-  --card: #1e1e2e;
-  --card-solid: #1e1e2e;
-  --accent: #5b8def;
-  --accent-deep: #4a7de0;
-  --accent-light: rgba(91,141,239,0.2);
-  --accent-glow: rgba(91,141,239,0.2);
-  --border: #333333;
-  --text: #e0e0e0;
-  --text2: #aaaaaa;
-  --text3: #777777;
-  --divider: #333333;
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family: 'Inter','PingFang SC','Microsoft YaHei',sans-serif;
-  background:var(--bg); color:var(--text); height:100vh; overflow:hidden; transition:0.3s;
-}
-.hide-scrollbar { scrollbar-width:none; -ms-overflow-style:none; }
-.hide-scrollbar::-webkit-scrollbar { width:0; height:0; display:none; }
-.thin-scrollbar { scrollbar-width:thin; scrollbar-color:transparent transparent; }
-.thin-scrollbar::-webkit-scrollbar { width:3px; }
-.thin-scrollbar::-webkit-scrollbar-track { background:transparent; }
-.thin-scrollbar::-webkit-scrollbar-thumb { background:transparent; border-radius:3px; }
-.thin-scrollbar:hover::-webkit-scrollbar-thumb { background:rgba(128,128,128,0.25); }
-.app { display:flex; flex-direction:column; height:100vh; padding:12px 16px; gap:10px; max-width:1920px; margin:0 auto; }
 
-.top-nav {
-  display:flex; align-items:center; justify-content:space-between;
-  background:var(--card);
-  border:1px solid var(--border); border-radius:var(--radius);
-  padding:0 24px; height:52px; flex-shrink:0;
-  box-shadow:0 0 0 1px var(--accent-light),0 0 24px var(--accent-glow);
+/* Controls Panel */
+.controls-panel {
+  width: 272px;
+  background: white;
+  border-right: 1px solid #edf0ed;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+  overflow-y: auto;
 }
-.nav-left { display:flex; align-items:center; gap:16px; }
-.nav-logo {
-  font-family:'Playfair Display',serif; font-weight:700; font-size:1.1rem; color:var(--accent);
-  display:flex; align-items:center; gap:8px;
-}
-.nav-logo .dot { width:7px; height:7px; background:var(--accent); border-radius:50%; box-shadow:0 0 14px var(--accent-glow); animation:dotPulse 2.4s infinite; }
-@keyframes dotPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.7);opacity:0.5} }
-.nav-center { display:flex; align-items:center; gap:4px; }
-.nav-tab {
-  padding:6px 14px; border-radius:14px; font-size:0.78rem; font-weight:500;
-  color:var(--text2); cursor:pointer; transition:all 0.2s; border:1.5px solid transparent;
-}
-.nav-tab:hover { color:var(--text); background:var(--accent-light); }
-.nav-tab.active {
-  color:var(--accent); background:var(--accent-light); border-color:var(--accent);
-  box-shadow:0 0 12px var(--accent-glow);
-}
-.nav-right { display:flex; gap:8px; align-items:center; }
-.icon-btn {
-  width:34px; height:34px; border:1.5px solid var(--border); background:transparent;
-  cursor:pointer; color:var(--text2); border-radius:50%; display:flex;
-  align-items:center; justify-content:center; transition:0.2s;
-}
-.icon-btn svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; }
-.icon-btn:hover { color:var(--accent); border-color:var(--accent); background:var(--accent-light); }
 
-.main-layout { flex:1; display:flex; gap:10px; min-height:0; }
-.panel-left {
-  width:290px; background:var(--card);
-  border:1px solid var(--border); border-radius:var(--radius);
-  padding:18px 16px; display:flex; flex-direction:column; gap:14px; overflow-y:auto;
-  box-shadow:0 0 0 1px var(--accent-light);
+.controls-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
-.section-title {
-  font-weight:700; font-size:0.78rem; color:var(--accent); text-transform:uppercase;
-  letter-spacing:0.06em; display:flex; align-items:center; gap:7px;
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #9ca3af;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
 }
-.section-title::before { content:''; width:3px; height:14px; background:var(--accent); border-radius:2px; }
+
+.back-btn:hover {
+  color: #121212;
+}
+
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #121212;
+  letter-spacing: 0.5px;
+}
+
+.control-label svg {
+  color: #121212;
+}
+
 .upload-area {
-  border:2px dashed var(--accent); border-radius:14px; padding:20px 12px;
-  text-align:center; cursor:pointer; transition:0.25s; background:var(--accent-light); position:relative;
+  border: 2px dashed #bad2be;
+  background: #fcfcfc;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-.upload-area:hover { background:rgba(90,76,216,0.14); border-style:solid; }
-.upload-label { font-size:0.8rem; font-weight:600; color:var(--accent); }
-.upload-hint { font-size:0.72rem; color:var(--text3); margin-top:3px; }
-.file-name { font-size:0.72rem; color:var(--accent); margin-top:6px; font-weight:500; background:rgba(90,76,216,0.06); display:inline-block; padding:2px 10px; border-radius:10px; }
-.select-group { display:flex; flex-direction:column; gap:4px; }
-.select-group label { font-size:0.72rem; color:var(--text3); font-weight:500; letter-spacing:0.02em; }
-select {
-  padding:8px 10px; border:1.5px solid var(--border); border-radius:8px;
-  background:var(--card); color:var(--text); font-size:0.75rem; width:100%; font-family:inherit;
+
+.upload-area:hover {
+  background: #f5f7f5;
+  border-color: #121212;
 }
-select:focus { outline:none; border-color:var(--accent); }
-.btn {
-  padding:9px 16px; background:var(--accent-deep); color:#fff; border:none;
-  border-radius:9px; font-weight:600; font-size:0.75rem; cursor:pointer;
-  transition:0.2s; width:100%; text-transform:uppercase; letter-spacing:0.04em;
-  box-shadow:0 2px 8px rgba(90,76,216,0.25);
+
+.upload-area svg {
+  color: #666666;
+  margin: 0 auto 4px;
+  opacity: 0.7;
 }
-.btn:hover { opacity:0.9; box-shadow:0 4px 16px var(--accent-glow); }
-.chart-type-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; }
+
+.upload-area:hover svg {
+  opacity: 1;
+}
+
+.upload-text {
+  font-size: 11px;
+  color: #666666;
+}
+
+.upload-hint {
+  font-size: 9px;
+  color: #999999;
+  margin-top: 4px;
+  background: #f4f4f4;
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.btn-sample {
+  width: 100%;
+  padding: 8px;
+  background: #f8f8f8;
+  border: 1px solid #dee3de;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #666666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-sample:hover {
+  background: #f0f0f0;
+  border-color: #121212;
+  color: #121212;
+}
+
+.select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.select-label {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.select-wrapper {
+  position: relative;
+}
+
+.select-wrapper select {
+  width: 100%;
+  background: #f8f8f8;
+  border: 1px solid #dee3de;
+  border-radius: 8px;
+  padding: 6px 28px 6px 8px;
+  font-size: 12px;
+  color: #121212;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.select-wrapper select:focus {
+  border-color: #121212;
+}
+
+.select-icon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.chart-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
 .chart-type-btn {
-  padding:8px 4px; border:1.5px solid var(--border); border-radius:8px;
-  background:transparent; color:var(--text2); font-size:0.72rem; cursor:pointer;
-  transition:0.2s; text-align:center; font-weight:500;
+  padding: 6px 8px;
+  border: 1px solid #dee3de;
+  background: white;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #666666;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
 }
-.chart-type-btn.active { border-color:var(--accent); color:var(--accent); background:var(--accent-light); font-weight:600; }
-.chart-type-btn:hover { border-color:var(--accent); }
-.data-preview { border-top:1px solid var(--divider); padding-top:10px; margin-top:2px; }
-.preview-table {
-  width:100%; font-size:0.72rem; border-collapse:collapse; margin-top:6px;
+
+.chart-type-btn:hover {
+  background: #f8f8f8;
+  border-color: #121212;
 }
-.preview-table th { background:var(--accent-light); color:var(--accent); padding:5px 7px; text-align:left; font-weight:600; border-radius:4px; }
-.preview-table td { padding:4px 7px; border-bottom:1px solid var(--divider); color:var(--text2); }
-.preview-table tr:hover td { background:rgba(90,76,216,0.03); }
-.panel-right { flex:1; display:flex; flex-direction:column; gap:10px; min-width:0; }
-.chart-card {
-  flex:1; background:var(--card);
-  border:1px solid var(--border); border-radius:var(--radius);
-  padding:16px 18px; display:flex; flex-direction:column;
-  box-shadow:0 0 0 1px var(--accent-light);
+
+.chart-type-btn.active {
+  border: 2px solid #526e5a;
+  background: #f2f6f3;
+  color: #121212;
+  font-weight: 500;
 }
+
+.btn-render {
+  width: 100%;
+  padding: 10px;
+  background: #121212;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.5px;
+  margin-top: 16px;
+}
+
+.btn-render:hover {
+  background: #333333;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.chart-area {
+  flex: 1;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-bottom: 1px solid #edf0ed;
+  background: white;
+}
+
 .chart-header {
-  display:flex; justify-content:space-between; font-weight:700;
-  font-size:0.8rem; color:var(--text2); margin-bottom:6px; flex-shrink:0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
 }
-#mainChart { flex:1; min-height:0; }
-.insight-row { display:flex; gap:10px; height:195px; flex-shrink:0; }
+
+.chart-title {
+  font-family: 'Noto Serif SC', 'SimSun', serif;
+  font-weight: 500;
+  color: #121212;
+}
+
+.chart-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.chart-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Insights Row */
+.insights-row {
+  height: 224px;
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: 20px;
+  padding: 20px;
+  flex-shrink: 0;
+}
+
 .insight-card {
-  flex:1; background:var(--card);
-  border:1px solid var(--border); border-radius:var(--radius);
-  padding:16px 18px; overflow-y:auto; font-size:0.72rem; color:var(--text2);
-  line-height:1.65; box-shadow:0 0 0 1px var(--accent-light);
+  background: white;
+  border: 1px solid #e8ebe8;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.005);
 }
-.insight-card-title {
-  font-weight:700; font-size:0.78rem; color:var(--accent); margin-bottom:10px;
-  letter-spacing:0.03em; display:flex; align-items:center; gap:6px;
+
+.insight-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #121212;
+  margin-bottom: 12px;
 }
-.insight-card-title::before { content:''; width:3px; height:14px; background:var(--accent); border-radius:2px; }
-.stat-table {
-  width:100%; border-collapse:collapse; font-size:0.75rem;
+
+.insight-bar {
+  width: 4px;
+  height: 14px;
+  background: #121212;
+  border-radius: 2px;
 }
-.stat-table th {
-  text-align:left; color:var(--text3); font-weight:500; padding:6px 4px 4px 0;
-  border-bottom:1px solid var(--divider); font-size:0.72rem; text-transform:uppercase;
+
+.stats-table-wrapper {
+  flex: 1;
+  overflow-x: auto;
 }
-.stat-table td {
-  padding:5px 4px; border-bottom:1px solid var(--divider); color:var(--text2);
-  font-family:'JetBrains Mono','SF Mono','Consolas',monospace; font-size:0.75rem;
+
+.stats-table {
+  width: 100%;
+  font-size: 10px;
+  text-align: left;
+  color: #666666;
 }
-.stat-table tr:last-child td { border-bottom:none; }
-.stat-table .var-name { color:var(--accent); font-weight:600; font-family:inherit; }
+
+.stats-table th {
+  padding-bottom: 6px;
+  font-weight: 500;
+  color: #9ca3af;
+  border-bottom: 1px solid #edf0ed;
+}
+
+.stats-table td {
+  padding: 6px 0;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+  border-bottom: 1px solid #f5f7f5;
+}
+
+.stats-table .var-name {
+  font-family: inherit;
+  color: #121212;
+  font-weight: 500;
+}
+
+.empty-hint {
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+/* Correlation Card */
 .corr-vars {
-  font-size:0.75rem; font-weight:600; color:var(--text); margin-bottom:12px;
-  display:flex; align-items:center; gap:8px;
+  font-size: 10px;
+  color: #9ca3af;
+  margin-bottom: 8px;
 }
-.corr-arrow { color:var(--accent); font-size:1rem; }
+
 .corr-main {
-  display:flex; align-items:baseline; gap:12px; margin-bottom:8px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
 }
+
 .corr-r {
-  font-size:1.5rem; font-weight:800; color:var(--accent); line-height:1;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+  color: #121212;
 }
-.corr-sig {
-  background:var(--accent); color:#fff; padding:2px 10px; border-radius:6px;
-  font-size:0.72rem; font-weight:700; letter-spacing:0.03em;
+
+.corr-badge {
+  font-size: 9px;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
 }
+
 .corr-stats {
-  font-size:0.72rem; color:var(--text3); margin-bottom:10px;
-  display:flex; gap:12px; flex-wrap:wrap;
+  font-size: 10px;
+  color: #9ca3af;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
 }
-.corr-stats span { white-space:nowrap; }
+
 .corr-conclusion {
-  padding:8px 12px; background:var(--accent-light); border-radius:8px;
-  font-weight:500; color:var(--accent); font-size:0.72rem; line-height:1.4;
+  background: #f8f8f8;
+  border: 1px solid #edf1ed;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 10px;
+  color: #666666;
+  font-family: 'Noto Serif SC', 'SimSun', serif;
+  line-height: 1.5;
 }
-@media(max-width:900px) {
-  .main-layout { flex-direction:column; }
-  .panel-left { width:100%; flex-direction:row; flex-wrap:wrap; max-height:200px; }
-  .insight-row { flex-direction:column; height:auto; }
+
+/* ===== Dark Theme ===== */
+body.dark .data-lab {
+  background: #121212;
+}
+
+body.dark .controls-panel {
+  background: #1a1a1a;
+  border-right-color: #2d2d2d;
+}
+
+body.dark .back-btn {
+  color: #666666;
+}
+
+body.dark .back-btn:hover {
+  color: #ffffff;
+}
+
+body.dark .control-label {
+  color: #ffffff;
+}
+
+body.dark .control-label svg {
+  color: #ffffff;
+}
+
+body.dark .upload-area {
+  background: #242424;
+  border-color: #333333;
+}
+
+body.dark .upload-area:hover {
+  background: #2d2d2d;
+  border-color: #ffffff;
+}
+
+body.dark .upload-area svg {
+  color: #b3b3b3;
+}
+
+body.dark .upload-text {
+  color: #b3b3b3;
+}
+
+body.dark .upload-hint {
+  background: #1a1a1a;
+  color: #666666;
+}
+
+body.dark .btn-sample {
+  background: #242424;
+  border-color: #2d2d2d;
+  color: #b3b3b3;
+}
+
+body.dark .btn-sample:hover {
+  background: #2d2d2d;
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+body.dark .select-label {
+  color: #666666;
+}
+
+body.dark .select-wrapper select {
+  background: #242424;
+  border-color: #2d2d2d;
+  color: #e5e5e5;
+}
+
+body.dark .select-wrapper select:focus {
+  border-color: #ffffff;
+}
+
+body.dark .chart-type-btn {
+  background: #242424;
+  border-color: #2d2d2d;
+  color: #b3b3b3;
+}
+
+body.dark .chart-type-btn:hover {
+  background: #2d2d2d;
+  border-color: #ffffff;
+}
+
+body.dark .chart-type-btn.active {
+  border-color: #ffffff;
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+body.dark .btn-render {
+  background: #ffffff;
+  color: #121212;
+}
+
+body.dark .btn-render:hover {
+  background: #e5e5e5;
+}
+
+body.dark .main-content {
+  background: #141414;
+}
+
+body.dark .chart-area {
+  background: #1a1a1a;
+  border-bottom-color: #2d2d2d;
+}
+
+body.dark .chart-title {
+  color: #ffffff;
+}
+
+body.dark .chart-hint {
+  color: #666666;
+}
+
+body.dark .insight-card {
+  background: #242424;
+  border-color: #2d2d2d;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+body.dark .insight-header {
+  color: #ffffff;
+}
+
+body.dark .insight-bar {
+  background: #ffffff;
+}
+
+body.dark .stats-table {
+  color: #b3b3b3;
+}
+
+body.dark .stats-table th {
+  color: #666666;
+  border-bottom-color: #2d2d2d;
+}
+
+body.dark .stats-table td {
+  border-bottom-color: #1a1a1a;
+}
+
+body.dark .stats-table .var-name {
+  color: #ffffff;
+}
+
+body.dark .empty-hint {
+  color: #666666;
+}
+
+body.dark .corr-vars {
+  color: #666666;
+}
+
+body.dark .corr-r {
+  color: #ffffff;
+}
+
+body.dark .corr-badge {
+  background: #0a2520;
+  color: #10b981;
+  border-color: #0d3b2e;
+}
+
+body.dark .corr-stats {
+  color: #666666;
+}
+
+body.dark .corr-conclusion {
+  background: #1a1a1a;
+  border-color: #2d2d2d;
+  color: #b3b3b3;
 }
 </style>

@@ -1,260 +1,377 @@
 <template>
-  <div class="dialog-overlay" @click.self="$emit('close')">
-    <div class="dialog-card dialog-card-wide">
-      <div class="dialog-header">
-        <h3>📚 课程题库</h3>
-        <button class="btn-close" @click="$emit('close')">✕</button>
+  <div class="qb-overlay" @click.self="$emit('close')">
+    <div class="qb-modal">
+      <!-- Header -->
+      <div class="qb-header">
+        <div class="qb-header-left">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            <path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/>
+          </svg>
+          <h3>课程题库中心</h3>
+        </div>
+        <button class="qb-close" @click="$emit('close')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+          </svg>
+        </button>
       </div>
 
-      <!-- Add Question Form -->
-      <div v-if="showAddForm" class="add-form">
-        <h4>添加题目到题库</h4>
-        <div class="form-row">
-          <select v-model="newQuestion.type" class="q-type-select">
+      <!-- ===== Empty State: 3 Entry Cards ===== -->
+      <div v-if="!showAddForm && !showAIForm && questions.length === 0 && !loading" class="qb-empty">
+        <div class="qb-empty-text">
+          <h4>暂无自定义题库数据</h4>
+          <p>通过以下三种方式快捷构建结构化试题资产矩阵，支持自动解析与智能推荐。</p>
+        </div>
+        <div class="qb-entry-grid">
+          <!-- Card 1: Import Text -->
+          <div class="qb-entry-card" @click="showAddForm = true">
+            <div class="qb-entry-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+                <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+                <path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>
+              </svg>
+            </div>
+            <div class="qb-entry-body">
+              <h5>导入文本自动转换</h5>
+              <p>粘贴大段文献资料或题目文本，快速解析为标准题目结构并录入题库。</p>
+            </div>
+            <span class="qb-entry-action">启动解析流 →</span>
+          </div>
+
+          <!-- Card 2: Manual Add -->
+          <div class="qb-entry-card" @click="showAddForm = true">
+            <div class="qb-entry-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>
+              </svg>
+            </div>
+            <div class="qb-entry-body">
+              <h5>手动结构化添加</h5>
+              <p>标准可视化表单录入，支持对单选、多选、判断及论述大题的分值与解析做精确配置。</p>
+            </div>
+            <span class="qb-entry-action">空白表单 →</span>
+          </div>
+
+          <!-- Card 3: AI Generate -->
+          <div class="qb-entry-card ai" @click="showAIForm = true">
+            <div class="qb-entry-icon ai-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+              </svg>
+            </div>
+            <div class="qb-entry-body">
+              <h5>AI 智能矩阵生成</h5>
+              <p>联动当前章节的 AI 教案，召唤专家级 Agent 智能分析薄弱学情，一键定向演化多模态试题。</p>
+            </div>
+            <span class="qb-entry-action ai-action">大模型协同 →</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Non-empty: Filter Bar + Add Buttons ===== -->
+      <div v-if="!showAddForm && !showAIForm && questions.length > 0" class="qb-toolbar">
+        <div class="qb-toolbar-left">
+          <select v-model="filterType" class="qb-filter-select">
+            <option value="">全部题型</option>
             <option value="choice">选择题</option>
             <option value="true_false">判断题</option>
             <option value="fill">填空题</option>
             <option value="short_answer">简答题</option>
             <option value="essay">论述题</option>
           </select>
-          <input v-model.number="newQuestion.points" type="number" min="1" class="points-input" placeholder="分值" />
+          <span class="qb-count">{{ filteredQuestions.length }} 道题</span>
         </div>
-        <textarea v-model="newQuestion.content" rows="3" placeholder="题目内容" class="q-content-input"></textarea>
+        <div class="qb-toolbar-right">
+          <button class="qb-btn-outline" @click="showAddForm = true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>
+            </svg>
+            <span>手动添加</span>
+          </button>
+          <button class="qb-btn-ai" @click="showAIForm = true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            </svg>
+            <span>AI 生成</span>
+          </button>
+        </div>
+      </div>
 
-        <!-- Choice options -->
-        <div v-if="newQuestion.type === 'choice'" class="options-section">
-          <div v-for="(opt, oi) in newQuestion.options" :key="oi" class="option-row">
-            <span>{{ String.fromCharCode(65 + oi) }}.</span>
-            <input v-model="newQuestion.options[oi]" placeholder="选项内容" />
-            <button @click="newQuestion.options.splice(oi, 1)">✕</button>
+      <!-- ===== Add Question Form ===== -->
+      <div v-if="showAddForm" class="qb-form-area">
+        <div class="qb-form-header">
+          <h4>添加题目到题库</h4>
+          <button class="qb-close-sm" @click="showAddForm = false">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="qb-form-body">
+          <div class="qb-form-row">
+            <select v-model="newQuestion.type" class="qb-input">
+              <option value="choice">选择题</option>
+              <option value="true_false">判断题</option>
+              <option value="fill">填空题</option>
+              <option value="short_answer">简答题</option>
+              <option value="essay">论述题</option>
+            </select>
+            <input v-model.number="newQuestion.points" type="number" min="1" class="qb-input qb-input-sm" placeholder="分值" />
           </div>
-          <button class="btn-add-opt" @click="newQuestion.options.push('')">+ 添加选项</button>
-          <div class="answer-row">
+          <textarea v-model="newQuestion.content" rows="3" placeholder="题目内容" class="qb-input qb-textarea"></textarea>
+
+          <!-- Choice options -->
+          <div v-if="newQuestion.type === 'choice'" class="qb-options">
+            <div v-for="(opt, oi) in newQuestion.options" :key="oi" class="qb-opt-row">
+              <span class="qb-opt-key">{{ String.fromCharCode(65 + oi) }}.</span>
+              <input v-model="newQuestion.options[oi]" placeholder="选项内容" class="qb-input" />
+              <button class="qb-opt-del" @click="newQuestion.options.splice(oi, 1)">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+            <button class="qb-add-opt" @click="newQuestion.options.push('')">+ 添加选项</button>
+            <div class="qb-answer-row">
+              <label>正确答案：</label>
+              <select v-model="newQuestion.answer" class="qb-input">
+                <option v-for="(opt, oi) in newQuestion.options" :key="oi" :value="String.fromCharCode(65 + oi)">
+                  {{ String.fromCharCode(65 + oi) }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- True/False -->
+          <div v-if="newQuestion.type === 'true_false'" class="qb-answer-row">
             <label>正确答案：</label>
-            <select v-model="newQuestion.answer">
-              <option v-for="(opt, oi) in newQuestion.options" :key="oi" :value="String.fromCharCode(65 + oi)">
-                {{ String.fromCharCode(65 + oi) }}
-              </option>
+            <select v-model="newQuestion.answer" class="qb-input">
+              <option value="true">正确</option>
+              <option value="false">错误</option>
             </select>
           </div>
+
+          <!-- Other types -->
+          <div v-if="['fill', 'short_answer', 'essay'].includes(newQuestion.type)" class="qb-answer-row">
+            <label>参考答案：</label>
+            <textarea v-model="newQuestion.answer" rows="2" placeholder="参考答案" class="qb-input qb-textarea"></textarea>
+          </div>
+
+          <textarea v-model="newQuestion.explanation" rows="2" placeholder="解析（可选）" class="qb-input qb-textarea"></textarea>
         </div>
 
-        <!-- True/False answer -->
-        <div v-if="newQuestion.type === 'true_false'" class="answer-row">
-          <label>正确答案：</label>
-          <select v-model="newQuestion.answer">
-            <option value="true">正确</option>
-            <option value="false">错误</option>
-          </select>
+        <div class="qb-form-actions">
+          <button class="qb-btn-cancel" @click="showAddForm = false">取消</button>
+          <button class="qb-btn-primary" @click="handleAddQuestion" :disabled="!newQuestion.content.trim()">添加到题库</button>
+        </div>
+      </div>
+
+      <!-- ===== AI Generate Form ===== -->
+      <div v-if="showAIForm" class="qb-form-area">
+        <div class="qb-form-header">
+          <h4>AI 智能出题</h4>
+          <button class="qb-close-sm" @click="showAIForm = false">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+            </svg>
+          </button>
         </div>
 
-        <!-- Fill/Short answer -->
-        <div v-if="['fill', 'short_answer', 'essay'].includes(newQuestion.type)" class="answer-row">
-          <label>参考答案：</label>
-          <textarea v-model="newQuestion.answer" rows="2" placeholder="参考答案"></textarea>
+        <div class="qb-form-body">
+          <div class="qb-field">
+            <label>知识内容</label>
+            <textarea v-model="aiForm.content" rows="4" placeholder="粘贴教材、笔记或知识点..." class="qb-input qb-textarea"></textarea>
+          </div>
+          <div class="qb-ai-grid">
+            <div class="qb-field qb-field-sm">
+              <label>题目数量</label>
+              <input v-model.number="aiForm.numQuestions" type="number" min="1" max="50" class="qb-input" />
+            </div>
+            <div class="qb-field qb-field-sm">
+              <label>选择题</label>
+              <input v-model.number="aiForm.typeDistribution.choice" type="number" min="0" placeholder="0" class="qb-input" />
+            </div>
+            <div class="qb-field qb-field-sm">
+              <label>判断题</label>
+              <input v-model.number="aiForm.typeDistribution.true_false" type="number" min="0" placeholder="0" class="qb-input" />
+            </div>
+            <div class="qb-field qb-field-sm">
+              <label>填空题</label>
+              <input v-model.number="aiForm.typeDistribution.fill" type="number" min="0" placeholder="0" class="qb-input" />
+            </div>
+            <div class="qb-field qb-field-sm">
+              <label>简答题</label>
+              <input v-model.number="aiForm.typeDistribution.short_answer" type="number" min="0" placeholder="0" class="qb-input" />
+            </div>
+            <div class="qb-field qb-field-sm">
+              <label>论述题</label>
+              <input v-model.number="aiForm.typeDistribution.essay" type="number" min="0" placeholder="0" class="qb-input" />
+            </div>
+          </div>
+          <p class="qb-hint">题型分布可选，不填则由 AI 自动分配</p>
+          <p v-if="aiError" class="qb-error">{{ aiError }}</p>
         </div>
 
-        <textarea v-model="newQuestion.explanation" rows="2" placeholder="解析（可选）" class="explanation-input"></textarea>
-
-        <div class="form-actions">
-          <button class="btn-secondary" @click="showAddForm = false">取消</button>
-          <button class="btn-primary" @click="handleAddQuestion" :disabled="!newQuestion.content.trim()">
-            添加到题库
+        <div class="qb-form-actions">
+          <button class="qb-btn-cancel" @click="showAIForm = false">取消</button>
+          <button class="qb-btn-primary" @click="handleAIGenerate" :disabled="aiGenerating || !aiForm.content.trim()">
+            {{ aiGenerating ? '生成中...' : '生成题目' }}
           </button>
         </div>
       </div>
 
-      <!-- Filter -->
-      <div class="filter-row">
-        <select v-model="filterType" class="filter-select">
-          <option value="">全部题型</option>
-          <option value="choice">选择题</option>
-          <option value="true_false">判断题</option>
-          <option value="fill">填空题</option>
-          <option value="short_answer">简答题</option>
-          <option value="essay">论述题</option>
-        </select>
-        <span class="question-count">{{ filteredQuestions.length }} 道题</span>
-        <div class="filter-actions">
-          <button class="btn-add" @click="showAddForm = true">+ 手动添加</button>
-          <button class="btn-ai" @click="showAIForm = true">🤖 AI 生成</button>
-        </div>
-      </div>
-
-      <!-- AI Generate Form -->
-      <div v-if="showAIForm" class="ai-form">
-        <h4>🤖 AI 智能出题</h4>
-        <div class="form-group">
-          <label>知识内容</label>
-          <textarea v-model="aiForm.content" rows="4" placeholder="粘贴教材、笔记或知识点..."></textarea>
-        </div>
-        <div class="ai-config-row">
-          <div class="form-group compact">
-            <label>题目数量</label>
-            <input v-model.number="aiForm.numQuestions" type="number" min="1" max="50" />
-          </div>
-          <div class="form-group compact">
-            <label>选择题</label>
-            <input v-model.number="aiForm.typeDistribution.choice" type="number" min="0" placeholder="0" />
-          </div>
-          <div class="form-group compact">
-            <label>判断题</label>
-            <input v-model.number="aiForm.typeDistribution.true_false" type="number" min="0" placeholder="0" />
-          </div>
-          <div class="form-group compact">
-            <label>填空题</label>
-            <input v-model.number="aiForm.typeDistribution.fill" type="number" min="0" placeholder="0" />
-          </div>
-          <div class="form-group compact">
-            <label>简答题</label>
-            <input v-model.number="aiForm.typeDistribution.short_answer" type="number" min="0" placeholder="0" />
-          </div>
-          <div class="form-group compact">
-            <label>论述题</label>
-            <input v-model.number="aiForm.typeDistribution.essay" type="number" min="0" placeholder="0" />
-          </div>
-        </div>
-        <p class="ai-hint">题型分布可选，不填则由 AI 自动分配</p>
-        <div class="form-actions">
-          <button class="btn-secondary" @click="showAIForm = false">取消</button>
-          <button class="btn-primary" @click="handleAIGenerate" :disabled="aiGenerating || !aiForm.content.trim()">
-            {{ aiGenerating ? '🔄 生成中...' : '✨ 生成题目' }}
-          </button>
-        </div>
-        <p v-if="aiError" class="error-text">{{ aiError }}</p>
-      </div>
-
-      <!-- AI Preview -->
-      <div v-if="previewQuestions.length > 0" class="preview-section">
-        <div class="preview-header">
-          <h4>✨ AI 生成预览（{{ previewQuestions.length }} 道题）</h4>
-          <div class="preview-actions">
-            <button class="btn-secondary" @click="previewQuestions = []">✕ 丢弃</button>
-            <button class="btn-primary" @click="handleSavePreview" :disabled="previewSaving">
-              {{ previewSaving ? '保存中...' : '💾 保存到题库' }}
+      <!-- ===== AI Preview ===== -->
+      <div v-if="previewQuestions.length > 0" class="qb-preview">
+        <div class="qb-preview-header">
+          <h4>AI 生成预览（{{ previewQuestions.length }} 道题）</h4>
+          <div class="qb-preview-actions">
+            <button class="qb-btn-cancel" @click="previewQuestions = []">丢弃</button>
+            <button class="qb-btn-primary" @click="handleSavePreview" :disabled="previewSaving">
+              {{ previewSaving ? '保存中...' : '保存到题库' }}
             </button>
           </div>
         </div>
-        <div class="question-list preview-list">
-          <div v-for="(q, qi) in previewQuestions" :key="qi" class="question-item preview-item">
-            <div class="q-header">
-              <span class="q-num">{{ qi + 1 }}</span>
-              <span class="q-type-badge">{{ getTypeLabel(q.type) }}</span>
-              <span class="q-points">{{ q.points }}分</span>
-              <button class="btn-delete-q" @click="previewQuestions.splice(qi, 1)" title="移除">🗑</button>
+        <div class="qb-preview-list">
+          <div v-for="(q, qi) in previewQuestions" :key="qi" class="qb-q-card preview">
+            <div class="qb-q-top">
+              <span class="qb-q-num">{{ qi + 1 }}</span>
+              <span class="qb-q-type">{{ getTypeLabel(q.type) }}</span>
+              <span class="qb-q-pts">{{ q.points }}分</span>
+              <button class="qb-q-del" @click="previewQuestions.splice(qi, 1)" title="移除">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+              </button>
             </div>
-            <div class="q-content">{{ q.content }}</div>
-            <div v-if="q.type === 'choice' && q.options" class="q-options">
-              <div v-for="opt in q.options" :key="opt.key" class="q-option">
-                <span class="opt-key" :class="{ correct: opt.key === q.answer }">{{ opt.key }}.</span>
-                <span class="opt-text">{{ opt.text }}</span>
+            <div class="qb-q-content">{{ q.content }}</div>
+            <div v-if="q.type === 'choice' && q.options" class="qb-q-options">
+              <div v-for="opt in q.options" :key="opt.key" class="qb-q-opt">
+                <span class="qb-opt-key" :class="{ correct: opt.key === q.answer }">{{ opt.key }}.</span>
+                <span>{{ opt.text }}</span>
               </div>
             </div>
-            <div v-if="q.answer" class="q-answer">
-              <span class="label">答案：</span>{{ q.answer }}
+            <div v-if="q.answer" class="qb-q-answer">
+              <span class="qb-label">答案：</span>{{ q.answer }}
             </div>
-            <div v-if="q.explanation" class="q-explanation">
-              <span class="label">解析：</span>{{ q.explanation }}
+            <div v-if="q.explanation" class="qb-q-explain">
+              <span class="qb-label">解析：</span>{{ q.explanation }}
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Question List -->
-      <div class="question-list" v-show="previewQuestions.length === 0">
-        <div v-if="loading" class="loading-hint">加载中...</div>
-        <div v-else-if="filteredQuestions.length === 0" class="empty-hint">题库为空</div>
-        <div v-for="(q, qi) in filteredQuestions" :key="q.id" class="question-item"
-             :class="{ selected: selectedIds.has(q.id), editing: editingQuestion && editingQuestion.id === q.id }"
+      <!-- ===== Question List ===== -->
+      <div v-if="previewQuestions.length === 0 && !showAddForm && !showAIForm" class="qb-list">
+        <div v-if="loading" class="qb-status">加载中...</div>
+        <div v-else-if="questions.length === 0" class="qb-status"></div>
+        <div v-else-if="filteredQuestions.length === 0" class="qb-status">没有该题型的题目</div>
+        <div v-for="(q, qi) in filteredQuestions" :key="q.id" class="qb-q-card"
+             :class="{ selected: mode === 'select' && selectedIds.has(q.id), editing: editingQuestion && editingQuestion.id === q.id }"
              @click="mode === 'select' ? toggleSelect(q) : null">
 
           <!-- View Mode -->
           <template v-if="!(editingQuestion && editingQuestion.id === q.id)">
-            <div class="q-header">
-              <span v-if="mode === 'select'" class="q-checkbox">
+            <div class="qb-q-top">
+              <span v-if="mode === 'select'" class="qb-q-check">
                 <input type="checkbox" :checked="selectedIds.has(q.id)" @click.stop="toggleSelect(q)" />
               </span>
-              <span class="q-num">{{ qi + 1 }}</span>
-              <span class="q-type-badge">{{ getTypeLabel(q.questionType) }}</span>
-              <span class="q-points">{{ q.points }}分</span>
-              <span class="q-source">{{ q.source === 'ai' ? '🤖 AI' : '✏️ 手动' }}</span>
-              <button class="btn-edit-q" @click.stop="handleEdit(q)" title="编辑">✏️</button>
-              <button class="btn-delete-q" @click.stop="handleDelete(q)" title="删除">🗑</button>
+              <span class="qb-q-num">{{ qi + 1 }}</span>
+              <span class="qb-q-type">{{ getTypeLabel(q.questionType) }}</span>
+              <span class="qb-q-pts">{{ q.points }}分</span>
+              <span v-if="q.source === 'ai'" class="qb-q-ai">AI</span>
+              <div class="qb-q-actions">
+                <button class="qb-q-edit" @click.stop="handleEdit(q)" title="编辑">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                    <path d="m15 5 4 4"/>
+                  </svg>
+                </button>
+                <button class="qb-q-del" @click.stop="handleDelete(q)" title="删除">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div class="q-content">{{ q.content }}</div>
-            <div v-if="q.answer" class="q-answer">
-              <span class="label">答案：</span>{{ q.answer }}
+            <div class="qb-q-content">{{ q.content }}</div>
+            <div v-if="q.type === 'choice' && q.options" class="qb-q-options">
+              <div v-for="opt in q.options" :key="opt.key" class="qb-q-opt">
+                <span class="qb-opt-key" :class="{ correct: opt.key === q.answer }">{{ opt.key }}.</span>
+                <span>{{ opt.text }}</span>
+              </div>
             </div>
-            <div v-if="q.explanation" class="q-explanation">
-              <span class="label">解析：</span>{{ q.explanation }}
+            <div v-if="q.answer" class="qb-q-answer">
+              <span class="qb-label">答案：</span>{{ q.answer }}
+            </div>
+            <div v-if="q.explanation" class="qb-q-explain">
+              <span class="qb-label">解析：</span>{{ q.explanation }}
             </div>
           </template>
 
           <!-- Inline Edit Mode -->
           <template v-else>
-            <div class="inline-edit-form">
-              <div class="form-row">
-                <select v-model="editingQuestion.questionType" class="q-type-select">
+            <div class="qb-edit-form">
+              <div class="qb-form-row">
+                <select v-model="editingQuestion.questionType" class="qb-input">
                   <option value="choice">选择题</option>
                   <option value="true_false">判断题</option>
                   <option value="fill">填空题</option>
                   <option value="short_answer">简答题</option>
                   <option value="essay">论述题</option>
                 </select>
-                <input v-model.number="editingQuestion.points" type="number" min="1" class="points-input" placeholder="分值" />
+                <input v-model.number="editingQuestion.points" type="number" min="1" class="qb-input qb-input-sm" placeholder="分值" />
               </div>
-              <textarea v-model="editingQuestion.content" rows="3" placeholder="题目内容" class="q-content-input"></textarea>
+              <textarea v-model="editingQuestion.content" rows="3" placeholder="题目内容" class="qb-input qb-textarea"></textarea>
 
               <!-- Choice options -->
-              <div v-if="editingQuestion.questionType === 'choice'" class="options-section">
-                <div v-for="(opt, oi) in editingQuestion.options" :key="oi" class="option-row">
-                  <span>{{ String.fromCharCode(65 + oi) }}.</span>
-                  <input v-model="editingQuestion.options[oi].text" placeholder="选项内容" />
-                  <button @click="editingQuestion.options.splice(oi, 1)">✕</button>
+              <div v-if="editingQuestion.questionType === 'choice'" class="qb-options">
+                <div v-for="(opt, oi) in editingQuestion.options" :key="oi" class="qb-opt-row">
+                  <span class="qb-opt-key">{{ String.fromCharCode(65 + oi) }}.</span>
+                  <input v-model="editingQuestion.options[oi].text" placeholder="选项内容" class="qb-input" />
+                  <button class="qb-opt-del" @click="editingQuestion.options.splice(oi, 1)">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
                 </div>
-                <button class="btn-add-opt" @click="editingQuestion.options.push({key: String.fromCharCode(65 + editingQuestion.options.length), text: ''})">+ 添加选项</button>
-                <div class="answer-row">
+                <button class="qb-add-opt" @click="editingQuestion.options.push({key: String.fromCharCode(65 + editingQuestion.options.length), text: ''})">+ 添加选项</button>
+                <div class="qb-answer-row">
                   <label>正确答案：</label>
-                  <select v-model="editingQuestion.answer">
-                    <option v-for="(opt, oi) in editingQuestion.options" :key="oi" :value="opt.key">
-                      {{ opt.key }}
-                    </option>
+                  <select v-model="editingQuestion.answer" class="qb-input">
+                    <option v-for="(opt, oi) in editingQuestion.options" :key="oi" :value="opt.key">{{ opt.key }}</option>
                   </select>
                 </div>
               </div>
 
-              <!-- True/False answer -->
-              <div v-if="editingQuestion.questionType === 'true_false'" class="answer-row">
+              <!-- True/False -->
+              <div v-if="editingQuestion.questionType === 'true_false'" class="qb-answer-row">
                 <label>正确答案：</label>
-                <select v-model="editingQuestion.answer">
+                <select v-model="editingQuestion.answer" class="qb-input">
                   <option value="true">正确</option>
                   <option value="false">错误</option>
                 </select>
               </div>
 
-              <!-- Fill/Short answer -->
-              <div v-if="['fill', 'short_answer', 'essay'].includes(editingQuestion.questionType)" class="answer-row">
+              <!-- Other types -->
+              <div v-if="['fill', 'short_answer', 'essay'].includes(editingQuestion.questionType)" class="qb-answer-row">
                 <label>参考答案：</label>
-                <textarea v-model="editingQuestion.answer" rows="2" placeholder="参考答案"></textarea>
+                <textarea v-model="editingQuestion.answer" rows="2" placeholder="参考答案" class="qb-input qb-textarea"></textarea>
               </div>
 
-              <textarea v-model="editingQuestion.explanation" rows="2" placeholder="解析（可选）" class="explanation-input"></textarea>
+              <textarea v-model="editingQuestion.explanation" rows="2" placeholder="解析（可选）" class="qb-input qb-textarea"></textarea>
 
-              <div class="form-actions">
-                <button class="btn-secondary" @click="editingQuestion = null">取消</button>
-                <button class="btn-primary" @click="handleSaveEdit" :disabled="!editingQuestion.content.trim()">
-                  保存修改
-                </button>
+              <div class="qb-form-actions">
+                <button class="qb-btn-cancel" @click="editingQuestion = null">取消</button>
+                <button class="qb-btn-primary" @click="handleSaveEdit" :disabled="!editingQuestion.content.trim()">保存修改</button>
               </div>
             </div>
           </template>
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="dialog-actions">
-        <button class="btn-secondary" @click="$emit('close')">关闭</button>
-        <button v-if="mode === 'select'" class="btn-primary" @click="handleSelect" :disabled="selectedQuestions.length === 0">
+      <!-- Footer -->
+      <div class="qb-footer">
+        <button class="qb-btn-cancel" @click="$emit('close')">关闭</button>
+        <button v-if="mode === 'select'" class="qb-btn-primary" @click="handleSelect" :disabled="selectedQuestions.length === 0">
           选择题目 ({{ selectedQuestions.length }})
         </button>
       </div>
@@ -270,11 +387,11 @@ import { useGateway } from '../composables/useGateway.js'
 
 const props = defineProps({
   user: { type: Object, default: null },
-  mode: { type: String, default: 'view' },  // 'view' or 'select'
+  mode: { type: String, default: 'view' },
 })
 const emit = defineEmits(['close', 'select', 'updated'])
 const route = useRoute()
-const { fetchQuestionBank, deleteFromQuestionBank, addToQuestionBank, batchAddToQuestionBank, updateQuestionBank } = useCourse()
+const { fetchQuestionBank, deleteFromQuestionBank, addToQuestionBank, updateQuestionBank } = useCourse()
 const { getToken, sendAiGenerateQuestions } = useGateway()
 
 const courseId = route.params.courseId
@@ -322,13 +439,7 @@ const filteredQuestions = computed(() => {
 })
 
 function getTypeLabel(type) {
-  const labels = {
-    choice: '选择题',
-    true_false: '判断题',
-    fill: '填空题',
-    short_answer: '简答题',
-    essay: '论述题',
-  }
+  const labels = { choice: '选择题', true_false: '判断题', fill: '填空题', short_answer: '简答题', essay: '论述题' }
   return labels[type] || type
 }
 
@@ -370,12 +481,9 @@ async function handleAddQuestion() {
         text: o.trim(),
       }))
     }
-
     const result = await addToQuestionBank(courseId, questionData, props.user?.role, props.user?.userId, token)
     questions.value.unshift(result.question)
     emit('updated')
-
-    // Reset form
     newQuestion.content = ''
     newQuestion.answer = ''
     newQuestion.explanation = ''
@@ -400,7 +508,6 @@ async function handleDelete(q) {
 }
 
 function handleEdit(q) {
-  // Deep clone the question for editing
   editingQuestion.value = {
     id: q.id,
     questionType: q.questionType || 'short_answer',
@@ -426,14 +533,10 @@ async function handleSaveEdit() {
     if (editingQuestion.value.questionType === 'choice') {
       updateData.options = editingQuestion.value.options.filter(o => o.text?.trim())
     }
-
     const result = await updateQuestionBank(courseId, editingQuestion.value.id, updateData, props.user?.role, props.user?.userId, token)
     if (result.question) {
-      // Update the question in the list
       const idx = questions.value.findIndex(item => item.id === editingQuestion.value.id)
-      if (idx >= 0) {
-        questions.value[idx] = result.question
-      }
+      if (idx >= 0) questions.value[idx] = result.question
     }
     editingQuestion.value = null
     emit('updated')
@@ -443,31 +546,16 @@ async function handleSaveEdit() {
 }
 
 async function handleAIGenerate() {
-  if (!aiForm.content.trim()) {
-    aiError.value = '请输入知识内容'
-    return
-  }
-
-  // Build type distribution (only include non-zero values)
+  if (!aiForm.content.trim()) { aiError.value = '请输入知识内容'; return }
   const typeDistribution = {}
   for (const [key, val] of Object.entries(aiForm.typeDistribution)) {
-    if (val > 0) {
-      typeDistribution[key] = val
-    }
+    if (val > 0) typeDistribution[key] = val
   }
-
   aiGenerating.value = true
   aiError.value = ''
-
   try {
-    const result = await sendAiGenerateQuestions({
-      content: aiForm.content.trim(),
-      numQuestions: aiForm.numQuestions,
-      typeDistribution,
-    }, 120000)
-
+    const result = await sendAiGenerateQuestions({ content: aiForm.content.trim(), numQuestions: aiForm.numQuestions, typeDistribution }, 120000)
     if (result.questions && result.questions.length > 0) {
-      // Show preview instead of auto-saving
       previewQuestions.value = result.questions
       showAIForm.value = false
     } else {
@@ -487,7 +575,6 @@ async function handleSavePreview() {
   try {
     const token = getToken()
     const saved = []
-    // Save one by one to avoid URL length limit (HTTP 431)
     for (const q of previewQuestions.value) {
       try {
         const result = await addToQuestionBank(courseId, q, props.user?.role, props.user?.userId, token)
@@ -496,15 +583,11 @@ async function handleSavePreview() {
         console.error('Failed to save question:', q.content, e)
       }
     }
-    if (saved.length > 0) {
-      questions.value.unshift(...saved)
-    }
+    if (saved.length > 0) questions.value.unshift(...saved)
     previewQuestions.value = []
     aiForm.content = ''
     emit('updated')
-    if (saved.length < total) {
-      alert(`已保存 ${saved.length} 道题，${total - saved.length} 道保存失败`)
-    }
+    if (saved.length < total) alert(`已保存 ${saved.length} 道题，${total - saved.length} 道保存失败`)
   } catch (e) {
     alert('保存失败: ' + (e.message || '未知错误'))
   } finally {
@@ -513,8 +596,7 @@ async function handleSavePreview() {
 }
 
 function handleSelect() {
-  // Convert to homework question format
-  const formatted = selectedQuestions.value.map((q, i) => ({
+  const formatted = selectedQuestions.value.map((q) => ({
     type: q.questionType,
     content: q.content,
     points: q.points,
@@ -530,121 +612,775 @@ onMounted(loadQuestions)
 </script>
 
 <style scoped>
-.dialog-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.dialog-card { background: #fff; border: 1.8px solid var(--accent); border-radius: 16px; padding: 24px; width: 560px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 24px var(--accent-glow); }
-.dialog-card-wide { width: 720px; }
-.dialog-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.dialog-header h3 { margin: 0; font-size: 1.15rem; color: var(--text-primary); }
-.btn-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--text-muted); padding: 4px; }
-.btn-close:hover { color: var(--text-primary); }
+/* ========== Overlay & Modal ========== */
+.qb-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
 
-/* Add Form */
-.add-form { background: var(--bg-root); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.add-form h4 { margin: 0 0 12px; font-size: 0.95rem; color: var(--text-primary); }
-.form-row { display: flex; gap: 10px; margin-bottom: 10px; }
-.q-type-select { flex: 1; padding: 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; color: var(--text-primary); outline: none; }
-.q-type-select:focus { border-color: var(--accent); }
-.points-input { width: 80px; padding: 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; color: var(--text-primary); outline: none; box-sizing: border-box; }
-.points-input:focus { border-color: var(--accent); }
-.q-content-input { width: 100%; padding: 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; color: var(--text-primary); outline: none; }
-.q-content-input:focus { border-color: var(--accent); }
-.options-section { margin: 10px 0; padding: 10px; background: #fff; border-radius: 8px; border: 1px solid var(--border-light); }
-.option-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.option-row span { min-width: 20px; font-weight: 600; color: var(--accent); }
-.option-row input { flex: 1; padding: 6px 8px; border: 1px solid var(--border-medium); border-radius: 4px; font-size: 0.82rem; color: var(--text-primary); outline: none; }
-.option-row input:focus { border-color: var(--accent); }
-.option-row button { background: none; border: none; color: var(--text-muted); cursor: pointer; }
-.option-row button:hover { color: var(--danger); }
-.btn-add-opt { background: none; border: 1px dashed var(--border-medium); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
-.btn-add-opt:hover { border-color: var(--accent); color: var(--accent); }
-.answer-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.answer-row label { font-size: 0.82rem; color: var(--text-secondary); min-width: 70px; }
-.answer-row select, .answer-row textarea { flex: 1; padding: 6px 8px; border: 1px solid var(--border-medium); border-radius: 4px; font-size: 0.82rem; color: var(--text-primary); outline: none; }
-.answer-row select:focus, .answer-row textarea:focus { border-color: var(--accent); }
-.explanation-input { width: 100%; padding: 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; margin-top: 10px; resize: vertical; box-sizing: border-box; color: var(--text-primary); outline: none; }
-.explanation-input:focus { border-color: var(--accent); }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 
-.filter-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-.filter-select { padding: 6px 12px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; outline: none; color: var(--text-primary); }
-.filter-select:focus { border-color: var(--accent); }
-.question-count { font-size: 0.82rem; color: var(--text-muted); }
-.filter-actions { margin-left: auto; display: flex; gap: 8px; }
-.btn-add { padding: 6px 12px; background: linear-gradient(135deg,var(--accent),var(--accent-deep)); color: #fff; border: none; border-radius: 8px; font-size: 0.82rem; cursor: pointer; box-shadow: 0 2px 8px var(--accent-glow); }
-.btn-add:hover { opacity: 0.9; }
-.btn-ai { padding: 6px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 8px; font-size: 0.82rem; cursor: pointer; }
-.btn-ai:hover { opacity: 0.9; }
+.qb-modal {
+  background: var(--bg-card, #ffffff);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 800px;
+  height: 72vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-light, #f0f0f0);
+  overflow: hidden;
+  animation: scaleUp 0.25s ease;
+}
 
-/* AI Form */
-.ai-form { background: var(--bg-root); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-.ai-form h4 { margin: 0 0 12px; font-size: 0.95rem; color: var(--text-primary); }
-.ai-form .form-group { margin-bottom: 10px; }
-.ai-form .form-group label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
-.ai-form textarea { width: 100%; padding: 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 8px; font-size: 0.85rem; resize: vertical; box-sizing: border-box; color: var(--text-primary); outline: none; }
-.ai-form textarea:focus { border-color: var(--accent); }
-.ai-config-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 8px; }
-.form-group.compact { margin-bottom: 0; }
-.form-group.compact label { font-size: 0.75rem; text-align: center; }
-.form-group.compact input { width: 100%; padding: 6px 8px; background: #fff; border: 1.5px solid var(--border-medium); border-radius: 6px; font-size: 0.82rem; box-sizing: border-box; color: var(--text-primary); outline: none; }
-.form-group.compact input:focus { border-color: var(--accent); }
-.ai-hint { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0; }
-.error-text { color: var(--danger); font-size: 0.8rem; margin-top: 8px; }
+@keyframes scaleUp {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
 
-/* Inline Edit Form */
-.inline-edit-form { padding: 4px 0; }
-.inline-edit-form .form-row { display: flex; gap: 10px; margin-bottom: 10px; }
+/* ========== Header ========== */
+.qb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-light, #f5f5f5);
+  flex-shrink: 0;
+}
 
-.question-list { flex: 1; overflow-y: auto; min-height: 200px; max-height: 50vh; }
-.question-item { background: var(--bg-root); border: 1px solid var(--border-light); border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: default; transition: all 0.2s; }
-.question-item.selected { border-color: var(--accent); background: var(--accent-soft); }
-.q-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.q-checkbox input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
-.q-num { font-weight: 700; color: var(--accent); font-size: 0.85rem; min-width: 20px; }
-.q-type-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
-.q-points { font-size: 0.78rem; color: var(--text-muted); }
-.q-source { font-size: 0.72rem; color: var(--text-muted); margin-left: auto; }
-.btn-delete-q { background: none; border: none; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); transition: color 0.2s; }
-.btn-delete-q:hover { color: var(--danger); }
-.btn-edit-q { background: none; border: none; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); transition: color 0.2s; }
-.btn-edit-q:hover { color: var(--accent); }
-.q-content { font-size: 0.88rem; line-height: 1.5; color: var(--text-primary); margin-bottom: 4px; }
-.q-answer, .q-explanation { font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px; }
-.q-answer .label, .q-explanation .label { font-weight: 600; color: var(--text-primary); }
-.q-options { margin: 6px 0; padding: 6px 0; }
-.q-option { display: flex; align-items: baseline; gap: 6px; font-size: 0.82rem; line-height: 1.6; }
-.opt-key { font-weight: 600; color: var(--text-secondary); min-width: 18px; }
-.opt-key.correct { color: var(--success); }
-.opt-text { color: var(--text-secondary); }
+.qb-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary, #121212);
+}
 
-.loading-hint, .empty-hint { text-align: center; padding: 40px; color: var(--text-muted); }
+.qb-header-left h3 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+  font-family: 'Noto Serif SC', serif;
+}
 
-/* Preview Section */
-.preview-section { margin-bottom: 16px; }
-.preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.preview-header h4 { margin: 0; font-size: 0.95rem; color: var(--accent); }
-.preview-actions { display: flex; gap: 8px; }
-.preview-list { max-height: 45vh; }
-.preview-item { border-left: 3px solid var(--accent); }
+.qb-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
-.form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
-.btn-primary { padding: 10px 24px; background: linear-gradient(135deg,var(--accent),var(--accent-deep)); color: #fff; border: none; border-radius: 10px; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px var(--accent-glow); }
-.btn-primary:disabled { opacity: 0.5; }
-.btn-secondary { padding: 10px 24px; background: var(--bg-root); color: var(--text-primary); border: 1.5px solid var(--border-medium); border-radius: 10px; font-size: 0.85rem; cursor: pointer; }
-.btn-secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
+.qb-close:hover {
+  color: var(--text-primary, #121212);
+  background: var(--accent-soft, #f5f5f5);
+}
 
-.dark .dialog-card { background: #1e1e2e; }
-.dark .add-form, .dark .ai-form { background: #1a1a2e; }
-.dark .filter-select,
-.dark .q-type-select,
-.dark .points-input,
-.dark .q-content-input,
-.dark .explanation-input,
-.dark .option-row input,
-.dark .answer-row select,
-.dark .answer-row textarea,
-.dark .ai-form textarea,
-.dark .form-group.compact input { background: #252535; border-color: #444; color: #e0e0e0; }
-.dark .options-section { background: #2a2a3a; border-color: #444; }
-.dark .question-item { background: #1a1a2e; border-color: #333; }
-.dark .question-item.selected { background: #1e1e3e; border-color: var(--accent); }
+/* ========== Empty State ========== */
+.qb-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 32px;
+  background: var(--bg-card-alt, #fafbfa);
+  overflow-y: auto;
+}
+
+.qb-empty-text {
+  text-align: center;
+  margin-bottom: 32px;
+  max-width: 400px;
+}
+
+.qb-empty-text h4 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+  font-family: 'Noto Serif SC', serif;
+}
+
+.qb-empty-text p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted, #9ca3af);
+  line-height: 1.6;
+}
+
+.qb-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 680px;
+}
+
+.qb-entry-card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #eef0ee);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 192px;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.qb-entry-card:hover {
+  border-color: var(--accent, #121212);
+  box-shadow: 0 4px 20px var(--accent-glow, rgba(0, 0, 0, 0.06));
+}
+
+.qb-entry-card.ai:hover {
+  border-color: var(--warning, #92400e);
+}
+
+.qb-entry-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-card-alt, #f9fafb);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary, #121212);
+  margin-bottom: 14px;
+  transition: all 0.25s;
+}
+
+.qb-entry-card:hover .qb-entry-icon {
+  background: var(--accent, #121212);
+  color: var(--bg-card, #ffffff);
+}
+
+.qb-entry-icon.ai-icon {
+  background: var(--status-bg, #fffbeb);
+  color: var(--status-text, #92400e);
+  border: 1px solid var(--status-border, #fef3c7);
+}
+
+.qb-entry-card.ai:hover .qb-entry-icon.ai-icon {
+  background: var(--accent, #121212);
+  color: var(--bg-card, #ffffff);
+  border-color: transparent;
+}
+
+.qb-entry-body h5 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+  font-family: 'Noto Serif SC', serif;
+}
+
+.qb-entry-body p {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--text-muted, #9ca3af);
+  line-height: 1.6;
+}
+
+.qb-entry-action {
+  font-size: 0.62rem;
+  font-family: monospace;
+  color: var(--text-muted, #9ca3af);
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--divider, #f9fafb);
+  transition: color 0.2s;
+}
+
+.qb-entry-card:hover .qb-entry-action {
+  color: var(--text-primary, #121212);
+}
+
+.qb-entry-action.ai-action {
+  color: var(--status-text, #92400e);
+}
+
+.qb-entry-card.ai:hover .qb-entry-action.ai-action {
+  color: var(--text-primary, #121212);
+}
+
+/* ========== Toolbar (non-empty) ========== */
+.qb-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-light, #f5f5f5);
+  flex-shrink: 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.qb-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qb-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qb-filter-select {
+  padding: 6px 12px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-medium, #e0e0e0);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: var(--text-primary, #121212);
+  outline: none;
+  transition: border 0.2s;
+}
+
+.qb-filter-select:focus {
+  border-color: var(--accent, #121212);
+}
+
+.qb-count {
+  font-size: 0.72rem;
+  color: var(--text-muted, #9ca3af);
+  background: var(--accent-soft, rgba(18, 18, 18, 0.04));
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
+/* ========== Buttons ========== */
+.qb-btn-outline {
+  padding: 6px 14px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--accent, #121212);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent, #121212);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.qb-btn-outline:hover {
+  background: var(--accent, #121212);
+  color: var(--bg-card, #ffffff);
+}
+
+.qb-btn-ai {
+  padding: 6px 14px;
+  background: var(--accent, #121212);
+  border: 1px solid var(--accent, #121212);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--bg-card, #ffffff);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.qb-btn-ai:hover {
+  background: var(--accent-deep, #333333);
+}
+
+.qb-btn-primary {
+  padding: 8px 20px;
+  background: var(--accent, #121212);
+  color: var(--bg-card, #ffffff);
+  border: none;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qb-btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.qb-btn-primary:not(:disabled):hover {
+  background: var(--accent-deep, #333333);
+}
+
+.qb-btn-cancel {
+  padding: 8px 20px;
+  background: var(--bg-card, #ffffff);
+  color: var(--text-primary, #121212);
+  border: 1px solid var(--border-medium, #e0e0e0);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.qb-btn-cancel:hover {
+  background: var(--accent-soft, #f9fafb);
+  border-color: var(--accent, #121212);
+}
+
+/* ========== Form Area ========== */
+.qb-form-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.qb-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-light, #f5f5f5);
+  flex-shrink: 0;
+}
+
+.qb-form-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+}
+
+.qb-close-sm {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+}
+
+.qb-close-sm:hover {
+  color: var(--text-primary, #121212);
+}
+
+.qb-form-body {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+  background: var(--bg-card-alt, #fafbfa);
+}
+
+.qb-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-light, #f0f0f0);
+  background: var(--bg-card, #fdfdfd);
+  flex-shrink: 0;
+}
+
+/* ========== Form Elements ========== */
+.qb-form-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.qb-input {
+  padding: 8px 12px;
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-medium, #e0e0e0);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-primary, #121212);
+  outline: none;
+  transition: border 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.qb-input:focus {
+  border-color: var(--accent, #121212);
+}
+
+.qb-input-sm {
+  width: 80px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.qb-textarea {
+  resize: vertical;
+  min-height: 72px;
+  margin-bottom: 12px;
+  font-family: inherit;
+}
+
+.qb-options {
+  margin: 12px 0;
+  padding: 14px;
+  background: var(--bg-card, #ffffff);
+  border-radius: 10px;
+  border: 1px solid var(--border-light, #f0f0f0);
+}
+
+.qb-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.qb-opt-row:last-child {
+  margin-bottom: 0;
+}
+
+.qb-opt-key {
+  min-width: 22px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--text-primary, #121212);
+}
+
+.qb-opt-key.correct {
+  color: var(--success, #059669);
+}
+
+.qb-opt-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+}
+
+.qb-opt-del:hover {
+  color: var(--danger, #ef4444);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.qb-add-opt {
+  background: none;
+  border: 1px dashed var(--border-medium, #e0e0e0);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted, #9ca3af);
+  margin-top: 8px;
+  transition: all 0.2s;
+}
+
+.qb-add-opt:hover {
+  border-color: var(--accent, #121212);
+  color: var(--accent, #121212);
+  background: var(--accent-soft, rgba(18, 18, 18, 0.03));
+}
+
+.qb-answer-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.qb-answer-row label {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #4a534c);
+  min-width: 70px;
+  padding-top: 8px;
+  font-weight: 500;
+}
+
+.qb-field {
+  margin-bottom: 14px;
+}
+
+.qb-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary, #4a534c);
+  margin-bottom: 6px;
+}
+
+.qb-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.qb-field-sm {
+  margin-bottom: 0;
+}
+
+.qb-field-sm label {
+  text-align: center;
+  font-size: 0.7rem;
+}
+
+.qb-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted, #9ca3af);
+  margin: 8px 0 0;
+}
+
+.qb-error {
+  color: var(--danger, #ef4444);
+  font-size: 0.75rem;
+  margin: 8px 0 0;
+}
+
+/* ========== Preview ========== */
+.qb-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.qb-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border-light, #f5f5f5);
+  flex-shrink: 0;
+}
+
+.qb-preview-header h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+}
+
+.qb-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.qb-preview-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+/* ========== Question Cards ========== */
+.qb-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.qb-status {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 0.82rem;
+}
+
+.qb-q-card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-light, #f0f0f0);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 10px;
+  transition: all 0.2s;
+}
+
+.qb-q-card:hover {
+  border-color: var(--accent, #121212);
+}
+
+.qb-q-card.preview {
+  border-left: 3px solid var(--accent, #121212);
+}
+
+.qb-q-card.selected {
+  border-color: var(--accent, #121212);
+  background: var(--accent-soft, rgba(18, 18, 18, 0.03));
+}
+
+.qb-q-card.editing {
+  border-color: var(--accent, #121212);
+  box-shadow: 0 0 0 3px var(--accent-glow, rgba(18, 18, 18, 0.06));
+}
+
+.qb-q-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.qb-q-check input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent, #121212);
+}
+
+.qb-q-num {
+  font-weight: 700;
+  color: var(--bg-card, #ffffff);
+  background: var(--accent, #121212);
+  font-family: monospace;
+  font-size: 0.72rem;
+  min-width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.qb-q-type {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-primary, #121212);
+}
+
+.qb-q-pts {
+  font-size: 0.68rem;
+  color: var(--text-muted, #9ca3af);
+}
+
+.qb-q-ai {
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft, rgba(139, 112, 255, 0.1));
+  color: var(--accent, #8b70ff);
+}
+
+.qb-q-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+.qb-q-edit,
+.qb-q-del {
+  background: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 6px;
+  color: var(--text-muted, #9ca3af);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qb-q-edit:hover {
+  background: var(--accent-soft, rgba(18, 18, 18, 0.05));
+  border-color: var(--border-light, #f0f0f0);
+  color: var(--text-primary, #121212);
+}
+
+.qb-q-del:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: var(--danger, #ef4444);
+}
+
+.qb-q-content {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-primary, #121212);
+  margin-bottom: 6px;
+}
+
+.qb-q-options {
+  margin: 6px 0;
+}
+
+.qb-q-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-secondary, #4a534c);
+}
+
+.qb-q-answer,
+.qb-q-explain {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #4a534c);
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--accent-soft, #f9fafb);
+  border-radius: 8px;
+}
+
+.qb-label {
+  font-weight: 600;
+  color: var(--text-primary, #121212);
+}
+
+/* ========== Edit Form ========== */
+.qb-edit-form {
+  padding: 4px 0;
+}
+
+/* ========== Footer ========== */
+.qb-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-light, #f0f0f0);
+  background: var(--bg-card, #fdfdfd);
+  flex-shrink: 0;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 640px) {
+  .qb-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .qb-ai-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .qb-modal {
+    height: 90vh;
+    border-radius: 16px;
+  }
+}
 </style>

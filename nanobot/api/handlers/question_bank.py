@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Callable
-
 from loguru import logger
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
@@ -24,14 +22,10 @@ async def handle_question_bank_list(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """List questions in the question bank for a course."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     query = parse_query(request.path)
-    _role = query_first(query, "role") or ""
-    _user_id = query_first(query, "user_id") or ""
 
     course = await storage.get_course(course_id)
     if not course:
@@ -47,14 +41,11 @@ async def handle_question_bank_add(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Add a question to the question bank."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
 
     if role != "teacher":
         return http_error(403, "Only teachers can add to question bank")
@@ -66,6 +57,7 @@ async def handle_question_bank_add(
     if teacher_id != user_id:
         return http_error(403, "Only the course owner can add to question bank")
 
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -97,14 +89,11 @@ async def handle_question_bank_batch_add(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Add multiple questions to the question bank."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
 
     if role != "teacher":
         return http_error(403, "Only teachers can add to question bank")
@@ -116,6 +105,7 @@ async def handle_question_bank_batch_add(
     if teacher_id != user_id:
         return http_error(403, "Only the course owner can add to question bank")
 
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -150,14 +140,11 @@ async def handle_question_bank_delete(
     course_id: str,
     question_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Delete a question from the question bank."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
 
     if role != "teacher":
         return http_error(403, "Only teachers can delete from question bank")
@@ -187,14 +174,11 @@ async def handle_question_bank_update(
     course_id: str,
     question_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Update a question in the question bank."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
 
     if role != "teacher":
         return http_error(403, "Only teachers can update question bank")
@@ -211,25 +195,15 @@ async def handle_question_bank_update(
     except ValueError:
         return http_error(400, "Invalid question ID")
 
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
 
     update_data = {}
-    if "type" in payload:
-        update_data["question_type"] = payload["type"]
-    if "content" in payload:
-        update_data["content"] = payload["content"]
-    if "points" in payload:
-        update_data["points"] = payload["points"]
-    if "answer" in payload:
-        update_data["answer"] = payload["answer"]
-    if "options" in payload:
-        update_data["options"] = payload["options"]
-    if "explanation" in payload:
-        update_data["explanation"] = payload["explanation"]
-    if "tags" in payload:
-        update_data["tags"] = payload["tags"]
+    for field in ("content", "type", "points", "answer", "options", "explanation", "tags"):
+        if field in payload:
+            update_data[field] = payload[field]
 
     if not update_data:
         return http_error(400, "No fields to update")

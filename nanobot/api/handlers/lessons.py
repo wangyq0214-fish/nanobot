@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Callable
-
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
@@ -17,10 +15,8 @@ async def handle_lessons_list(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")
@@ -34,10 +30,8 @@ async def handle_lesson_detail(
     course_id: str,
     lesson_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")

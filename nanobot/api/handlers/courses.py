@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import secrets
 import time
-from typing import Callable
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -18,7 +17,6 @@ from ..utils import (
     http_json_response,
     parse_mutation_data,
     parse_query,
-    query_first,
 )
 
 
@@ -36,13 +34,10 @@ async def handle_courses_list(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
 
     if role == "teacher":
         courses = await storage.get_teacher_courses(user_id)
@@ -58,16 +53,14 @@ async def handle_courses_create(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
     logger.info("[courses_create] role={!r} user_id={!r}", role, user_id)
     if role != "teacher":
         return http_error(403, "Only teachers can create courses")
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -113,15 +106,13 @@ async def handle_courses_join(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
     if role != "student":
         return http_error(403, "Only students can join courses")
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -155,10 +146,8 @@ async def handle_course_detail(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")
@@ -170,10 +159,8 @@ async def handle_course_members(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")

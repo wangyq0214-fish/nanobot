@@ -13,10 +13,12 @@ const CHAT_ID_KEY = 'nanobot-webui.chatId'
 
 export const connected = ref(false)
 export const connectionError = ref('')
+export const currentChatId = ref(null)
 
 let socket = null
 let chatId = null
 let apiToken = null
+let wsToken = null
 // Per-chat event handlers: Map<string, Set<Function>>
 const chatHandlers = new Map()
 // Pending newChat Promise
@@ -33,6 +35,12 @@ const pendingAiTutorEvaluate = new Map()
 const pendingAiDerivation = new Map()
 // Pending ai_tutor_recommend requests: Map<request_id, {resolve, reject, timer}>
 const pendingTutorRecommend = new Map()
+// Pending ai_polish requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiPolish = new Map()
+// Pending ai_paper_summary requests: Map<request_id, {resolve, reject, timer}>
+const pendingAiPaperSummary = new Map()
+// Pending upload_paper requests: Map<request_id, {resolve, reject, timer}>
+const pendingUploadPaper = new Map()
 let reconnectTimer = null
 let reconnectAttempts = 0
 let intentionallyClosed = false
@@ -47,25 +55,41 @@ function _setStatus(ok) {
 function _reset() {
   _setStatus(false)
   socket = null
+  _setChatId(null)
+}
+
+function _chatIdKey() {
+  // Scope chatId per user so different accounts don't collide
+  if (currentRole && currentUserId) {
+    return `${CHAT_ID_KEY}.${currentRole}.${currentUserId}`
+  }
+  return CHAT_ID_KEY
 }
 
 function _loadChatId() {
   try {
-    return localStorage.getItem(CHAT_ID_KEY) || null
+    return localStorage.getItem(_chatIdKey()) || null
   } catch { return null }
 }
 
 function _saveChatId(id) {
   try {
-    if (id) localStorage.setItem(CHAT_ID_KEY, id)
+    if (id) localStorage.setItem(_chatIdKey(), id)
   } catch {}
+}
+
+function _setChatId(id) {
+  chatId = id || null
+  currentChatId.value = chatId
+  if (chatId) _saveChatId(chatId)
 }
 
 /** Derive WebSocket URL from bootstrap response — same as React webui's deriveWsUrl. */
 function deriveWsUrl(wsPath, token) {
   const path = wsPath && wsPath.startsWith('/') ? wsPath : `/${wsPath || ''}`
-  const query = `?token=${encodeURIComponent(token)}`
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
+  // Pass token via query parameter for WebSocket (websockets library limitation)
+  const query = token ? `?token=${encodeURIComponent(token)}` : ''
   return `${scheme}://${location.host}${path}${query}`
 }
 
@@ -90,6 +114,7 @@ function _dispatch(chatId, ev) {
 
 function _doConnect(url) {
   currentUrl = url
+  // Token is passed via query parameter in URL (websockets library limitation)
   const sock = new WebSocket(url)
   socket = sock
 
@@ -97,6 +122,13 @@ function _doConnect(url) {
     _setStatus(true)
     reconnectAttempts = 0
     connectionError.value = ''
+
+    // Expose global sendEnvelope function for useSessions
+    window._wsSendEnvelope = (envelope) => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(envelope))
+      }
+    }
   }
 
   sock.onmessage = (ev) => {
@@ -108,18 +140,16 @@ function _doConnect(url) {
       const storedChatId = _loadChatId()
 
       if (storedChatId && storedChatId !== serverChatId) {
-        chatId = storedChatId
+        _setChatId(storedChatId)
         sock.send(JSON.stringify({ type: 'attach', chat_id: storedChatId }))
       } else {
-        chatId = serverChatId
-        _saveChatId(serverChatId)
+        _setChatId(serverChatId)
       }
       return
     }
 
     if (data.event === 'attached') {
-      chatId = data.chat_id
-      _saveChatId(data.chat_id)
+      _setChatId(data.chat_id)
       // Resolve pending newChat Promise
       if (pendingNewChat) {
         clearTimeout(pendingNewChat.timer)
@@ -259,6 +289,71 @@ function _doConnect(url) {
       return
     }
 
+    // Handle upload_paper_result (request/response correlation)
+    if (data.event === 'upload_paper_result' && data.request_id) {
+      const pending = pendingUploadPaper.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingUploadPaper.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            paper: data.paper,
+            pageCount: data.page_count,
+            chunkCount: data.chunk_count,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle ai_polish_result (request/response correlation)
+    if (data.event === 'ai_polish_result' && data.request_id) {
+      const pending = pendingAiPolish.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiPolish.delete(data.request_id)
+        if (data.error && !data.polished_text) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            polishedText: data.polished_text,
+            error: data.error || null,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle ai_paper_summary_result (request/response correlation)
+    if (data.event === 'ai_paper_summary_result' && data.request_id) {
+      const pending = pendingAiPaperSummary.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiPaperSummary.delete(data.request_id)
+        if (data.error && !data.summary) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            summary: data.summary,
+            cached: data.cached || false,
+            error: data.error || null,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle session_deleted event
+    if (data.event === 'session_deleted') {
+      const handlers = window._wsSessionDeletedHandlers || []
+      for (const h of handlers) {
+        try { h(data) } catch { /* best-effort */ }
+      }
+      return
+    }
+
     // Fan out all other events to per-chat handlers
     if (data.chat_id) {
       _dispatch(data.chat_id, data)
@@ -307,15 +402,32 @@ export function useGateway() {
       const resp = await fetch(`/webui/bootstrap${qs ? '?' + qs : ''}`, { credentials: 'same-origin' })
       if (!resp.ok) throw new Error(`Bootstrap failed: HTTP ${resp.status}`)
       boot = await resp.json()
-      if (!boot.token || !boot.ws_path) throw new Error('Bootstrap 缺少 token 或 ws_path')
-      apiToken = boot.token
+
+      // Support both new separate tokens and legacy single token
+      if (boot.ws_token && boot.api_token) {
+        // New separate token mode
+        wsToken = boot.ws_token
+        apiToken = boot.api_token
+        sessionStorage.setItem('nanobot-webui.ws_token', boot.ws_token)
+        sessionStorage.setItem('nanobot-webui.api_token', boot.api_token)
+      } else if (boot.token) {
+        // Legacy single token mode (backward compatible)
+        wsToken = boot.token
+        apiToken = boot.token
+        sessionStorage.setItem('nanobot-webui.ws_token', boot.token)
+        sessionStorage.setItem('nanobot-webui.api_token', boot.token)
+      } else {
+        throw new Error('Bootstrap 缺少 token 或 ws_path')
+      }
+
+      if (!boot.ws_path) throw new Error('Bootstrap 缺少 ws_path')
     } catch (err) {
       connectionError.value = `无法连接 Gateway (${err.message})`
       throw err
     }
 
-    // 2. Connect WebSocket
-    const url = deriveWsUrl(boot.ws_path, boot.token)
+    // 2. Connect WebSocket (token passed via query parameter)
+    const url = deriveWsUrl(boot.ws_path, wsToken)
     return new Promise((resolve, reject) => {
       _doConnect(url)
       const sock = socket
@@ -328,11 +440,10 @@ export function useGateway() {
           const storedChatId = _loadChatId()
 
           if (storedChatId && storedChatId !== serverChatId) {
-            chatId = storedChatId
+            _setChatId(storedChatId)
             sock.send(JSON.stringify({ type: 'attach', chat_id: storedChatId }))
           } else {
-            chatId = serverChatId
-            _saveChatId(serverChatId)
+            _setChatId(serverChatId)
           }
           _setStatus(true)
           resolve()
@@ -406,8 +517,7 @@ export function useGateway() {
     if (!socket || socket.readyState !== WS_OPEN) {
       throw new Error('未连接到 Gateway')
     }
-    chatId = newChatId
-    _saveChatId(newChatId)
+    _setChatId(newChatId)
     socket.send(JSON.stringify({ type: 'attach', chat_id: newChatId }))
   }
 
@@ -416,7 +526,7 @@ export function useGateway() {
   }
 
   function getToken() {
-    return apiToken
+    return apiToken || sessionStorage.getItem('nanobot-webui.api_token') || sessionStorage.getItem('nanobot-webui.token')
   }
 
   function disconnect() {
@@ -595,6 +705,110 @@ export function useGateway() {
   }
 
   /**
+   * Upload a PDF paper via chunked WebSocket messages (avoids HTTP 431 and large frame issues).
+   * Splits base64 data into 512KB chunks and sends start/chunk/end sequence.
+   * Returns Promise<{paper, pageCount, chunkCount}>.
+   */
+  function sendUploadPaper(fileData, fileName, title = '', timeoutMs = 180000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+
+    const requestId = 'upl_' + Math.random().toString(36).slice(2, 10)
+    const uploadId = 'u_' + Math.random().toString(36).slice(2, 10)
+    const CHUNK_SIZE = 512 * 1024 // 512KB per chunk
+    const totalChunks = Math.ceil(fileData.length / CHUNK_SIZE)
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingUploadPaper.delete(requestId)
+        reject(new Error('上传超时'))
+      }, timeoutMs)
+      pendingUploadPaper.set(requestId, { resolve, reject, timer })
+
+      // 1. Send start message
+      socket.send(JSON.stringify({
+        type: 'upload_paper_start',
+        upload_id: uploadId,
+        file_name: fileName,
+        title,
+        total_chunks: totalChunks,
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+
+      // 2. Send chunks
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = fileData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+        socket.send(JSON.stringify({
+          type: 'upload_paper_chunk',
+          upload_id: uploadId,
+          chunk_index: i,
+          chunk_data: chunk,
+        }))
+      }
+
+      // 3. Send end message
+      socket.send(JSON.stringify({
+        type: 'upload_paper_end',
+        upload_id: uploadId,
+        request_id: requestId,
+      }))
+    })
+  }
+
+  /**
+   * AI text polishing for writing assistant.
+   * Returns Promise<{polishedText, error}>.
+   */
+  function sendAiPolish(text, mode = 'polish', timeoutMs = 60000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'apl_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiPolish.delete(requestId)
+        reject(new Error('AI 润色超时'))
+      }, timeoutMs)
+      pendingAiPolish.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_polish',
+        request_id: requestId,
+        text,
+        mode,
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
+   * AI paper summarization.
+   * Returns Promise<{summary, cached, error}>.
+   */
+  function sendAiPaperSummary(paperId, timeoutMs = 120000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'asm_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingAiPaperSummary.delete(requestId)
+        reject(new Error('AI 摘要生成超时'))
+      }, timeoutMs)
+      pendingAiPaperSummary.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        type: 'ai_paper_summary',
+        request_id: requestId,
+        paper_id: paperId,
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  /**
    * AI tutor recommend — generate practice questions based on student's tutor profile.
    * Returns Promise<{questions, totalPoints}>.
    */
@@ -621,5 +835,5 @@ export function useGateway() {
     })
   }
 
-  return { connected, connectionError, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework, sendAiTutorEvaluate, sendAiGenerateDerivation, sendAiTutorRecommend }
+  return { connected, connectionError, currentChatId, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework, sendAiTutorEvaluate, sendAiGenerateDerivation, sendAiTutorRecommend, sendUploadPaper, sendAiPolish, sendAiPaperSummary }
 }

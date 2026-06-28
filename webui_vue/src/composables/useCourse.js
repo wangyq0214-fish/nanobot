@@ -4,6 +4,7 @@
 
 import { ref } from 'vue'
 import { useGateway } from './useGateway.js'
+import { useAuthFetch } from './useAuthFetch.js'
 
 const courses = ref([])
 const currentCourse = ref(null)
@@ -12,85 +13,48 @@ const lessons = ref([])
 const homeworkList = ref([])
 
 export function useCourse() {
-
-  // Helper: build query params with auth
-  function _authParams(role, userId, token) {
-    const params = new URLSearchParams()
-    if (role) params.set('role', role)
-    if (userId) params.set('user_id', userId)
-    if (token) params.set('token', token)
-    return params
-  }
-  function _authHeaders(token) {
-    const h = {}
-    if (token) h['Authorization'] = `Bearer ${token}`
-    return h
-  }
-  async function _get(url, role, userId, token) {
-    const params = _authParams(role, userId, token)
-    const res = await fetch(`${url}?${params.toString()}`, {
-      // Don't send cookies to reduce header size
-      credentials: 'omit',
-      headers: _authHeaders(token),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return res.json()
-  }
-  async function _mutate(url, data, role, userId, token) {
-    const params = _authParams(role, userId, token)
-    params.set('data', JSON.stringify(data))
-    const res = await fetch(`${url}?${params.toString()}`, {
-      // Don't send cookies to reduce header size
-      credentials: 'omit',
-      headers: _authHeaders(token),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      throw new Error(err.error || `HTTP ${res.status}`)
-    }
-    return res.json()
-  }
+  const { authGet, authMutate } = useAuthFetch()
 
   // --- Course CRUD ---
 
-  async function fetchCourses(role, userId, token) {
-    const data = await _get('/api/courses', role, userId, token)
+  async function fetchCourses() {
+    const data = await authGet('/api/courses')
     courses.value = data.courses || []
     return data.courses || []
   }
 
-  async function createCourse(data, role, userId, token) {
-    return _mutate('/api/courses/create', data, role, userId, token)
+  async function createCourse(data) {
+    return authMutate('/api/courses/create', data)
   }
 
-  async function joinCourse(joinCode, displayName, role, userId, token) {
-    return _mutate('/api/courses/join', { joinCode, displayName }, role, userId, token)
+  async function joinCourse(joinCode, displayName) {
+    return authMutate('/api/courses/join', { joinCode, displayName })
   }
 
-  async function fetchCourseDetail(courseId, token) {
-    const data = await _get(`/api/courses/${courseId}`, null, null, token)
+  async function fetchCourseDetail(courseId) {
+    const data = await authGet(`/api/courses/${courseId}`)
     currentCourse.value = data.course || null
     return data.course
   }
 
   // --- Members ---
 
-  async function fetchMembers(courseId, token) {
-    const data = await _get(`/api/courses/${courseId}/members`, null, null, token)
+  async function fetchMembers(courseId) {
+    const data = await authGet(`/api/courses/${courseId}/members`)
     members.value = data.members || []
     return data.members || []
   }
 
   // --- Lessons ---
 
-  async function fetchLessons(courseId, token) {
-    const data = await _get(`/api/courses/${courseId}/lessons`, null, null, token)
+  async function fetchLessons(courseId) {
+    const data = await authGet(`/api/courses/${courseId}/lessons`)
     lessons.value = data.lessons || []
     return data.lessons || []
   }
 
-  async function fetchLessonDetail(courseId, lessonId, token) {
-    const data = await _get(`/api/courses/${courseId}/lessons/${lessonId}`, null, null, token)
+  async function fetchLessonDetail(courseId, lessonId) {
+    const data = await authGet(`/api/courses/${courseId}/lessons/${lessonId}`)
     return data.lesson
   }
 
@@ -133,8 +97,8 @@ export function useCourse() {
 
   // --- Homework ---
 
-  async function fetchHomeworkList(courseId, token) {
-    const data = await _get(`/api/courses/${courseId}/homework`, null, null, token)
+  async function fetchHomeworkList(courseId) {
+    const data = await authGet(`/api/courses/${courseId}/homework`)
     const list = (data.homework || []).map(_normHomework)
     homeworkList.value = list
     return list
@@ -145,78 +109,78 @@ export function useCourse() {
     return sendCreateHomework(courseId, data)
   }
 
-  async function fetchHomeworkDetail(courseId, hwId, token) {
-    const data = await _get(`/api/courses/${courseId}/homework/${hwId}`, null, null, token)
+  async function fetchHomeworkDetail(courseId, hwId) {
+    const data = await authGet(`/api/courses/${courseId}/homework/${hwId}`)
     return _normHomework(data.homework)
   }
 
-  async function submitHomework(courseId, hwId, answers, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/submit`, { answers }, role, userId, token)
+  async function submitHomework(courseId, hwId, answers) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/submit`, { answers })
   }
 
-  async function fetchSubmissions(courseId, hwId, token) {
-    const data = await _get(`/api/courses/${courseId}/homework/${hwId}/submissions`, null, null, token)
+  async function fetchSubmissions(courseId, hwId) {
+    const data = await authGet(`/api/courses/${courseId}/homework/${hwId}/submissions`)
     return (data.submissions || []).map(_normSubmission)
   }
 
-  async function fetchSubmissionDetail(courseId, hwId, studentId, token) {
-    const data = await _get(`/api/courses/${courseId}/homework/${hwId}/submissions/${studentId}`, null, null, token)
+  async function fetchSubmissionDetail(courseId, hwId, studentId) {
+    const data = await authGet(`/api/courses/${courseId}/homework/${hwId}/submissions/${studentId}`)
     return _normSubmission(data.submission)
   }
 
-  async function gradeSubmission(courseId, hwId, studentId, score, feedback, role, userId, token, questions) {
+  async function gradeSubmission(courseId, hwId, studentId, score, feedback, questions) {
     const data = { studentId, score, feedback }
     if (questions) data.questions = questions
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/grade`, data, role, userId, token)
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/grade`, data)
   }
 
-  async function aiGradeSubmission(courseId, hwId, studentId, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade`, { studentId }, role, userId, token)
+  async function aiGradeSubmission(courseId, hwId, studentId) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade`, { studentId })
   }
 
-  async function aiGradeQuestion(courseId, hwId, questionData, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-question`, questionData, role, userId, token)
+  async function aiGradeQuestion(courseId, hwId, questionData) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-question`, questionData)
   }
 
-  async function deleteHomework(courseId, hwId, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/delete`, {}, role, userId, token)
+  async function deleteHomework(courseId, hwId) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/delete`, {})
   }
 
-  async function publishHomework(courseId, hwId, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/homework/${hwId}/publish`, {}, role, userId, token)
+  async function publishHomework(courseId, hwId) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/publish`, {})
   }
 
-  async function aiGenerateQuestions(courseId, content, numQuestions, typeDistribution, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/ai-generate-questions`, {
+  async function aiGenerateQuestions(courseId, content, numQuestions, typeDistribution) {
+    return authMutate(`/api/courses/${courseId}/ai-generate-questions`, {
       content,
       numQuestions,
       typeDistribution,
-    }, role, userId, token)
+    })
   }
 
   // --- Question Bank ---
 
-  async function fetchQuestionBank(courseId, token, type = null) {
+  async function fetchQuestionBank(courseId, type = null) {
     let url = `/api/courses/${courseId}/question-bank`
     if (type) url += `?type=${type}`
-    const data = await _get(url, null, null, token)
+    const data = await authGet(url)
     return data.questions || []
   }
 
-  async function addToQuestionBank(courseId, question, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/question-bank/add`, question, role, userId, token)
+  async function addToQuestionBank(courseId, question) {
+    return authMutate(`/api/courses/${courseId}/question-bank/add`, question)
   }
 
-  async function batchAddToQuestionBank(courseId, questions, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/question-bank/batch-add`, { questions }, role, userId, token)
+  async function batchAddToQuestionBank(courseId, questions) {
+    return authMutate(`/api/courses/${courseId}/question-bank/batch-add`, { questions })
   }
 
-  async function deleteFromQuestionBank(courseId, questionId, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/question-bank/${questionId}/delete`, {}, role, userId, token)
+  async function deleteFromQuestionBank(courseId, questionId) {
+    return authMutate(`/api/courses/${courseId}/question-bank/${questionId}/delete`, {})
   }
 
-  async function updateQuestionBank(courseId, questionId, data, role, userId, token) {
-    return _mutate(`/api/courses/${courseId}/question-bank/${questionId}/update`, data, role, userId, token)
+  async function updateQuestionBank(courseId, questionId, data) {
+    return authMutate(`/api/courses/${courseId}/question-bank/${questionId}/update`, data)
   }
 
   return {

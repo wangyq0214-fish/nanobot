@@ -53,57 +53,97 @@ const routes = [
       },
     ],
   },
-  // ===== Student pages (standalone) =====
+  // ===== Student pages (shared sidebar layout) =====
   {
-    path: '/student/learning-path',
-    name: 'LearningPath',
-    component: () => import('../pages/student/LearningPath.vue'),
+    path: '/student',
+    component: () => import('../layouts/StudentLayout.vue'),
+    children: [
+      {
+        path: '',
+        redirect: '/student/learning-path',
+      },
+      {
+        path: 'learning-path',
+        name: 'LearningPath',
+        component: () => import('../pages/student/LearningPath.vue'),
+      },
+      {
+        path: 'formula-derivation',
+        name: 'FormulaDerivation',
+        component: () => import('../pages/student/FormulaDerivation.vue'),
+      },
+      {
+        path: 'tutoring-assistant',
+        name: 'TutoringAssistant',
+        component: () => import('../pages/student/TutoringAssistant.vue'),
+      },
+      {
+        path: 'courses',
+        name: 'StudentCourses',
+        component: () => import('../pages/student/StudentCourses.vue'),
+      },
+      {
+        path: 'courses/:courseId',
+        name: 'StudentCourseDetail',
+        component: () => import('../pages/student/StudentCourseDetail.vue'),
+      },
+    ],
   },
+  // ===== Researcher pages (shared nav layout) =====
   {
-    path: '/student/formula-derivation',
-    name: 'FormulaDerivation',
-    component: () => import('../pages/student/FormulaDerivation.vue'),
-  },
-  {
-    path: '/student/tutoring-assistant',
-    name: 'TutoringAssistant',
-    component: () => import('../pages/student/TutoringAssistant.vue'),
-  },
-  {
-    path: '/student/courses',
-    name: 'StudentCourses',
-    component: () => import('../pages/student/StudentCourses.vue'),
-  },
-  {
-    path: '/student/courses/:courseId',
-    name: 'StudentCourseDetail',
-    component: () => import('../pages/student/StudentCourseDetail.vue'),
-  },
-  // ===== Researcher pages =====
-  {
-    path: '/researcher/hotspot',
-    name: 'ResearchHotspot',
-    component: () => import('../pages/researcher/ResearchHotspot.vue'),
-  },
-  {
-    path: '/researcher/paper-search',
-    name: 'PaperSearch',
-    component: () => import('../pages/researcher/PaperSearch.vue'),
-  },
-  {
-    path: '/researcher/paper-library',
-    name: 'PaperLibrary',
-    component: () => import('../pages/researcher/PaperLibrary.vue'),
-  },
-  {
-    path: '/researcher/writing-assistant',
-    name: 'WritingAssistant',
-    component: () => import('../pages/researcher/WritingAssistant.vue'),
-  },
-  {
-    path: '/researcher/datalab',
-    name: 'DataLab',
-    component: () => import('../pages/researcher/DataLab.vue'),
+    path: '/researcher',
+    component: () => import('../layouts/ResearcherLayout.vue'),
+    children: [
+      {
+        path: '',
+        redirect: '/researcher/workspace',
+      },
+      {
+        path: 'workspace',
+        name: 'ResearcherWorkspace',
+        component: () => import('../pages/researcher/Workspace.vue'),
+      },
+      {
+        path: 'results',
+        name: 'ResearchResults',
+        component: () => import('../pages/researcher/ResearchResults.vue'),
+      },
+      {
+        path: 'agents',
+        name: 'AgentMatrix',
+        component: () => import('../pages/researcher/AgentMatrix.vue'),
+      },
+      {
+        path: 'paper-search',
+        name: 'PaperSearch',
+        component: () => import('../pages/researcher/PaperSearch.vue'),
+      },
+      {
+        path: 'paper-library',
+        name: 'PaperLibrary',
+        component: () => import('../pages/researcher/PaperLibrary.vue'),
+      },
+      {
+        path: 'paper/:id',
+        name: 'PaperWorkspace',
+        component: () => import('../pages/researcher/PaperWorkspace.vue'),
+      },
+      {
+        path: 'writing-assistant',
+        name: 'WritingAssistant',
+        component: () => import('../pages/researcher/WritingAssistant.vue'),
+      },
+      {
+        path: 'topic-radar',
+        name: 'TopicRadar',
+        component: () => import('../pages/researcher/TopicRadar.vue'),
+      },
+      {
+        path: 'toolbench',
+        name: 'ToolBench',
+        component: () => import('../pages/researcher/ToolBench.vue'),
+      },
+    ],
   },
 ]
 
@@ -123,11 +163,11 @@ router.beforeEach(async (to) => {
   if (!user?.userId) return '/login'
   // Role-based: teacher pages only for teachers, student pages only for students, etc.
   if (to.path.startsWith('/teacher') && user.role !== 'teacher') {
-    const roleHome = { student: '/student/learning-path', researcher: '/researcher/hotspot' }
+    const roleHome = { student: '/student/learning-path', researcher: '/researcher/workspace' }
     return roleHome[user.role] || '/login'
   }
   if (to.path.startsWith('/student') && user.role !== 'student') {
-    const roleHome = { teacher: '/teacher/lesson-plan', researcher: '/researcher/hotspot' }
+    const roleHome = { teacher: '/teacher/lesson-plan', researcher: '/researcher/workspace' }
     return roleHome[user.role] || '/login'
   }
   if (to.path.startsWith('/researcher') && user.role !== 'researcher') {

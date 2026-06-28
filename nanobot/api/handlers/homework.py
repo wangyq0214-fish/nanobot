@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -17,7 +16,6 @@ from ..utils import (
     http_json_response,
     parse_mutation_data,
     parse_query,
-    query_first,
 )
 
 
@@ -26,10 +24,8 @@ async def handle_homework_list(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")
@@ -42,13 +38,10 @@ async def handle_homework_create(
     storage: StorageWrapper,
     course_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
     if role != "teacher":
         return http_error(403, "Only teachers can create homework")
     logger.info("[homework_create] role={!r} user_id={!r} course_id={!r}", role, user_id, course_id)
@@ -59,6 +52,7 @@ async def handle_homework_create(
     logger.info("[homework_create] teacher_id={!r}", teacher_id)
     if teacher_id != user_id:
         return http_error(403, "Only the course owner can create homework")
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
@@ -94,10 +88,8 @@ async def handle_homework_detail(
     course_id: str,
     hw_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
     hw = await storage.get_homework(hw_id)
     if not hw:
         return http_error(404, "Homework not found")
@@ -110,13 +102,10 @@ async def handle_homework_submit(
     course_id: str,
     hw_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    role = query_first(query, "role") or ""
-    user_id = query_first(query, "user_id") or ""
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
     if role != "student":
         return http_error(403, "Only students can submit homework")
     course = await storage.get_course(course_id)
@@ -128,30 +117,35 @@ async def handle_homework_submit(
     if not hw:
         return http_error(404, "Homework not found")
     existing = await storage.get_submission(hw_id, user_id)
-    if existing:
-        return http_error(409, "You have already submitted this homework")
 
+    query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
         return payload
+
+    answers = payload.get("answers", {})
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    submission_data = {
-        "hw_id": hw_id,
-        "student_id": user_id,
-        "student_role": "student",
-        "course_id": course_id,
-        "answers": payload.get("answers", {}),
-        "submitted_at": now,
-        "status": "submitted",
-        "score": 0,
-        "feedback": {},
-        "graded_at": None,
-        "graded_by": None,
-    }
-    await storage.create_submission(submission_data)
+    if existing:
+        submission_data = {
+            "answers": answers,
+            "status": "resubmitted",
+            "submitted_at": now,
+        }
+        submission = await storage.update_submission(existing["id"], submission_data)
+    else:
+        submission_data = {
+            "hw_id": hw_id,
+            "course_id": course_id,
+            "student_id": user_id,
+            "answers": answers,
+            "status": "submitted",
+            "submitted_at": now,
+        }
+        submission = await storage.create_submission(submission_data)
+
     logger.info("Homework {} submitted by student {} in course {}", hw_id, user_id, course_id)
-    return http_json_response({"ok": True})
+    return http_json_response({"ok": True, "submission": submission})
 
 
 async def handle_homework_submissions(
@@ -160,21 +154,21 @@ async def handle_homework_submissions(
     course_id: str,
     hw_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
     course = await storage.get_course(course_id)
     if not course:
         return http_error(404, "Course not found")
-    submissions = await storage.get_homework_submissions(hw_id)
-    logger.info(
-        "[homework_submissions] storage_type={}, hw_id={}, count={}, first_keys={}",
-        type(storage).__name__,
-        hw_id,
-        len(submissions),
-        list(submissions[0].keys()) if submissions else [],
-    )
+    teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+    if role == "teacher" and teacher_id == user_id:
+        submissions = await storage.list_submissions(hw_id)
+    elif role == "student":
+        sub = await storage.get_submission(hw_id, user_id)
+        submissions = [sub] if sub else []
+    else:
+        return http_error(403, "Access denied")
     return http_json_response({"submissions": submissions})
 
 
@@ -185,10 +179,12 @@ async def handle_submission_detail(
     hw_id: str,
     student_id: str,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
+    if role == "student" and user_id != student_id:
+        return http_error(403, "Students can only view their own submissions")
     submission = await storage.get_submission(hw_id, student_id)
     if not submission:
         return http_error(404, "Submission not found")

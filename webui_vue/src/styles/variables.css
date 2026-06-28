@@ -4,11 +4,11 @@
 
 :root {
   /* ---- Brand Colors ---- */
-  --color-primary: #5b8def;
-  --color-primary-hover: #4a7de0;
-  --color-primary-soft: #eef4ff;
-  --color-primary-glow: rgba(91, 141, 239, 0.3);
-  --color-primary-border: rgba(91, 141, 239, 0.3);
+  --color-primary: #121212;
+  --color-primary-hover: #333333;
+  --color-primary-soft: #f4f4f4;
+  --color-primary-glow: rgba(18, 18, 18, 0.3);
+  --color-primary-border: rgba(18, 18, 18, 0.3);
 
   --color-success: #16a34a;
   --color-success-soft: rgba(22, 163, 74, 0.1);
@@ -17,23 +17,23 @@
   --color-warning: #f59e0b;
   --color-warning-soft: rgba(245, 158, 11, 0.1);
 
-  /* ---- Backgrounds ---- */
-  --bg-page: #f8f6f1;
+  /* ---- Backgrounds (Pure White) ---- */
+  --bg-page: #ffffff;
   --bg-card: #ffffff;
   --bg-card-hover: #fafafa;
-  --bg-tag: #f0ede8;
+  --bg-tag: #f4f4f4;
   --bg-input: #ffffff;
   --bg-overlay: rgba(0, 0, 0, 0.4);
 
   /* ---- Text ---- */
-  --text-primary: #2c2c2c;
+  --text-primary: #121212;
   --text-secondary: #666666;
   --text-muted: #999999;
   --text-inverse: #ffffff;
 
   /* ---- Borders ---- */
-  --border-light: #e8e4db;
-  --border-input: #e0dcd5;
+  --border-light: #eaeaea;
+  --border-input: #e0e0e0;
   --border-focus: var(--color-primary);
 
   /* ---- Spacing ---- */
@@ -74,23 +74,50 @@
   --sidebar-width: 240px;
 }
 
-/* ---- Dark Theme ---- */
+/* ---- Dark Theme (Pure Black & White) ---- */
 body.dark {
-  --bg-page: #12121a;
-  --bg-card: #1e1e2e;
-  --bg-card-hover: #252535;
-  --bg-tag: #252535;
-  --bg-input: #2a2a3a;
+  --bg-page: #121212;
+  --bg-card: #242424;
+  --bg-card-hover: #2e2e2e;
+  --bg-tag: #222222;
+  --bg-input: #2a2a2a;
   --bg-overlay: rgba(0, 0, 0, 0.6);
 
-  --text-primary: #e0e0e0;
-  --text-secondary: #aaaaaa;
-  --text-muted: #777777;
+  --text-primary: #e5e5e5;
+  --text-secondary: #b3b3b3;
+  --text-muted: #999999;
 
-  --border-light: #333333;
-  --border-input: #444444;
+  --border-light: #2d2d2d;
+  --border-input: #333333;
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- Green Theme (Academic Green) ---- */
+body.green {
+  --color-primary: #526e5a;
+  --color-primary-hover: #415848;
+  --color-primary-soft: #f2f6f3;
+  --color-primary-glow: rgba(82, 110, 90, 0.3);
+  --color-primary-border: rgba(82, 110, 90, 0.3);
+
+  --bg-page: #f7f8f7;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8f9f8;
+  --bg-tag: #f0f2f0;
+  --bg-input: #ffffff;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+
+  --text-primary: #1e2720;
+  --text-secondary: #556056;
+  --text-muted: #9da79e;
+
+  --border-light: #dee3de;
+  --border-input: #dfe7df;
+
+  --shadow-sm: 0 1px 3px rgba(30, 39, 32, 0.06);
+  --shadow-md: 0 4px 16px rgba(30, 39, 32, 0.08);
+  --shadow-lg: 0 8px 32px rgba(30, 39, 32, 0.12);
 }

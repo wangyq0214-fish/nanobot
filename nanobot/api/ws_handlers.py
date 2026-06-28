@@ -84,6 +84,10 @@ async def handle_message(
     msg_meta: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
     conn_meta = _get_conn_meta(channel, connection)
     msg_meta.update(conn_meta)
+    # Merge envelope meta (e.g., mode: 'quick'/'deep')
+    envelope_meta = envelope.get("meta")
+    if isinstance(envelope_meta, dict):
+        msg_meta.update(envelope_meta)
     logger.debug("WS message: conn_meta={}, msg_meta={}", conn_meta, msg_meta)
     await channel._handle_message(
         sender_id=client_id,
@@ -146,7 +150,7 @@ async def handle_ai_grade_question_ws(
         return
 
     conn_meta = _get_conn_meta(channel, connection)
-    role = conn_meta.get("role") or envelope.get("role", "")
+    role = conn_meta.get("role", "")
     if role != "teacher":
         await channel._send_event(
             connection, "ai_grade_question_result",
@@ -197,7 +201,7 @@ async def handle_ai_grade_submission_ws(
 
     try:
         conn_meta = _get_conn_meta(channel, connection)
-        user_id = conn_meta.get("user_id") or envelope.get("user_id", "")
+        user_id = conn_meta.get("user_id", "")
 
         course = await channel.storage.get_course(course_id)
         if not course:
@@ -295,13 +299,12 @@ async def handle_ai_generate_questions_ws(
 
     try:
         conn_meta = _get_conn_meta(channel, connection)
-        # Fallback: use role/user_id from envelope if connection metadata is empty
-        user_id = conn_meta.get("user_id") or envelope.get("user_id", "")
-        role = conn_meta.get("role") or envelope.get("role", "")
+        user_id = conn_meta.get("user_id", "")
+        role = conn_meta.get("role", "")
 
         logger.info(
-            "[ws] ai_generate_questions: conn_meta={}, envelope_role={}, resolved_role={}",
-            conn_meta, envelope.get("role"), role,
+            "[ws] ai_generate_questions: conn_meta={}, resolved_role={}",
+            conn_meta, role,
         )
 
         if role != "teacher":
@@ -350,8 +353,8 @@ async def handle_create_homework_ws(
     payload = envelope.get("data", {})
 
     conn_meta = _get_conn_meta(channel, connection)
-    role = conn_meta.get("role") or envelope.get("role", "")
-    user_id = conn_meta.get("user_id") or envelope.get("user_id", "")
+    role = conn_meta.get("role", "")
+    user_id = conn_meta.get("user_id", "")
 
     if role != "teacher":
         await channel._send_event(
@@ -447,8 +450,8 @@ async def handle_ai_tutor_evaluate_ws(
         return
 
     conn_meta = _get_conn_meta(channel, connection)
-    role = conn_meta.get("role") or envelope.get("role", "")
-    user_id = conn_meta.get("user_id") or envelope.get("user_id", "")
+    role = conn_meta.get("role", "")
+    user_id = conn_meta.get("user_id", "")
 
     if role != "student":
         await channel._send_event(
@@ -613,8 +616,8 @@ async def handle_ai_tutor_recommend_ws(
     custom_content = envelope.get("content", "")
 
     conn_meta = _get_conn_meta(channel, connection)
-    role = conn_meta.get("role") or envelope.get("role", "")
-    user_id = conn_meta.get("user_id") or envelope.get("user_id", "")
+    role = conn_meta.get("role", "")
+    user_id = conn_meta.get("user_id", "")
 
     if role != "student":
         await channel._send_event(
@@ -725,6 +728,340 @@ async def handle_ai_tutor_recommend_ws(
         )
 
 
+# -- Researcher handlers ---------------------------------------------------
+
+
+# Pending chunked uploads: Map<upload_id, {chunks: list, file_name, title, user_id, role}]
+_pending_uploads: dict[str, dict[str, Any]] = {}
+
+
+async def handle_upload_paper_start_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Start a chunked paper upload. Client sends this before chunks."""
+    upload_id = envelope.get("upload_id", "")
+    file_name = envelope.get("file_name", "paper.pdf")
+    title = envelope.get("title", "")
+    total_chunks = envelope.get("total_chunks", 0)
+
+    if not upload_id:
+        return
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    _pending_uploads[upload_id] = {
+        "chunks": [],
+        "file_name": file_name,
+        "title": title,
+        "user_id": user_id,
+        "role": role,
+        "total_chunks": total_chunks,
+        "request_id": envelope.get("request_id", ""),
+    }
+
+    logger.info("[ws] upload_paper_start: id={}, file={}, total_chunks={}", upload_id, file_name, total_chunks)
+
+    await channel._send_event(
+        connection, "upload_paper_ack",
+        upload_id=upload_id,
+        status="ready",
+    )
+
+
+async def handle_upload_paper_chunk_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Receive one chunk of base64 data."""
+    upload_id = envelope.get("upload_id", "")
+    chunk_data = envelope.get("chunk_data", "")
+    chunk_index = envelope.get("chunk_index", 0)
+
+    upload = _pending_uploads.get(upload_id)
+    if not upload:
+        logger.warning("[ws] upload_paper_chunk: unknown upload_id={}", upload_id)
+        return
+
+    upload["chunks"].append(chunk_data)
+    logger.debug("[ws] upload_paper_chunk: id={}, chunk={}/{}", upload_id, chunk_index + 1, upload["total_chunks"])
+
+
+async def handle_upload_paper_end_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Finalize chunked upload — combine chunks, extract text, save to DB."""
+    import base64
+    import uuid
+    from pathlib import Path
+
+    from nanobot.services.pdf_service import chunk_pages, extract_pdf_text
+
+    upload_id = envelope.get("upload_id", "")
+    request_id = envelope.get("request_id", "")
+
+    upload = _pending_uploads.pop(upload_id, None)
+    if not upload:
+        await channel._send_event(
+            connection, "upload_paper_result",
+            request_id=request_id, error="Unknown upload_id",
+        )
+        return
+
+    request_id = request_id or upload["request_id"]
+    file_name = upload["file_name"]
+    title = upload["title"]
+    user_id = upload["user_id"]
+
+    try:
+        # Combine chunks and decode base64
+        combined = "".join(upload["chunks"])
+        try:
+            pdf_bytes = base64.b64decode(combined)
+        except Exception:
+            await channel._send_event(
+                connection, "upload_paper_result",
+                request_id=request_id, error="Invalid base64 file data",
+            )
+            return
+
+        # Save file
+        upload_dir = Path.home() / ".nanobot" / "uploads" / "papers"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = f"{uuid.uuid4().hex[:12]}_{file_name}"
+        file_path = upload_dir / safe_name
+        file_path.write_bytes(pdf_bytes)
+
+        # Extract text
+        try:
+            pdf_data = extract_pdf_text(file_path)
+        except Exception as e:
+            logger.error("[ws] upload_paper PDF extraction failed: {}", e)
+            file_path.unlink(missing_ok=True)
+            await channel._send_event(
+                connection, "upload_paper_result",
+                request_id=request_id, error=f"PDF extraction failed: {e}",
+            )
+            return
+
+        if not title:
+            title = pdf_data["title"]
+
+        # Create paper record
+        paper = await channel.storage.create_paper({
+            "title": title,
+            "authors": "",
+            "file_path": str(file_path),
+            "file_name": file_name,
+            "page_count": pdf_data["page_count"],
+            "full_text": pdf_data["full_text"],
+            "source": "upload",
+            "user_id": user_id,
+        })
+
+        # Create chunks
+        chunks = chunk_pages(pdf_data["pages"])
+        chunk_dicts = [
+            {"chunk_index": c["chunk_index"], "page_number": c["page_number"], "content": c["content"]}
+            for c in chunks
+        ]
+        chunk_count = await channel.storage.create_paper_chunks(paper["id"], chunk_dicts)
+
+        logger.info("[ws] upload_paper: id={}, title={}, pages={}, chunks={}",
+                    paper["id"], title, pdf_data["page_count"], chunk_count)
+
+        await channel._send_event(
+            connection, "upload_paper_result",
+            request_id=request_id,
+            paper=paper,
+            page_count=pdf_data["page_count"],
+            chunk_count=chunk_count,
+        )
+    except Exception as e:
+        logger.error("[ws] upload_paper failed: {}", e)
+        await channel._send_event(
+            connection, "upload_paper_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+# -- Researcher AI handlers ------------------------------------------------
+
+
+async def handle_ai_polish_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """AI text polishing for the writing assistant."""
+    from nanobot.api.ai_polish import polish_text
+
+    request_id = envelope.get("request_id", "")
+    text = envelope.get("text", "")
+    mode = envelope.get("mode", "polish")
+
+    if not text:
+        await channel._send_event(
+            connection, "ai_polish_result",
+            request_id=request_id, error="missing text",
+        )
+        return
+
+    try:
+        conn_meta = _get_conn_meta(channel, connection)
+        role = conn_meta.get("role", "")
+        if role != "researcher":
+            await channel._send_event(
+                connection, "ai_polish_result",
+                request_id=request_id, error="Only researchers can use AI polish",
+            )
+            return
+
+        logger.info("[ws] ai_polish: mode={}, text_len={}", mode, len(text))
+        result = await polish_text(text=text, mode=mode)
+
+        await channel._send_event(
+            connection, "ai_polish_result",
+            request_id=request_id,
+            polished_text=result["polished_text"],
+            error=result.get("error"),
+        )
+    except Exception as e:
+        logger.error("[ws] ai_polish failed: {}", e)
+        await channel._send_event(
+            connection, "ai_polish_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_ai_paper_summary_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """AI paper summarization."""
+    from nanobot.api.ai_paper_summary import generate_paper_summary
+
+    request_id = envelope.get("request_id", "")
+    paper_id = envelope.get("paper_id")
+
+    if not paper_id:
+        await channel._send_event(
+            connection, "ai_paper_summary_result",
+            request_id=request_id, error="missing paper_id",
+        )
+        return
+
+    try:
+        conn_meta = _get_conn_meta(channel, connection)
+        role = conn_meta.get("role", "")
+        if role != "researcher":
+            await channel._send_event(
+                connection, "ai_paper_summary_result",
+                request_id=request_id, error="Only researchers can summarize papers",
+            )
+            return
+
+        # Get paper from storage
+        paper = await channel.storage.get_paper(int(paper_id))
+        if not paper:
+            await channel._send_event(
+                connection, "ai_paper_summary_result",
+                request_id=request_id, error="Paper not found",
+            )
+            return
+
+        # Check cache: if ai_summary already exists, return it
+        cached_summary = paper.get("aiSummary") or paper.get("ai_summary")
+        if cached_summary:
+            logger.info("[ws] ai_paper_summary: returning cached summary for paper {}", paper_id)
+            await channel._send_event(
+                connection, "ai_paper_summary_result",
+                request_id=request_id,
+                summary=cached_summary,
+                cached=True,
+            )
+            return
+
+        full_text = paper.get("fullText") or paper.get("full_text", "")
+        if not full_text:
+            await channel._send_event(
+                connection, "ai_paper_summary_result",
+                request_id=request_id, error="Paper has no extracted text",
+            )
+            return
+
+        logger.info("[ws] ai_paper_summary: generating for paper {} ({} chars)", paper_id, len(full_text))
+        result = await generate_paper_summary(full_text=full_text)
+
+        # Cache the summary
+        if result.get("summary") and not result.get("error"):
+            try:
+                await channel.storage.update_paper(int(paper_id), {"ai_summary": result["summary"]})
+            except Exception as cache_err:
+                logger.warning("[ws] ai_paper_summary: failed to cache summary: {}", cache_err)
+
+        await channel._send_event(
+            connection, "ai_paper_summary_result",
+            request_id=request_id,
+            summary=result["summary"],
+            cached=False,
+            error=result.get("error"),
+        )
+    except Exception as e:
+        logger.error("[ws] ai_paper_summary failed: {}", e)
+        await channel._send_event(
+            connection, "ai_paper_summary_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_delete_session_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Handle session deletion via WebSocket envelope."""
+    from pathlib import Path
+    from nanobot.session.manager import SessionManager
+
+    key = envelope.get("key")
+    if not key or not isinstance(key, str):
+        await _err(channel, connection, "missing session key")
+        return
+
+    conn_meta = _get_conn_meta(channel, connection)
+    role = conn_meta.get("role", "")
+    user_id = conn_meta.get("user_id", "")
+
+    if not role or not user_id:
+        await _err(channel, connection, "not authenticated")
+        return
+
+    # Reconstruct full key with user prefix for user workspace
+    full_key = f"{role}:{user_id}:{key}"
+    user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+    safe_key = SessionManager.safe_key(full_key)
+    session_file = user_sessions_dir / f"{safe_key}.jsonl"
+
+    if not session_file.exists():
+        await channel._send_event(connection, "session_deleted", key=key, deleted=False)
+        return
+
+    try:
+        session_file.unlink()
+        await channel._send_event(connection, "session_deleted", key=key, deleted=True)
+    except OSError as e:
+        logger.warning("Failed to delete user session {}: {}", full_key, e)
+        await _err(channel, connection, "Failed to delete session")
+
+
 # -- Dispatch table --------------------------------------------------------
 
 #: Maps envelope ``type`` to its handler function.
@@ -733,6 +1070,7 @@ _ENVELOPE_HANDLERS: dict[str, Any] = {
     "attach": handle_attach,
     "message": handle_message,
     "save_source": handle_save_source,
+    "delete_session": handle_delete_session_ws,
     "ai_grade_question": handle_ai_grade_question_ws,
     "ai_grade_submission": handle_ai_grade_submission_ws,
     "ai_generate_questions": handle_ai_generate_questions_ws,
@@ -740,6 +1078,11 @@ _ENVELOPE_HANDLERS: dict[str, Any] = {
     "ai_tutor_evaluate": handle_ai_tutor_evaluate_ws,
     "ai_generate_derivation": handle_ai_generate_derivation_ws,
     "ai_tutor_recommend": handle_ai_tutor_recommend_ws,
+    "upload_paper_start": handle_upload_paper_start_ws,
+    "upload_paper_chunk": handle_upload_paper_chunk_ws,
+    "upload_paper_end": handle_upload_paper_end_ws,
+    "ai_polish": handle_ai_polish_ws,
+    "ai_paper_summary": handle_ai_paper_summary_ws,
 }
 
 

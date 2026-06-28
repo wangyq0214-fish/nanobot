@@ -4,6 +4,7 @@
 
 import { ref } from 'vue'
 import { useGateway } from './useGateway.js'
+import { useAuthFetch } from './useAuthFetch.js'
 
 export function usePaperLibrary() {
   const loading = ref(false)
@@ -13,26 +14,7 @@ export function usePaperLibrary() {
   const uploading = ref(false)
   const uploadProgress = ref(0)
 
-  // Auth helpers
-  const { getToken } = useGateway()
-
-  function _authParams() {
-    const raw = localStorage.getItem('nanobot-webui.user')
-    const user = raw ? JSON.parse(raw) : {}
-    const params = new URLSearchParams()
-    if (user.role) params.set('role', user.role)
-    if (user.userId) params.set('user_id', user.userId)
-    const token = getToken()
-    if (token) params.set('token', token)
-    return params
-  }
-
-  function _authHeaders() {
-    const token = getToken()
-    const h = {}
-    if (token) h['Authorization'] = `Bearer ${token}`
-    return h
-  }
+  const { authGet, authMutate } = useAuthFetch()
 
   /**
    * Fetch all papers for the current user.
@@ -41,16 +23,7 @@ export function usePaperLibrary() {
     loading.value = true
     error.value = null
     try {
-      const params = _authParams()
-      const res = await fetch(`/api/researcher/papers?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-      const data = await res.json()
+      const data = await authGet('/api/researcher/papers')
       papers.value = data.papers || []
       return papers.value
     } catch (e) {
@@ -63,7 +36,7 @@ export function usePaperLibrary() {
   }
 
   /**
-   * Upload a PDF file.
+   * Upload a PDF file via WebSocket (avoids HTTP 431 from large base64 in URL).
    * @param {File} file - The PDF file to upload
    * @param {string} title - Optional title override
    */
@@ -91,29 +64,12 @@ export function usePaperLibrary() {
         reader.readAsDataURL(file)
       })
 
-      uploadProgress.value = 50
+      uploadProgress.value = 30
 
-      const params = _authParams()
-      const data = {
-        fileData: base64,
-        fileName: file.name,
-        title: title || '',
-      }
-      params.set('data', JSON.stringify(data))
+      // Send via chunked WebSocket to avoid HTTP 431 and large frame issues
+      const { sendUploadPaper } = useGateway()
+      const result = await sendUploadPaper(base64, file.name, title || '')
 
-      const res = await fetch(`/api/researcher/papers/upload?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-
-      uploadProgress.value = 90
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-
-      const result = await res.json()
       uploadProgress.value = 100
 
       // Add to local list
@@ -139,16 +95,7 @@ export function usePaperLibrary() {
     loading.value = true
     error.value = null
     try {
-      const params = _authParams()
-      const res = await fetch(`/api/researcher/papers/${paperId}?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-      const data = await res.json()
+      const data = await authGet(`/api/researcher/papers/${paperId}`)
       currentPaper.value = data.paper || null
       return currentPaper.value
     } catch (e) {
@@ -166,15 +113,7 @@ export function usePaperLibrary() {
   async function deletePaper(paperId) {
     error.value = null
     try {
-      const params = _authParams()
-      const res = await fetch(`/api/researcher/papers/${paperId}/delete?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
+      await authGet(`/api/researcher/papers/${paperId}/delete`)
       papers.value = papers.value.filter(p => p.id !== paperId)
       return true
     } catch (e) {
@@ -190,16 +129,7 @@ export function usePaperLibrary() {
   async function toggleFavorite(paperId) {
     error.value = null
     try {
-      const params = _authParams()
-      const res = await fetch(`/api/researcher/papers/${paperId}/favorite?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-      const data = await res.json()
+      const data = await authGet(`/api/researcher/papers/${paperId}/favorite`)
       // Update local state
       const paper = papers.value.find(p => p.id === paperId)
       if (paper) {
@@ -219,19 +149,7 @@ export function usePaperLibrary() {
   async function updateTags(paperId, tags) {
     error.value = null
     try {
-      const params = _authParams()
-      const data = { tags }
-      params.set('data', JSON.stringify(data))
-
-      const res = await fetch(`/api/researcher/papers/${paperId}/tags?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-      const result = await res.json()
+      const result = await authMutate(`/api/researcher/papers/${paperId}/tags`, { tags })
       // Update local state
       const paper = papers.value.find(p => p.id === paperId)
       if (paper) {

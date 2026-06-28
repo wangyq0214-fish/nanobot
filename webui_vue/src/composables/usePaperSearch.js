@@ -3,7 +3,7 @@
  */
 
 import { ref } from 'vue'
-import { useGateway } from './useGateway.js'
+import { useAuthFetch } from './useAuthFetch.js'
 
 export function usePaperSearch() {
   const loading = ref(false)
@@ -12,26 +12,7 @@ export function usePaperSearch() {
   const total = ref(0)
   const importing = ref(false)
 
-  // Auth helpers
-  const { getToken } = useGateway()
-
-  function _authParams() {
-    const raw = localStorage.getItem('nanobot-webui.user')
-    const user = raw ? JSON.parse(raw) : {}
-    const params = new URLSearchParams()
-    if (user.role) params.set('role', user.role)
-    if (user.userId) params.set('user_id', user.userId)
-    const token = getToken()
-    if (token) params.set('token', token)
-    return params
-  }
-
-  function _authHeaders() {
-    const token = getToken()
-    const h = {}
-    if (token) h['Authorization'] = `Bearer ${token}`
-    return h
-  }
+  const { authMutate } = useAuthFetch()
 
   /**
    * Search papers from a specific source.
@@ -54,7 +35,6 @@ export function usePaperSearch() {
     error.value = null
 
     try {
-      const params = _authParams()
       const data = {
         query: query.trim(),
         source,
@@ -64,19 +44,8 @@ export function usePaperSearch() {
         yearTo: options.yearTo || null,
         author: options.author || '',
       }
-      params.set('data', JSON.stringify(data))
 
-      const res = await fetch(`/api/researcher/search?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-
-      const json = await res.json()
+      const json = await authMutate('/api/researcher/search', data)
       const items = json.results || []
 
       if (options.append) {
@@ -107,7 +76,6 @@ export function usePaperSearch() {
     error.value = null
 
     try {
-      const params = _authParams()
       const data = {
         pdfUrl: paper.pdfUrl || paper.pdf_url,
         title: paper.title,
@@ -120,19 +88,8 @@ export function usePaperSearch() {
         citations: paper.citations || 0,
         venue: paper.venue || '',
       }
-      params.set('data', JSON.stringify(data))
 
-      const res = await fetch(`/api/researcher/search/import?${params.toString()}`, {
-        credentials: 'omit',
-        headers: _authHeaders(),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || `HTTP ${res.status}`)
-      }
-
-      const json = await res.json()
+      const json = await authMutate('/api/researcher/search/import', data)
       return json
     } catch (e) {
       error.value = e.message

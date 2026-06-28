@@ -582,11 +582,8 @@ def serve(
     agent_manager = None
     defaults = runtime_config.agents.defaults
     if defaults.agents:
-        from nanobot.agent.manager import SimpleAgentManager
-        agent_manager = SimpleAgentManager({
-            'activeAgent': defaults.active_agent or 'ai_tutor',
-            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
-        })
+        from nanobot.agent.manager import SimpleAgentManager, manager_config_from_defaults
+        agent_manager = SimpleAgentManager(manager_config_from_defaults(defaults))
 
     agent_loop = AgentLoop(
         bus=bus,
@@ -695,11 +692,8 @@ def _run_gateway(
     agent_manager = None
     defaults = config.agents.defaults
     if defaults.agents:
-        from nanobot.agent.manager import SimpleAgentManager
-        agent_manager = SimpleAgentManager({
-            'activeAgent': defaults.active_agent or 'ai_tutor',
-            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
-        })
+        from nanobot.agent.manager import SimpleAgentManager, manager_config_from_defaults
+        agent_manager = SimpleAgentManager(manager_config_from_defaults(defaults))
 
     # Create agent with cron service
     agent = AgentLoop(
@@ -1027,11 +1021,8 @@ def agent(
     agent_manager = None
     defaults = config.agents.defaults
     if defaults.agents:
-        from nanobot.agent.manager import SimpleAgentManager
-        agent_manager = SimpleAgentManager({
-            'activeAgent': defaults.active_agent or 'ai_tutor',
-            'agents': [a.model_dump(by_alias=False) for a in defaults.agents]
-        })
+        from nanobot.agent.manager import SimpleAgentManager, manager_config_from_defaults
+        agent_manager = SimpleAgentManager(manager_config_from_defaults(defaults))
 
     agent_loop = AgentLoop(
         bus=bus,
@@ -1593,12 +1584,13 @@ def migrate_db(
 @app.command()
 def agents(
     config: str = typer.Option(None, "-c", "--config", help="Config file path"),
+    role: str | None = typer.Option(None, "--role", help="Filter or switch agents for a user role"),
     action: str = typer.Argument("list", help="Action: list, switch, current"),
     agent_name: str = typer.Argument(None, help="Agent name (for switch action)"),
 ):
     """管理智能体 (list/switch/current)"""
     from nanobot.config.loader import load_config, save_config
-    from nanobot.agent.manager import SimpleAgentManager
+    from nanobot.agent.manager import SimpleAgentManager, manager_config_from_defaults
 
     config_path = Path(config).expanduser().resolve() if config else None
     cfg = load_config(config_path)
@@ -1610,17 +1602,14 @@ def agents(
         raise typer.Exit(0)
 
     # 创建智能体管理器
-    manager_config = {
-        'activeAgent': cfg.agents.defaults.active_agent or 'ai_tutor',
-        'agents': [a.model_dump() for a in cfg.agents.defaults.agents]
-    }
-    manager = SimpleAgentManager(manager_config)
+    manager = SimpleAgentManager(manager_config_from_defaults(cfg.agents.defaults))
 
     if action == "list":
         # 列出所有智能体
         console.print("\n[bold cyan]可用智能体：[/bold cyan]\n")
-        for agent in manager.list_agents():
-            active = "✓" if agent['name'] == manager.active_agent_name else " "
+        active_agent = manager.get_active_agent(role)
+        for agent in manager.list_agents(role):
+            active = "✓" if active_agent and agent['name'] == active_agent.name else " "
             console.print(f"  [{active}] [bold]{agent['display_name']}[/bold] [dim]({agent['name']})[/dim]")
             console.print(f"      {agent['description']}\n")
 
@@ -1631,23 +1620,24 @@ def agents(
             console.print("\n用法: nanobot agents switch <agent_name>")
             raise typer.Exit(1)
 
-        if manager.switch_agent(agent_name):
+        if manager.switch_agent(agent_name, role=role):
             # 更新配置文件
-            cfg.agents.defaults.active_agent = agent_name
-            save_config(cfg, config_path)
+            if not role:
+                cfg.agents.defaults.active_agent = agent_name
+                save_config(cfg, config_path)
 
             agent = manager.get_agent(agent_name)
             console.print(f"[green]✓ 已切换到：{agent.display_name}[/green]")
         else:
             console.print(f"[red]✗ 智能体不存在：{agent_name}[/red]")
             console.print("\n可用的智能体：")
-            for agent in manager.list_agents():
+            for agent in manager.list_agents(role):
                 console.print(f"  - {agent['name']}")
             raise typer.Exit(1)
 
     elif action == "current":
         # 显示当前智能体
-        agent = manager.get_active_agent()
+        agent = manager.get_active_agent(role)
         if agent:
             console.print(f"\n[bold cyan]当前智能体：[/bold cyan] {agent.display_name}")
             console.print(f"[dim]角色：[/dim] {agent.role}")

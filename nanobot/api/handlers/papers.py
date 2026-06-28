@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
-from typing import Callable
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -18,7 +15,6 @@ from ..utils import (
     http_json_response,
     parse_mutation_data,
     parse_query,
-    query_first,
 )
 
 # Upload directory for PDF files
@@ -29,13 +25,10 @@ async def handle_list_papers(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """List all papers for the current user."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-    query = parse_query(request.path)
-    user_id = query_first(query, "user_id") or ""
+    user_id = identity.get("user_id", "")
 
     papers = await storage.list_papers(user_id=user_id)
     return http_json_response({"papers": papers})
@@ -45,13 +38,11 @@ async def handle_upload_paper(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
 ) -> Response:
     """Upload a PDF paper. Expects multipart/form-data or JSON with base64."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
+    user_id = identity.get("user_id", "")
     query = parse_query(request.path)
-    user_id = query_first(query, "user_id") or ""
 
     # Parse the data parameter (JSON with base64-encoded file)
     payload = parse_mutation_data(query)
@@ -126,13 +117,10 @@ async def handle_get_paper(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
     paper_id: str,
 ) -> Response:
     """Get paper detail by ID."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
     try:
         pid = int(paper_id)
     except ValueError:
@@ -145,17 +133,63 @@ async def handle_get_paper(
     return http_json_response({"paper": paper})
 
 
+async def handle_get_paper_pdf(
+    request: WsRequest,
+    storage: StorageWrapper,
+    *,
+    identity: dict[str, str],
+    paper_id: str,
+) -> Response:
+    """Serve the PDF file for a paper."""
+    from websockets.datastructures import Headers as WsHeaders
+
+    try:
+        pid = int(paper_id)
+    except ValueError:
+        return http_error(400, "Invalid paper ID")
+
+    paper = await storage.get_paper(pid)
+    if not paper:
+        return http_error(404, "Paper not found")
+
+    file_path = paper.get("filePath", "")
+    if not file_path or not Path(file_path).exists():
+        return http_error(404, "PDF file not found on disk")
+
+    pdf_bytes = Path(file_path).read_bytes()
+    headers = WsHeaders([
+        ("Content-Type", "application/pdf"),
+        ("Content-Disposition", f'inline; filename="{paper.get("fileName", "paper.pdf")}"'),
+        ("Content-Length", str(len(pdf_bytes))),
+    ])
+    return Response(200, "OK", headers, pdf_bytes)
+
+
+async def handle_get_paper_chunks(
+    request: WsRequest,
+    storage: StorageWrapper,
+    *,
+    identity: dict[str, str],
+    paper_id: str,
+) -> Response:
+    """Get text chunks for a paper."""
+    try:
+        pid = int(paper_id)
+    except ValueError:
+        return http_error(400, "Invalid paper ID")
+
+    chunks = await storage.get_paper_chunks(pid)
+    return http_json_response({"chunks": chunks})
+
+
 async def handle_delete_paper(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
     paper_id: str,
 ) -> Response:
     """Delete a paper."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
     try:
         pid = int(paper_id)
     except ValueError:
@@ -181,13 +215,10 @@ async def handle_toggle_favorite(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
     paper_id: str,
 ) -> Response:
     """Toggle paper favorite status."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
     try:
         pid = int(paper_id)
     except ValueError:
@@ -206,13 +237,10 @@ async def handle_update_tags(
     request: WsRequest,
     storage: StorageWrapper,
     *,
-    check_token: Callable[[WsRequest], bool],
+    identity: dict[str, str],
     paper_id: str,
 ) -> Response:
     """Update paper tags."""
-    if not check_token(request):
-        return http_error(401, "Unauthorized")
-
     try:
         pid = int(paper_id)
     except ValueError:
@@ -229,3 +257,29 @@ async def handle_update_tags(
 
     await storage.update_paper(pid, {"tags": tags})
     return http_json_response({"tags": tags})
+
+
+async def handle_update_annotations(
+    request: WsRequest,
+    storage: StorageWrapper,
+    *,
+    identity: dict[str, str],
+    paper_id: str,
+) -> Response:
+    """Update paper annotations (highlights)."""
+    try:
+        pid = int(paper_id)
+    except ValueError:
+        return http_error(400, "Invalid paper ID")
+
+    query = parse_query(request.path)
+    payload = parse_mutation_data(query)
+    if isinstance(payload, Response):
+        return payload
+
+    annotations = payload.get("annotations", [])
+    if not isinstance(annotations, list):
+        return http_error(400, "annotations must be a list")
+
+    await storage.update_paper(pid, {"annotations": annotations})
+    return http_json_response({"annotations": annotations})

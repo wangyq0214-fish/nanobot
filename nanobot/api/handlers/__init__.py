@@ -1,5 +1,6 @@
 """API handlers for courses, lessons, homework, grading, question bank, papers and search."""
 
+from .analytics import handle_analytics_summary
 from .courses import (
     handle_course_detail,
     handle_course_members,
@@ -27,8 +28,11 @@ from .lessons import handle_lesson_detail, handle_lessons_list
 from .papers import (
     handle_delete_paper,
     handle_get_paper,
+    handle_get_paper_chunks,
+    handle_get_paper_pdf,
     handle_list_papers,
     handle_toggle_favorite,
+    handle_update_annotations,
     handle_update_tags,
     handle_upload_paper,
 )
@@ -43,6 +47,7 @@ from .search import handle_import_paper, handle_search_papers
 from .tutor import handle_tutor_profile
 
 __all__ = [
+    "handle_analytics_summary",
     "handle_courses_list",
     "handle_courses_create",
     "handle_courses_join",
@@ -71,8 +76,11 @@ __all__ = [
     "handle_list_papers",
     "handle_upload_paper",
     "handle_get_paper",
+    "handle_get_paper_chunks",
+    "handle_get_paper_pdf",
     "handle_delete_paper",
     "handle_toggle_favorite",
+    "handle_update_annotations",
     "handle_update_tags",
     "handle_search_papers",
     "handle_import_paper",

@@ -1,8 +1,5 @@
 <template>
-  <div class="app">
-    <StudentNav active-tab="courses" />
-
-    <div class="main-content">
+  <div class="main-content">
       <!-- Back + Header -->
       <button class="back-btn" @click="router.push('/student/courses')">← 返回课程列表</button>
       <div v-if="course" class="course-header">
@@ -49,8 +46,11 @@
               </span>
             </div>
             <div class="hw-meta">
-              <span v-if="hw.deadline">截止: {{ formatDate(hw.deadline) }}</span>
-              <span>{{ hw.questions?.length || 0 }} 题 · {{ hw.totalPoints }} 分</span>
+              <span v-if="hw.deadline">截止时间: {{ formatDate(hw.deadline) }}</span>
+              <span v-if="hw.deadline">•</span>
+              <span>{{ hw.questions?.length || 0 }} 题</span>
+              <span>•</span>
+              <span>{{ hw.totalPoints }} 分</span>
             </div>
           </div>
 
@@ -114,7 +114,6 @@
         </div>
       </div>
     </div>
-  </div>
 </template>
 
 <script setup>
@@ -125,7 +124,6 @@ import { marked } from 'marked'
 import { useAuth } from '../../composables/useAuth.js'
 import { useCourse } from '../../composables/useCourse.js'
 import { useGateway } from '../../composables/useGateway.js'
-import StudentNav from '../../components/StudentNav.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -155,11 +153,10 @@ function renderMd(text) { return marked.parse(text || '') }
 function formatDate(d) { if (!d) return '-'; return new Date(d).toLocaleDateString('zh-CN') }
 
 async function loadAll() {
-  const t = getToken()
   await Promise.all([
-    fetchCourseDetail(courseId, t),
-    fetchLessons(courseId, t),
-    fetchHomeworkList(courseId, t),
+    fetchCourseDetail(courseId),
+    fetchLessons(courseId),
+    fetchHomeworkList(courseId),
   ])
   for (const hw of homeworkList.value) {
     if (!answers[hw.hwId]) {
@@ -183,7 +180,7 @@ async function toggleLesson(lessonId) {
   expandedLesson.value = lessonId
   if (!lessonPlans[lessonId]) {
     try {
-      const detail = await fetchLessonDetail(courseId, lessonId, getToken())
+      const detail = await fetchLessonDetail(courseId, lessonId)
       lessonPlans[lessonId] = detail?.planContent || ''
     } catch { lessonPlans[lessonId] = '(加载失败)' }
   }
@@ -215,8 +212,8 @@ async function handleSubmit(hw) {
   submitting.value = hw.hwId
   submitError[hw.hwId] = ''
   try {
-    await submitHomework(courseId, hw.hwId, hwAnswers, user.value.role, user.value.userId, getToken())
-    const subs = await fetchSubmissions(courseId, hw.hwId, getToken())
+    await submitHomework(courseId, hw.hwId, hwAnswers)
+    const subs = await fetchSubmissions(courseId, hw.hwId)
     const mySub = subs.find(s => s.studentId === user.value?.userId)
     if (mySub) submissions.value[hw.hwId] = mySub
   } catch (e) {
@@ -233,78 +230,63 @@ onMounted(async () => {
 </script>
 
 <style>
-/* ========== 全局主题变量 ========== */
 :root {
-  --bg-root: #f4f3f9;
-  --bg-card: rgba(255, 255, 255, 0.55);
-  --accent: #6b5df0;
-  --accent-deep: #5a4ad0;
-  --accent-soft: rgba(107, 93, 240, 0.09);
-  --accent-glow: rgba(107, 93, 240, 0.22);
-  --border-light: rgba(0, 0, 0, 0.08);
-  --border-medium: rgba(0, 0, 0, 0.14);
-  --border-active: #6b5df0;
-  --text-primary: #1a1828;
-  --text-secondary: #514e68;
-  --text-muted: #85829e;
-  --divider: rgba(0, 0, 0, 0.06);
+  --bg-root: #ffffff;
+  --bg-card: #ffffff;
+  --bg-subtle: #f8f9f8;
+  --accent: #121212;
+  --accent-deep: #121212;
+  --accent-soft: rgba(18,18,18,0.04);
+  --border-light: #f0f0f0;
+  --border-medium: #eaeaea;
+  --border-hover: #121212;
+  --text-primary: #121212;
+  --text-secondary: #4a534c;
+  --text-muted: #9ca3af;
+  --divider: #f0f0f0;
   --danger: #ef4444;
   --success: #0d9488;
-  --warning: #f39c12;
+  --warning: #cda052;
+  --tag-warn-bg: #fbf7ee;
+  --tag-warn-text: #cda052;
+  --tag-warn-border: #f5ebd3;
+  --serif: 'Noto Serif SC', 'PingFang SC', serif;
 }
-
 body.dark {
-  --bg-root: #080810;
-  --bg-card: rgba(18, 19, 34, 0.50);
-  --accent: #8b70ff;
-  --accent-deep: #6b50e0;
-  --accent-soft: rgba(139, 112, 255, 0.12);
-  --accent-glow: rgba(139, 112, 255, 0.30);
-  --border-light: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.16);
-  --border-active: #8b70ff;
-  --text-primary: #e2e0f4;
-  --text-secondary: #a09cb8;
-  --text-muted: #6d6a88;
-  --divider: rgba(255, 255, 255, 0.07);
+  --bg-root: #0a0a0a;
+  --bg-card: #141414;
+  --bg-subtle: #1a1a1a;
+  --accent: #e0e0e0;
+  --accent-deep: #ffffff;
+  --accent-soft: rgba(255,255,255,0.05);
+  --border-light: #222;
+  --border-medium: #2a2a2a;
+  --border-hover: #e0e0e0;
+  --text-primary: #e5e5e5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666;
+  --divider: #222;
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #d4a853;
+  --tag-warn-bg: rgba(205,160,82,0.1);
+  --tag-warn-text: #d4a853;
+  --tag-warn-border: rgba(205,160,82,0.2);
 }
 </style>
 
 <style scoped>
 /* ========== 布局 ========== */
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 6px 10px;
-  gap: 8px;
-  background: var(--bg-root);
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: var(--text-primary);
-  transition: background 0.4s, color 0.4s;
-  overflow: hidden;
-}
-
 .main-content {
   flex: 1;
   overflow-y: auto;
-  margin: 0;
   padding: 24px 36px;
   background: var(--bg-card);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1.8px solid var(--border-active);
   border-radius: 20px;
-  box-shadow: 0 0 20px var(--accent-glow), 0 0 44px var(--accent-soft);
+  margin: 6px 10px;
   box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--border-light) transparent;
-  position: relative;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-.main-content:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 28px var(--accent-glow), 0 0 56px var(--accent-soft);
 }
 .main-content::-webkit-scrollbar { width: 4px; }
 .main-content::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
@@ -313,8 +295,8 @@ body.dark {
 .back-btn {
   background: none;
   border: none;
-  color: var(--accent);
-  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
   cursor: pointer;
   margin-bottom: 16px;
   padding: 4px 0;
@@ -323,82 +305,79 @@ body.dark {
   gap: 4px;
   transition: color 0.2s;
 }
-.back-btn:hover { color: var(--accent-deep); }
+.back-btn:hover { color: var(--text-primary); }
 
 /* ========== 课程头部 ========== */
 .course-header {
   margin-bottom: 24px;
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1.8px solid var(--accent);
-  border-radius: 14px;
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
   padding: 20px;
-  box-shadow: 0 0 16px var(--accent-soft);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.002);
 }
 .course-header h2 {
   margin: 0 0 10px;
-  font-size: 1.4rem;
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: 0.03em;
 }
 .course-tags {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .tag {
-  background: rgba(107, 93, 240, 0.1);
-  color: var(--accent);
-  font-size: 0.72rem;
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  font-size: 0.65rem;
   font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--accent);
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 .teacher-tag {
-  background: rgba(13, 148, 136, 0.1);
-  color: var(--success);
-  border-color: var(--success);
+  background: var(--tag-warn-bg);
+  color: var(--tag-warn-text);
+  border: 1px solid var(--tag-warn-border);
 }
 
 /* ========== 标签栏 ========== */
 .tab-bar {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid var(--border-medium);
+  border-bottom: 1px solid var(--divider);
   margin-bottom: 20px;
 }
 .tab-item {
-  padding: 10px 20px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  padding: 8px 18px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  margin-bottom: -1px;
   transition: all 0.2s;
 }
 .tab-item:hover { color: var(--text-primary); }
 .tab-item.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-bottom-color: var(--text-primary);
 }
 
 /* ========== 课时卡片 ========== */
 .lesson-card {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1.8px solid var(--accent);
-  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
   margin-bottom: 10px;
   overflow: hidden;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 12px var(--accent-soft);
+  transition: border-color 0.3s;
 }
 .lesson-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 4px 20px var(--accent-glow);
+  border-color: var(--border-hover);
 }
 .lesson-header {
   display: flex;
@@ -409,19 +388,19 @@ body.dark {
 }
 .lesson-header:hover { background: var(--accent-soft); }
 .lesson-order {
-  font-size: 0.8rem;
-  color: var(--accent);
-  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
   min-width: 30px;
 }
 .lesson-title {
   flex: 1;
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: 0.85rem;
   color: var(--text-primary);
 }
 .lesson-toggle {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
 }
 .lesson-body {
@@ -430,11 +409,11 @@ body.dark {
 }
 .lesson-desc {
   color: var(--text-secondary);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   margin: 10px 0;
 }
 .plan-content {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   line-height: 1.7;
   color: var(--text-primary);
 }
@@ -442,14 +421,15 @@ body.dark {
 /* ========== 作业卡片 ========== */
 .hw-card {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1.8px solid var(--accent);
-  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
   margin-bottom: 10px;
   overflow: hidden;
-  transition: all 0.3s;
-  box-shadow: 0 0 12px var(--accent-soft);
+  transition: border-color 0.3s;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.002);
+}
+.hw-card:hover {
+  border-color: var(--border-hover);
 }
 .hw-header {
   padding: 14px 18px;
@@ -463,33 +443,36 @@ body.dark {
   margin-bottom: 4px;
 }
 .hw-title {
-  font-weight: 600;
-  font-size: 0.92rem;
+  font-weight: 700;
+  font-size: 0.82rem;
   color: var(--text-primary);
 }
 .hw-status {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   padding: 2px 10px;
-  border-radius: 20px;
+  border-radius: 10px;
   font-weight: 600;
 }
 .hw-status.pending {
-  background: var(--accent-soft);
-  color: var(--text-muted);
+  background: var(--tag-warn-bg);
+  color: var(--tag-warn-text);
+  border: 1px solid var(--tag-warn-border);
 }
 .hw-status.submitted {
-  background: rgba(245, 158, 12, 0.1);
-  color: var(--warning);
+  background: var(--tag-warn-bg);
+  color: var(--tag-warn-text);
+  border: 1px solid var(--tag-warn-border);
 }
 .hw-status.graded {
-  background: rgba(13, 148, 136, 0.1);
+  background: rgba(13, 148, 136, 0.08);
   color: var(--success);
 }
 .hw-meta {
   display: flex;
-  gap: 16px;
-  font-size: 0.78rem;
-  color: var(--text-secondary);
+  gap: 12px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: monospace;
 }
 .hw-body {
   padding: 0 18px 16px;
@@ -508,14 +491,13 @@ body.dark {
   gap: 4px;
 }
 .score-num {
-  font-family: 'Playfair Display', 'Noto Serif SC', serif;
+  font-family: var(--serif);
   font-size: 2.2rem;
-  font-weight: 700;
-  color: var(--accent);
-  text-shadow: 0 0 20px var(--accent-glow);
+  font-weight: 600;
+  color: var(--text-primary);
 }
 .score-total {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
 }
 
@@ -524,32 +506,32 @@ body.dark {
   margin: 12px 0;
 }
 .q-label {
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: var(--text-primary);
   margin: 0 0 8px;
 }
 .q-points {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 .q-type-badge {
   display: inline-block;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(107, 93, 240, 0.1);
-  color: var(--accent);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
   margin-bottom: 8px;
   font-weight: 600;
 }
 .answer-input {
   width: 100%;
   padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1.5px solid var(--border-medium);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   outline: none;
   resize: vertical;
   box-sizing: border-box;
@@ -557,94 +539,92 @@ body.dark {
   color: var(--text-primary);
   transition: border 0.2s;
 }
-.dark .answer-input { background: rgba(20, 20, 35, 0.6); }
 .answer-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  border-color: var(--border-hover);
 }
 
 /* 选择题 */
 .choice-options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .choice-option {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border: 1.5px solid var(--border-medium);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   color: var(--text-secondary);
 }
 .choice-option:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
   background: var(--accent-soft);
 }
 .choice-option.selected {
-  border-color: var(--accent);
-  background: rgba(107, 93, 240, 0.1);
+  border-color: var(--border-hover);
+  background: var(--accent-soft);
   color: var(--text-primary);
 }
 .choice-option input[type="radio"] { display: none; }
 .opt-key {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--text-primary);
   min-width: 20px;
 }
-.opt-text { font-size: 0.88rem; }
+.opt-text { font-size: 0.82rem; }
 
 /* 判断题 */
 .tf-options {
   display: flex;
-  gap: 12px;
+  gap: 10px;
 }
 .tf-option {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  border: 1.5px solid var(--border-medium);
+  border: 1px solid var(--border-light);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
   color: var(--text-secondary);
 }
 .tf-option:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
   background: var(--accent-soft);
 }
 .tf-option.selected {
-  border-color: var(--accent);
-  background: rgba(107, 93, 240, 0.1);
+  border-color: var(--border-hover);
+  background: var(--accent-soft);
   color: var(--text-primary);
 }
 .tf-option input[type="radio"] { display: none; }
 
 /* 已批改答案 */
 .graded-answer {
-  background: var(--bg-root);
+  background: var(--bg-subtle);
   padding: 12px;
   border-radius: 8px;
   margin-top: 6px;
   border: 1px solid var(--border-light);
 }
 .answer-label {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   margin: 0 0 4px;
 }
 .answer-text {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   margin: 0 0 6px;
   color: var(--text-primary);
 }
 .feedback-text {
-  font-size: 0.82rem;
-  color: var(--accent);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
   margin: 0;
   font-style: italic;
   font-weight: 500;
@@ -657,31 +637,28 @@ body.dark {
 }
 .error-text {
   color: var(--danger);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   margin-top: 8px;
 }
 
 /* 按钮 */
 .btn-primary {
   padding: 10px 24px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 10px;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 14px var(--accent-glow);
   transition: all 0.3s;
 }
 .btn-primary:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
-  box-shadow: none;
 }
 .btn-primary:not(:disabled):hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px var(--accent-glow);
+  background: var(--accent-deep);
 }
 
 /* 空状态 */
@@ -689,8 +666,9 @@ body.dark {
   text-align: center;
   padding: 40px;
   color: var(--text-muted);
+  font-size: 0.8rem;
   background: var(--bg-card);
   border-radius: 12px;
-  border: 1px dashed var(--border-medium);
+  border: 1px dashed var(--border-light);
 }
 </style>
