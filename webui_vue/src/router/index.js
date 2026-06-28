@@ -87,6 +87,11 @@ const routes = [
         name: 'StudentCourseDetail',
         component: () => import('../pages/student/StudentCourseDetail.vue'),
       },
+      {
+        path: 'courses/:courseId/homework/:hwId',
+        name: 'HomeworkAnswer',
+        component: () => import('../pages/student/HomeworkAnswer.vue'),
+      },
     ],
   },
   // ===== Researcher pages (shared nav layout) =====

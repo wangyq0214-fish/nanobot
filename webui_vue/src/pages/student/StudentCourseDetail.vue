@@ -38,7 +38,7 @@
       <div v-if="activeTab === 'homework'" class="tab-content">
         <div v-if="homeworkList.length === 0" class="empty-hint">暂无作业</div>
         <div v-for="hw in homeworkList" :key="hw.hwId" class="hw-card">
-          <div class="hw-header" @click="toggleHomework(hw.hwId)">
+          <div class="hw-header" @click="handleHomeworkClick(hw)">
             <div class="hw-title-row">
               <span class="hw-title">{{ hw.title }}</span>
               <span class="hw-status" :class="getHwStatus(hw.hwId)">
@@ -54,8 +54,8 @@
             </div>
           </div>
 
-          <!-- Expanded: questions + submit -->
-          <div v-if="expandedHw === hw.hwId" class="hw-body">
+          <!-- Expanded: questions + submit (only for graded) -->
+          <div v-if="getHwStatus(hw.hwId) === 'graded' && expandedHw === hw.hwId" class="hw-body">
             <div v-if="getHwStatus(hw.hwId) === 'graded'" class="graded-result">
               <div class="score-display">
                 <span class="score-num">{{ getSubmission(hw.hwId)?.score || 0 }}</span>
@@ -188,6 +188,17 @@ async function toggleLesson(lessonId) {
 
 function toggleHomework(hwId) {
   expandedHw.value = expandedHw.value === hwId ? null : hwId
+}
+
+function handleHomeworkClick(hw) {
+  const status = getHwStatus(hw.hwId)
+  if (status === 'graded') {
+    // 已批改：展开显示结果
+    toggleHomework(hw.hwId)
+  } else {
+    // 未提交或已提交未批改：跳转到答题页面
+    router.push(`/student/courses/${courseId}/homework/${hw.hwId}`)
+  }
 }
 
 function getHwStatus(hwId) {
