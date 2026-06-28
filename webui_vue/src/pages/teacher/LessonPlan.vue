@@ -184,7 +184,7 @@ import { useSource } from '../../composables/useSource.js'
 import { useAuth } from '../../composables/useAuth.js'
 import { useRouter } from 'vue-router'
 
-const { connected, connectionError, connect: connectGateway, sendMessage: gwSend, disconnect: disconnectGateway, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource } = useGateway()
+const { connected, connectionError, currentChatId, connect: connectGateway, sendMessage: gwSend, disconnect: disconnectGateway, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource } = useGateway()
 const { sessions, loading: sessionsLoading, error: sessionsError, activeKey: activeSessionKey, fetchSessions, fetchSessionMessages, deleteSession: deleteSessionApi, setActive } = useSessions()
 const { fetchSourceFiles, fetchSourceFile } = useSource()
 
@@ -2888,6 +2888,43 @@ async function selectSourceFile(file) {
     console.warn('Failed to load source file:', e)
   }
 }
+
+// ====== Watch for session switch from TeacherLayout ======
+watch(currentChatId, async (chatId, oldChatId) => {
+  if (!chatId || chatId === oldChatId) return
+  // Find the matching session to get its key
+  const session = sessions.value.find(s => s.chatId === chatId)
+  if (session) {
+    setActive(session.key)
+  }
+  // Setup stream handler for new chat
+  setupStreamHandler(chatId)
+  // Load historical messages
+  try {
+    const sessionKey = session?.key || `websocket:${chatId}`
+    const token = getToken()
+    const data = await fetchSessionMessages(sessionKey, user.value?.role, user.value?.userId, token)
+    if (data?.messages?.length) {
+      chatMessages.value = data.messages
+        .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content && m.content.trim())
+        .map(m => ({
+          role: m.role === 'assistant' ? 'ai' : 'user',
+          text: renderMarkdown(m.content),
+          time: m.timestamp
+            ? new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+            : '',
+        }))
+    } else {
+      chatMessages.value = [
+        { role: 'ai', text: '您好！我是 Nanobot 助教，可以帮您生成和优化教案。<br><br>请告诉我您需要的 <strong>学科、年级和课题</strong>，我就可以开始工作了。', time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) },
+      ]
+    }
+  } catch (e) {
+    console.error('[LessonPlan] Failed to load session messages:', e)
+  }
+  leftMode.value = 'chat'
+  scrollChat()
+}, { immediate: false })
 
 // ====== Lifecycle ======
 onMounted(() => {
