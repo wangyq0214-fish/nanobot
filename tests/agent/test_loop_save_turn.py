@@ -90,6 +90,56 @@ def test_save_turn_keeps_tool_results_under_16k() -> None:
     assert session.messages[0]["content"] == content
 
 
+def test_save_turn_uses_user_display_content_metadata() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:user-display-content")
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "user",
+            "content": "clarification answers",
+            "metadata": {
+                "mode": "deep",
+                "phase": "clarified",
+                "display_content": "original research question",
+            },
+        }],
+        skip=0,
+    )
+
+    assert session.messages[0]["content"] == "original research question"
+    assert session.messages[0]["metadata"]["display_content"] == "original research question"
+
+
+@pytest.mark.asyncio
+async def test_publish_realtime_trace_includes_reasoning_with_answer() -> None:
+    loop = _mk_loop()
+    loop.bus = MagicMock()
+    loop.bus.publish_outbound = AsyncMock()
+
+    await loop._publish_realtime_trace(
+        "websocket",
+        "chat-1",
+        [
+            {
+                "role": "assistant",
+                "content": "final answer",
+                "reasoning_content": "visible reasoning trace",
+            }
+        ],
+    )
+
+    loop.bus.publish_outbound.assert_awaited_once()
+    outbound = loop.bus.publish_outbound.await_args.args[0]
+    assert outbound.content == "visible reasoning trace"
+    assert outbound.metadata == {
+        "_trace_message": True,
+        "trace_role": "assistant",
+        "trace_reasoning": True,
+    }
+
+
 def test_restore_runtime_checkpoint_rehydrates_completed_and_pending_tools() -> None:
     loop = _mk_loop()
     session = Session(

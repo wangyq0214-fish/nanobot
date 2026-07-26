@@ -1087,8 +1087,9 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_effort: str | None = None,
         tool_choice: str | dict[str, Any] | None = None,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+        on_reasoning_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
-        idle_timeout_s = int(os.environ.get("NANOBOT_STREAM_IDLE_TIMEOUT_S", "90"))
+        idle_timeout_s = int(os.environ.get("NANOBOT_STREAM_IDLE_TIMEOUT_S", "600"))
         try:
             if self._should_use_responses_api(model, reasoning_effort):
                 try:
@@ -1113,6 +1114,7 @@ class OpenAICompatProvider(LLMProvider):
                     content, tool_calls, finish_reason, usage, reasoning_content = await consume_sdk_stream(
                         _timed_stream(),
                         on_content_delta,
+                        on_reasoning_delta,
                     )
                     self._record_responses_success(model, reasoning_effort)
                     return LLMResponse(
@@ -1150,10 +1152,30 @@ class OpenAICompatProvider(LLMProvider):
                 except StopAsyncIteration:
                     break
                 chunks.append(chunk)
-                if on_content_delta and chunk.choices:
-                    text = getattr(chunk.choices[0].delta, "content", None)
-                    if text:
+                chunk_map = self._maybe_mapping(chunk)
+                if chunk_map is not None:
+                    choices = chunk_map.get("choices") or []
+                    delta = self._maybe_mapping((choices[0] or {}).get("delta")) if choices else None
+                    if delta:
+                        text = self._extract_text_content(delta.get("content"))
+                        if on_content_delta and text:
+                            await on_content_delta(text)
+                        reasoning = self._extract_text_content(delta.get("reasoning_content"))
+                        if not reasoning:
+                            reasoning = self._extract_text_content(delta.get("reasoning"))
+                        if on_reasoning_delta and reasoning:
+                            await on_reasoning_delta(reasoning)
+                    continue
+                if getattr(chunk, "choices", None):
+                    delta = getattr(chunk.choices[0], "delta", None)
+                    text = getattr(delta, "content", None) if delta else None
+                    if on_content_delta and text:
                         await on_content_delta(text)
+                    reasoning = getattr(delta, "reasoning_content", None) if delta else None
+                    if not reasoning and delta:
+                        reasoning = getattr(delta, "reasoning", None)
+                    if on_reasoning_delta and reasoning:
+                        await on_reasoning_delta(str(reasoning))
             return self._parse_chunks(chunks)
         except asyncio.TimeoutError:
             return LLMResponse(

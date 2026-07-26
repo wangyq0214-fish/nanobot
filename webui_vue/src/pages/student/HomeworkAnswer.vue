@@ -30,6 +30,15 @@
 
             <!-- 题目列表 -->
             <div v-for="qi in group.indices" :key="qi" class="question-item" :id="`question-${qi}`">
+              <!-- 题目操作栏 -->
+              <div class="question-actions">
+                <button class="fav-btn" @click="handleFavoriteQuestion(questions[qi])" title="收藏到我的题库">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  收藏
+                </button>
+              </div>
               <!-- 选择题 -->
               <div v-if="questions[qi].type === 'choice'" class="choice-question">
                 <p class="question-text">
@@ -158,6 +167,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '../../composables/useAuth.js'
 import { useCourse } from '../../composables/useCourse.js'
 import { useGateway } from '../../composables/useGateway.js'
+import { useMyResources } from '../../composables/useMyResources.js'
 
 const router = useRouter()
 const route = useRoute()
@@ -167,6 +177,7 @@ const {
   fetchCourseDetail, fetchHomeworkList, submitHomework,
 } = useCourse()
 const { connect: connectGateway, connected, getToken } = useGateway()
+const { favoriteQuestion } = useMyResources()
 
 const courseId = route.params.courseId
 const hwId = route.params.hwId
@@ -249,6 +260,15 @@ function scrollToQuestion(qi) {
   const el = document.getElementById(`question-${qi}`)
   if (el) {
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+async function handleFavoriteQuestion(question) {
+  try {
+    await favoriteQuestion(courseId, question.id)
+    alert('已收藏到我的题库')
+  } catch (e) {
+    alert('收藏失败: ' + (e.message || '未知错误'))
   }
 }
 
@@ -429,6 +449,39 @@ onBeforeUnmount(() => {
 /* 题目项 */
 .question-item {
   margin-bottom: 24px;
+  position: relative;
+}
+
+/* 题目操作栏 */
+.question-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.fav-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.fav-btn:hover {
+  background: #f8f8f8;
+  border-color: #ccc;
+  color: #121212;
+}
+
+.fav-btn:active {
+  background: #f0f0f0;
 }
 
 /* 选择题 */

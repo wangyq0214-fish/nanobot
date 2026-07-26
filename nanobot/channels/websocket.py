@@ -47,10 +47,16 @@ from nanobot.api.handlers import (
     handle_courses_create,
     handle_courses_join,
     handle_courses_list,
+    handle_create_latex_compile_record,
+    handle_create_research_result,
+    handle_create_research_project,
     handle_delete_paper,
+    handle_delete_research_result,
     handle_get_paper,
     handle_get_paper_chunks,
     handle_get_paper_pdf,
+    handle_get_latex_draft,
+    handle_get_research_result,
     handle_homework_create,
     handle_homework_delete,
     handle_homework_detail,
@@ -63,18 +69,37 @@ from nanobot.api.handlers import (
     handle_lesson_detail,
     handle_lessons_list,
     handle_list_papers,
+    handle_list_latex_draft_versions,
+    handle_list_latex_drafts,
+    handle_list_research_attachments,
+    handle_list_research_projects,
+    handle_list_research_results,
     handle_question_bank_add,
     handle_question_bank_batch_add,
     handle_question_bank_delete,
     handle_question_bank_list,
     handle_question_bank_update,
+    handle_save_latex_draft,
     handle_search_papers,
+    handle_student_categories_list,
+    handle_student_category_create,
+    handle_student_category_delete,
+    handle_student_category_update,
+    handle_student_resource_categorize,
+    handle_student_resource_create,
+    handle_student_resource_delete,
+    handle_student_resource_favorite,
+    handle_student_resource_update,
+    handle_student_resource_upload,
+    handle_student_resources_list,
     handle_submission_detail,
     handle_toggle_favorite,
     handle_tutor_profile,
     handle_update_annotations,
+    handle_update_research_result,
     handle_update_tags,
     handle_upload_paper,
+    handle_upload_research_attachment,
 )
 from nanobot.api.router import Router
 from nanobot.api.utils import (
@@ -614,6 +639,54 @@ class WebSocketChannel(BaseChannel):
             handle_tutor_profile, is_async=True, name="tutor-profile",
         )
 
+        # -- Student resources ---------------------------------------------
+        r.add(
+            "/api/student/resources/create",
+            handle_student_resource_create, is_async=True, name="student-resource-create",
+        )
+        r.add(
+            "/api/student/resources/favorite",
+            handle_student_resource_favorite, is_async=True, name="student-resource-favorite",
+        )
+        r.add(
+            r"/api/student/resources/(?P<resource_id>\d+)/update",
+            handle_student_resource_update, is_async=True, name="student-resource-update",
+        )
+        r.add(
+            r"/api/student/resources/(?P<resource_id>\d+)/delete",
+            handle_student_resource_delete, is_async=True, name="student-resource-delete",
+        )
+        r.add(
+            "/api/student/resources/upload",
+            handle_student_resource_upload, is_async=True, name="student-resource-upload",
+        )
+        r.add(
+            "/api/student/resources",
+            handle_student_resources_list, is_async=True, name="student-resources-list",
+        )
+        r.add(
+            r"/api/student/resources/(?P<resource_id>\d+)/categorize",
+            handle_student_resource_categorize, is_async=True, name="student-resource-categorize",
+        )
+
+        # -- Student categories --------------------------------------------
+        r.add(
+            "/api/student/categories/create",
+            handle_student_category_create, is_async=True, name="student-category-create",
+        )
+        r.add(
+            r"/api/student/categories/(?P<category_id>\d+)/update",
+            handle_student_category_update, is_async=True, name="student-category-update",
+        )
+        r.add(
+            r"/api/student/categories/(?P<category_id>\d+)/delete",
+            handle_student_category_delete, is_async=True, name="student-category-delete",
+        )
+        r.add(
+            "/api/student/categories",
+            handle_student_categories_list, is_async=True, name="student-categories-list",
+        )
+
         # -- Analytics -----------------------------------------------------
         r.add(
             "/api/analytics/summary",
@@ -666,6 +739,66 @@ class WebSocketChannel(BaseChannel):
         r.add(
             r"/api/researcher/search",
             handle_search_papers, is_async=True, name="search-papers",
+        )
+
+        # -- Researcher: Research results ----------------------------------
+        r.add(
+            r"/api/researcher/results/create",
+            handle_create_research_result, is_async=True, name="result-create",
+        )
+        r.add(
+            r"/api/researcher/results/(?P<result_id>\d+)/delete",
+            handle_delete_research_result, is_async=True, name="result-delete",
+        )
+        r.add(
+            r"/api/researcher/results/(?P<result_id>\d+)/update",
+            handle_update_research_result, is_async=True, name="result-update",
+        )
+        r.add(
+            r"/api/researcher/results/(?P<result_id>\d+)",
+            handle_get_research_result, is_async=True, name="result-detail",
+        )
+        r.add(
+            r"/api/researcher/results",
+            handle_list_research_results, is_async=True, name="result-list",
+        )
+
+        # -- Researcher: workspace projects and uploaded context ------------
+        r.add(
+            r"/api/researcher/projects/create",
+            handle_create_research_project, is_async=True, name="research-project-create",
+        )
+        r.add(
+            r"/api/researcher/projects",
+            handle_list_research_projects, is_async=True, name="research-project-list",
+        )
+        r.add(
+            r"/api/researcher/latex-drafts/save",
+            handle_save_latex_draft, is_async=True, name="latex-draft-save",
+        )
+        r.add(
+            r"/api/researcher/latex-drafts/compile-records/create",
+            handle_create_latex_compile_record, is_async=True, name="latex-compile-record-create",
+        )
+        r.add(
+            r"/api/researcher/latex-drafts/(?P<draft_id>\d+)/versions",
+            handle_list_latex_draft_versions, is_async=True, name="latex-draft-versions",
+        )
+        r.add(
+            r"/api/researcher/latex-drafts/(?P<draft_id>\d+)",
+            handle_get_latex_draft, is_async=True, name="latex-draft-detail",
+        )
+        r.add(
+            r"/api/researcher/latex-drafts",
+            handle_list_latex_drafts, is_async=True, name="latex-draft-list",
+        )
+        r.add(
+            r"/api/researcher/attachments/upload",
+            handle_upload_research_attachment, is_async=True, name="research-attachment-upload",
+        )
+        r.add(
+            r"/api/researcher/attachments",
+            handle_list_research_attachments, is_async=True, name="research-attachment-list",
         )
 
         # -- Media fetch (sync, HMAC-signed URLs, self-authenticating) ------
@@ -767,6 +900,7 @@ class WebSocketChannel(BaseChannel):
         # Security: reject path traversal
         if ".." in file_path:
             return http_error(400, "Invalid path")
+
         result = self._resolve_source_dir(identity)
         if isinstance(result, Response):
             return result
@@ -875,7 +1009,13 @@ class WebSocketChannel(BaseChannel):
             safe_key = SessionManager.safe_key(full_key)
             session_file = user_sessions_dir / f"{safe_key}.jsonl"
             if not session_file.exists():
-                return http_error(404, "session not found")
+                # New session without messages yet — return empty list
+                return http_json_response({
+                    "key": full_key,
+                    "created_at": None,
+                    "updated_at": None,
+                    "messages": [],
+                })
             # Read JSONL file directly
             try:
                 messages = []
@@ -1420,7 +1560,9 @@ class WebSocketChannel(BaseChannel):
                 content = _parse_inbound_payload(raw)
                 if content is None:
                     continue
-                msg_meta = {"remote": getattr(connection, "remote_address", None)}
+                msg_meta = {
+                    "remote": getattr(connection, "remote_address", None),
+                }
                 msg_meta.update(conn_meta)
                 await self._handle_message(
                     sender_id=client_id,
@@ -1566,7 +1708,15 @@ class WebSocketChannel(BaseChannel):
         # Mark intermediate agent breadcrumbs (tool-call hints, generic
         # progress strings) so WS clients can render them as subordinate
         # trace rows rather than conversational replies.
-        if msg.metadata.get("_tool_hint"):
+        if msg.metadata.get("_trace_message"):
+            payload["kind"] = "trace"
+            if msg.metadata.get("trace_role"):
+                payload["role"] = msg.metadata.get("trace_role")
+            if msg.metadata.get("trace_name"):
+                payload["name"] = msg.metadata.get("trace_name")
+            if msg.metadata.get("trace_reasoning") is not None:
+                payload["reasoning"] = bool(msg.metadata.get("trace_reasoning"))
+        elif msg.metadata.get("_tool_hint"):
             payload["kind"] = "tool_hint"
         elif msg.metadata.get("_progress"):
             payload["kind"] = "progress"
@@ -1596,6 +1746,7 @@ class WebSocketChannel(BaseChannel):
         if meta.get("_stream_id") is not None:
             body["stream_id"] = meta["_stream_id"]
         raw = json.dumps(body, ensure_ascii=False)
-        logger.debug("[stream] Sending to {} connections: {}", len(conns), body.get("event"))
+        if meta.get("_stream_end"):
+            logger.debug("[stream] Sending to {} connections: {}", len(conns), body.get("event"))
         for connection in conns:
             await self._safe_send_to(connection, raw, label=" stream ")

@@ -92,6 +92,11 @@ const routes = [
         name: 'HomeworkAnswer',
         component: () => import('../pages/student/HomeworkAnswer.vue'),
       },
+      {
+        path: 'my-resources',
+        name: 'MyResources',
+        component: () => import('../pages/student/MyResources.vue'),
+      },
     ],
   },
   // ===== Researcher pages (shared nav layout) =====

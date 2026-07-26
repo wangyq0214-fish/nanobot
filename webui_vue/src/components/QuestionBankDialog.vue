@@ -281,6 +281,11 @@
               <span class="qb-q-pts">{{ q.points }}分</span>
               <span v-if="q.source === 'ai'" class="qb-q-ai">AI</span>
               <div class="qb-q-actions">
+                <button class="qb-q-fav" @click.stop="handleFavorite(q)" title="收藏到我的题库">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </button>
                 <button class="qb-q-edit" @click.stop="handleEdit(q)" title="编辑">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
@@ -384,6 +389,7 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCourse } from '../composables/useCourse.js'
 import { useGateway } from '../composables/useGateway.js'
+import { useMyResources } from '../composables/useMyResources.js'
 
 const props = defineProps({
   user: { type: Object, default: null },
@@ -393,6 +399,7 @@ const emit = defineEmits(['close', 'select', 'updated'])
 const route = useRoute()
 const { fetchQuestionBank, deleteFromQuestionBank, addToQuestionBank, updateQuestionBank } = useCourse()
 const { getToken, sendAiGenerateQuestions } = useGateway()
+const { favoriteQuestion } = useMyResources()
 
 const courseId = route.params.courseId
 const loading = ref(true)
@@ -491,6 +498,15 @@ async function handleAddQuestion() {
     showAddForm.value = false
   } catch (e) {
     alert('添加失败: ' + (e.message || '未知错误'))
+  }
+}
+
+async function handleFavorite(q) {
+  try {
+    await favoriteQuestion(courseId, q.id)
+    alert('已收藏到我的题库')
+  } catch (e) {
+    alert('收藏失败: ' + (e.message || '未知错误'))
   }
 }
 

@@ -366,6 +366,52 @@ class StorageWrapper:
         """Delete a resource."""
         return await self.storage.delete_resource(resource_id)
 
+    # Student resource operations
+    async def create_student_resource(self, resource_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student resource."""
+        return await self.storage.create_student_resource(resource_data)
+
+    async def get_student_resource(self, resource_id: int) -> Optional[Dict[str, Any]]:
+        """Get student resource by ID."""
+        return await self.storage.get_student_resource(resource_id)
+
+    async def delete_student_resource(self, resource_id: int, student_id: str) -> bool:
+        """Delete student resource."""
+        return await self.storage.delete_student_resource(resource_id, student_id)
+
+    async def list_student_resources(self, student_id: str, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List student resources."""
+        return await self.storage.list_student_resources(student_id, resource_type)
+
+    async def update_student_resource(self, resource_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student resource."""
+        return await self.storage.update_student_resource(resource_id, student_id, update_data)
+
+    # Student category operations
+    async def create_student_category(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student category."""
+        return await self.storage.create_student_category(category_data)
+
+    async def get_student_category(self, category_id: int) -> Optional[Dict[str, Any]]:
+        """Get student category by ID."""
+        return await self.storage.get_student_category(category_id)
+
+    async def delete_student_category(self, category_id: int, student_id: str) -> bool:
+        """Delete student category."""
+        return await self.storage.delete_student_category(category_id, student_id)
+
+    async def list_student_categories(self, student_id: str) -> List[Dict[str, Any]]:
+        """List student categories."""
+        return await self.storage.list_student_categories(student_id)
+
+    async def update_student_category(self, category_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student category."""
+        return await self.storage.update_student_category(category_id, student_id, update_data)
+
+    async def update_category_question_count(self, category_id: int) -> None:
+        """Update the question count for a category."""
+        return await self.storage.update_category_question_count(category_id)
+
     # Utility methods
     def generate_id(self) -> str:
         """Generate a unique ID."""
@@ -483,3 +529,78 @@ class StorageWrapper:
     async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
         """Get all chunks for a paper."""
         return await self.storage.get_paper_chunks(paper_id)
+
+    # Research result operations (for researcher saved AI outputs)
+    async def create_research_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new research result."""
+        return await self.storage.create_research_result(data)
+
+    async def get_research_result(self, result_id: int) -> Optional[Dict[str, Any]]:
+        """Get research result by ID."""
+        return await self.storage.get_research_result(result_id)
+
+    async def list_research_results(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List research results for a user."""
+        return await self.storage.list_research_results(user_id, user_role)
+
+    async def delete_research_result(self, result_id: int) -> bool:
+        """Delete research result."""
+        return await self.storage.delete_research_result(result_id)
+
+    async def update_research_result(self, result_id: int, data: Dict[str, Any]) -> bool:
+        """Update research result data."""
+        return await self.storage.update_research_result(result_id, data)
+
+    # Research workspace operations
+    async def create_research_project(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a researcher project."""
+        return await self.storage.create_research_project(data)
+
+    async def list_research_projects(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List researcher projects."""
+        return await self.storage.list_research_projects(user_id, user_role)
+
+    async def create_research_attachment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a workspace attachment."""
+        return await self.storage.create_research_attachment(data)
+
+    async def get_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Get a workspace attachment."""
+        return await self.storage.get_research_attachment(attachment_id)
+
+    async def list_research_attachments(
+        self,
+        user_id: str,
+        user_role: str = "researcher",
+        chat_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List workspace attachments for a researcher."""
+        return await self.storage.list_research_attachments(user_id, user_role, chat_id)
+
+    async def create_research_attachment_chunks(self, attachment_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create chunks for a workspace attachment."""
+        return await self.storage.create_research_attachment_chunks(attachment_id, chunks)
+
+    async def get_research_attachment_chunks(self, attachment_id: int) -> List[Dict[str, Any]]:
+        """Get chunks for a workspace attachment."""
+        return await self.storage.get_research_attachment_chunks(attachment_id)
+
+    async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or update a LaTeX draft."""
+        return await self.storage.save_latex_draft(data)
+
+    async def get_latex_draft(self, draft_id: int) -> Optional[Dict[str, Any]]:
+        """Get a LaTeX draft by ID."""
+        return await self.storage.get_latex_draft(draft_id)
+
+    async def list_latex_drafts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List LaTeX drafts for a researcher."""
+        return await self.storage.list_latex_drafts(user_id, user_role)
+
+    async def list_latex_draft_versions(self, draft_id: int) -> List[Dict[str, Any]]:
+        """List versions for a LaTeX draft."""
+        return await self.storage.list_latex_draft_versions(draft_id)
+
+    async def create_latex_compile_record(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a compile record for a LaTeX draft."""
+        return await self.storage.create_latex_compile_record(data)

@@ -23,6 +23,8 @@ let wsToken = null
 const chatHandlers = new Map()
 // Pending newChat Promise
 let pendingNewChat = null
+// Pending generic requests: Map<request_id, {resolve, reject, timer}>
+const pendingRequests = new Map()
 // Pending ai_grade_question requests: Map<request_id, {resolve, reject, timer}>
 const pendingAiGrade = new Map()
 // Pending ai_generate_questions requests: Map<request_id, {resolve, reject, timer}>
@@ -41,6 +43,7 @@ const pendingAiPolish = new Map()
 const pendingAiPaperSummary = new Map()
 // Pending upload_paper requests: Map<request_id, {resolve, reject, timer}>
 const pendingUploadPaper = new Map()
+const pendingStudentOps = new Map()
 let reconnectTimer = null
 let reconnectAttempts = 0
 let intentionallyClosed = false
@@ -354,6 +357,74 @@ function _doConnect(url) {
       return
     }
 
+    // Handle research_result_saved (request/response correlation)
+    if (data.event === 'research_result_saved' && data.request_id) {
+      const pending = pendingRequests.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingRequests.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({ result: data.result })
+        }
+      }
+      return
+    }
+
+    // Handle ai_parse_question_item (streaming item)
+    if (data.event === 'ai_parse_question_item' && data.request_id) {
+      const pending = pendingAiGenerate.get(data.request_id)
+      if (pending && pending.onItem) {
+        try { pending.onItem(data.question) } catch { /* best-effort */ }
+      }
+      return
+    }
+
+    // Handle ai_parse_questions_result (request/response correlation)
+    if (data.event === 'ai_parse_questions_result' && data.request_id) {
+      const pending = pendingAiGenerate.get(data.request_id)
+      if (pending) {
+        clearTimeout(pending.timer)
+        pendingAiGenerate.delete(data.request_id)
+        if (data.error) {
+          pending.reject(new Error(data.error))
+        } else {
+          pending.resolve({
+            questions: data.questions,
+            totalPoints: data.total_points,
+          })
+        }
+      }
+      return
+    }
+
+    // Handle student resource/category results (request/response correlation)
+    const _studentResultEvents = [
+      'student_resource_list_result',
+      'student_resource_create_result',
+      'student_resource_delete_result',
+      'student_resource_update_result',
+      'student_resource_categorize_result',
+      'student_categories_list_result',
+      'student_category_create_result',
+      'student_category_update_result',
+      'student_category_delete_result',
+    ]
+    if (_studentResultEvents.includes(data.event) && data.request_id) {
+      const p = pendingStudentOps.get(data.request_id)
+      if (p) {
+        clearTimeout(p.timer)
+        pendingStudentOps.delete(data.request_id)
+        if (data.error) {
+          p.reject(new Error(data.error))
+        } else {
+          p.resolve(data)
+        }
+      }
+      return
+    }
+
     // Fan out all other events to per-chat handlers
     if (data.chat_id) {
       _dispatch(data.chat_id, data)
@@ -485,14 +556,27 @@ export function useGateway() {
   }
 
   /** Send a message — fire and forget. Responses arrive via onChat handlers.
-   *  Pass optional `meta` object to attach metadata (e.g. { _skill: "lesson-plan" }). */
-  function sendMessage(content, meta) {
+   *  Pass optional `meta` object to attach metadata (e.g. { _skill: "lesson-plan" }).
+   *  Pass optional `targetChatId` to send to a specific chat instead of the current one. */
+  function sendMessage(content, meta, targetChatId) {
     if (!socket || socket.readyState !== WS_OPEN) {
       throw new Error('未连接到 Gateway')
     }
-    const envelope = { type: 'message', chat_id: chatId, content }
+    const envelope = { type: 'message', chat_id: targetChatId || chatId, content }
     if (meta && Object.keys(meta).length) envelope.meta = meta
     socket.send(JSON.stringify(envelope))
+  }
+
+  function sendResearcherClarification(question, requestId) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      throw new Error('Not connected to Gateway')
+    }
+    socket.send(JSON.stringify({
+      type: 'researcher_clarify',
+      chat_id: chatId,
+      request_id: requestId,
+      question,
+    }))
   }
 
   /** Ask the server to create a new chat session. Returns Promise<string> with the new chat_id. */
@@ -541,6 +625,32 @@ export function useGateway() {
       throw new Error('未连接到 Gateway')
     }
     socket.send(JSON.stringify({ type: 'save_source', path, content }))
+  }
+
+  /**
+   * Save research result via WebSocket (supports long text).
+   * Returns Promise<{result}>.
+   */
+  function sendSaveResearchResult(contentOrPayload, chatId = '', sessionTitle = '', timeoutMs = 30000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const payload = typeof contentOrPayload === 'object' && contentOrPayload !== null
+      ? { ...contentOrPayload }
+      : { content: contentOrPayload, chat_id: chatId, session_title: sessionTitle }
+    const requestId = 'srr_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingRequests.delete(requestId)
+        reject(new Error('保存超时'))
+      }, timeoutMs)
+      pendingRequests.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({
+        ...payload,
+        type: 'save_research_result',
+        request_id: requestId,
+      }))
+    })
   }
 
   /**
@@ -619,6 +729,25 @@ export function useGateway() {
         content: params.content,
         num_questions: params.numQuestions,
         type_distribution: params.typeDistribution || {},
+        role: currentRole,
+        user_id: currentUserId,
+      }))
+    })
+  }
+
+  function sendAiParseQuestions(params) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = 'apq_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      // No timeout - let it run as long as needed
+      // Store onItem callback for streaming
+      pendingAiGenerate.set(requestId, { resolve, reject, timer: null, onItem: params.onItem })
+      socket.send(JSON.stringify({
+        type: 'ai_parse_questions',
+        request_id: requestId,
+        content: params.content,
         role: currentRole,
         user_id: currentUserId,
       }))
@@ -835,5 +964,99 @@ export function useGateway() {
     })
   }
 
-  return { connected, connectionError, currentChatId, connect, sendMessage, disconnect, switchSession, getChatId, getToken, onChat, newChat, sendSaveSource, sendAiGradeQuestion, sendAiGradeSubmission, sendAiGenerateQuestions, sendCreateHomework, sendAiTutorEvaluate, sendAiGenerateDerivation, sendAiTutorRecommend, sendUploadPaper, sendAiPolish, sendAiPaperSummary }
+  // -- Student resource/category operations via WebSocket --
+
+  function _wsStudentSend(type, data, timeoutMs = 30000) {
+    if (!socket || socket.readyState !== WS_OPEN) {
+      return Promise.reject(new Error('未连接到 Gateway'))
+    }
+    const requestId = type + '_' + Math.random().toString(36).slice(2, 10)
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingStudentOps.delete(requestId)
+        reject(new Error('操作超时'))
+      }, timeoutMs)
+      pendingStudentOps.set(requestId, { resolve, reject, timer })
+      socket.send(JSON.stringify({ type, request_id: requestId, ...data }))
+    })
+  }
+
+  function sendStudentResourceList(params = {}) {
+    return _wsStudentSend('student_resource_list', {
+      resource_type: params.resourceType || null,
+      category_id: params.categoryId || null,
+    })
+  }
+
+  function sendStudentResourceCreate(params) {
+    return _wsStudentSend('student_resource_create', {
+      resource_type: params.resourceType,
+      title: params.title,
+      content: params.content || '',
+      source_type: params.sourceType || 'manual',
+      source_id: params.sourceId || null,
+      category_id: params.categoryId || null,
+      metadata: params.metadata || {},
+    })
+  }
+
+  function sendStudentResourceDelete(resourceId) {
+    return _wsStudentSend('student_resource_delete', {
+      resource_id: resourceId,
+    })
+  }
+
+  function sendStudentResourceUpdate(resourceId, data) {
+    return _wsStudentSend('student_resource_update', {
+      resource_id: resourceId,
+      data: data,
+    })
+  }
+
+  function sendStudentResourceCategorize(resourceId, categoryId) {
+    return _wsStudentSend('student_resource_categorize', {
+      resource_id: resourceId,
+      category_id: categoryId,
+    })
+  }
+
+  function sendStudentCategoriesList() {
+    return _wsStudentSend('student_categories_list', {})
+  }
+
+  function sendStudentCategoryCreate(params) {
+    return _wsStudentSend('student_category_create', {
+      name: params.name,
+      description: params.description || '',
+      color: params.color || null,
+    })
+  }
+
+  function sendStudentCategoryUpdate(categoryId, params) {
+    return _wsStudentSend('student_category_update', {
+      category_id: categoryId,
+      name: params.name,
+      description: params.description,
+      color: params.color,
+    })
+  }
+
+  function sendStudentCategoryDelete(categoryId) {
+    return _wsStudentSend('student_category_delete', {
+      category_id: categoryId,
+    })
+  }
+
+  return {
+    connected, connectionError, currentChatId, connect, sendMessage, sendResearcherClarification,
+    disconnect, switchSession, getChatId, getToken, onChat, newChat,
+    sendSaveSource, sendSaveResearchResult, sendAiGradeQuestion, sendAiGradeSubmission,
+    sendAiGenerateQuestions, sendAiParseQuestions, sendCreateHomework, sendAiTutorEvaluate,
+    sendAiGenerateDerivation, sendAiTutorRecommend, sendUploadPaper, sendAiPolish, sendAiPaperSummary,
+    // Student resource/category operations
+    sendStudentResourceList, sendStudentResourceCreate, sendStudentResourceDelete,
+    sendStudentResourceUpdate, sendStudentResourceCategorize,
+    sendStudentCategoriesList, sendStudentCategoryCreate, sendStudentCategoryUpdate,
+    sendStudentCategoryDelete,
+  }
 }

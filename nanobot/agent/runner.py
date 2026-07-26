@@ -293,6 +293,7 @@ class AgentRunner:
                     thinking_blocks=response.thinking_blocks,
                 )
                 messages.append(assistant_message)
+                await hook.on_agent_message(context, assistant_message)
                 tools_used.extend(tc.name for tc in tool_calls)
                 await self._emit_checkpoint(
                     spec,
@@ -332,6 +333,7 @@ class AgentRunner:
                         ),
                     }
                     messages.append(tool_message)
+                    await hook.on_agent_message(context, tool_message)
                     completed_tool_results.append(tool_message)
                 if fatal_error is not None:
                     if isinstance(fatal_error, AskUserInterrupt):
@@ -438,6 +440,7 @@ class AgentRunner:
                         reasoning_content=response.reasoning_content,
                         thinking_blocks=response.thinking_blocks,
                     ))
+                    await hook.on_agent_message(context, messages[-1])
                     messages.append(build_length_recovery_message())
                     await hook.after_iteration(context)
                     continue
@@ -508,6 +511,7 @@ class AgentRunner:
                 reasoning_content=response.reasoning_content,
                 thinking_blocks=response.thinking_blocks,
             ))
+            await hook.on_agent_message(context, messages[-1])
             await self._emit_checkpoint(
                 spec,
                 {
@@ -611,9 +615,13 @@ class AgentRunner:
             async def _stream(delta: str) -> None:
                 await hook.on_stream(context, delta)
 
+            async def _reasoning_stream(delta: str) -> None:
+                await hook.on_reasoning_stream(context, delta)
+
             coro = self.provider.chat_stream_with_retry(
                 **kwargs,
                 on_content_delta=_stream,
+                on_reasoning_delta=_reasoning_stream,
             )
         else:
             coro = self.provider.chat_with_retry(**kwargs)

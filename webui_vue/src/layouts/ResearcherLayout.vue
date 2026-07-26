@@ -156,7 +156,11 @@ function resumeSession(s) {
   if (s.chatId) {
     switchSession(s.chatId)
   }
-  router.push('/researcher/workspace')
+  // Stay on current page, don't force navigate to workspace
+  // Only navigate to workspace if we're not on a researcher page
+  if (!route.path.startsWith('/researcher')) {
+    router.push('/researcher/workspace')
+  }
 }
 
 async function handleDeleteSession(e, s) {
@@ -171,10 +175,21 @@ async function handleDeleteSession(e, s) {
 
 async function handleNewChat() {
   try {
-    await newChat()
+    const chatId = await newChat()
+    // Immediately add new session to local list so it appears in sidebar
+    if (chatId) {
+      const newSession = {
+        key: `websocket:${chatId}`,
+        chatId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        preview: '新对话',
+      }
+      sessions.value = [newSession, ...sessions.value]
+    }
     // Navigate to workspace to start new conversation
     router.push('/researcher/workspace')
-    // Refresh sessions list
+    // Also refresh from server in background
     fetchSessions()
   } catch (err) {
     console.error('Failed to create new chat:', err)
@@ -257,6 +272,8 @@ function setTheme(theme) {
   currentTheme.value = theme
   applyTheme(theme)
   localStorage.setItem('nanobot-theme', theme)
+  // Dispatch custom event for other components to listen
+  window.dispatchEvent(new CustomEvent('theme-changed', { detail: { theme } }))
 }
 
 function handleLogout() {
@@ -776,5 +793,238 @@ body.dark .main-content {
     flex-direction: column;
     align-items: center;
   }
+}
+</style>
+
+<!-- 非 scoped 样式：Teleport 到 body 的设置弹窗 -->
+<style>
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.settings-panel {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 1001;
+}
+
+.settings-panel {
+  background: #fff;
+  border: 1px solid #eaeaea;
+  border-radius: 20px;
+  padding: 24px;
+  width: 320px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #121212;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.settings-user-info {
+  min-width: 0;
+}
+
+.settings-user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #121212;
+}
+
+.settings-user-role {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.theme-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.theme-option:hover {
+  background: #f4f4f4;
+}
+
+.theme-option.active {
+  background: #f4f4f4;
+  border-color: #eaeaea;
+  color: #121212;
+  font-weight: 600;
+}
+
+.theme-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid #eaeaea;
+}
+
+.theme-option.active .theme-dot {
+  border-color: #121212;
+}
+
+.theme-name {
+  flex: 1;
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #fde8e8;
+  background: #fef2f2;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.logout-btn:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+/* 设置弹窗 - 绿色主题 */
+body.green .settings-panel {
+  background: #f7f8f7;
+  border-color: #dee2de;
+}
+
+body.green .settings-avatar {
+  background: #526e5a;
+}
+
+body.green .settings-user-name {
+  color: #1e2720;
+}
+
+body.green .theme-option:hover {
+  background: #e2e7e2;
+}
+
+body.green .theme-option.active {
+  background: #e2e7e2;
+  border-color: #d4e0d6;
+  color: #1e2720;
+}
+
+body.green .theme-option.active .theme-dot {
+  border-color: #526e5a;
+}
+
+/* 设置弹窗 - 暗色主题 */
+body.dark .settings-panel {
+  background: #242424;
+  border-color: #333;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+body.dark .settings-avatar {
+  background: #fff;
+  color: #121212;
+}
+
+body.dark .settings-user-name {
+  color: #e5e5e5;
+}
+
+body.dark .settings-user-role {
+  color: #888;
+}
+
+body.dark .settings-section-label {
+  color: #666;
+}
+
+body.dark .theme-option {
+  color: #999;
+}
+
+body.dark .theme-option:hover {
+  background: #2d2d2d;
+}
+
+body.dark .theme-option.active {
+  background: #2d2d2d;
+  border-color: #444;
+  color: #e5e5e5;
+}
+
+body.dark .theme-dot {
+  border-color: #444;
+}
+
+body.dark .theme-option.active .theme-dot {
+  border-color: #fff;
+}
+
+body.dark .logout-btn {
+  background: #2d1a1a;
+  border-color: #4a2020;
+  color: #f87171;
+}
+
+body.dark .logout-btn:hover {
+  background: #3d1a1a;
+  border-color: #6b2020;
 }
 </style>

@@ -43,7 +43,40 @@ from .question_bank import (
     handle_question_bank_list,
     handle_question_bank_update,
 )
+from .research_results import (
+    handle_create_research_result,
+    handle_delete_research_result,
+    handle_get_research_result,
+    handle_list_research_results,
+    handle_update_research_result,
+)
+from .research_workspace import (
+    handle_create_latex_compile_record,
+    handle_create_research_project,
+    handle_get_latex_draft,
+    handle_list_research_attachments,
+    handle_list_latex_draft_versions,
+    handle_list_latex_drafts,
+    handle_list_research_projects,
+    handle_save_latex_draft,
+    handle_upload_research_attachment,
+)
 from .search import handle_import_paper, handle_search_papers
+from .student_categories import (
+    handle_student_categories_list,
+    handle_student_category_create,
+    handle_student_category_delete,
+    handle_student_category_update,
+    handle_student_resource_categorize,
+)
+from .student_resources import (
+    handle_student_resource_create,
+    handle_student_resource_delete,
+    handle_student_resource_favorite,
+    handle_student_resource_update,
+    handle_student_resource_upload,
+    handle_student_resources_list,
+)
 from .tutor import handle_tutor_profile
 
 __all__ = [
@@ -72,6 +105,17 @@ __all__ = [
     "handle_question_bank_batch_add",
     "handle_question_bank_delete",
     "handle_question_bank_update",
+    "handle_student_categories_list",
+    "handle_student_category_create",
+    "handle_student_category_delete",
+    "handle_student_category_update",
+    "handle_student_resource_categorize",
+    "handle_student_resources_list",
+    "handle_student_resource_create",
+    "handle_student_resource_favorite",
+    "handle_student_resource_delete",
+    "handle_student_resource_update",
+    "handle_student_resource_upload",
     "handle_tutor_profile",
     "handle_list_papers",
     "handle_upload_paper",
@@ -84,4 +128,18 @@ __all__ = [
     "handle_update_tags",
     "handle_search_papers",
     "handle_import_paper",
+    "handle_list_research_results",
+    "handle_create_research_result",
+    "handle_get_research_result",
+    "handle_delete_research_result",
+    "handle_update_research_result",
+    "handle_list_research_projects",
+    "handle_create_research_project",
+    "handle_list_research_attachments",
+    "handle_upload_research_attachment",
+    "handle_list_latex_drafts",
+    "handle_get_latex_draft",
+    "handle_save_latex_draft",
+    "handle_list_latex_draft_versions",
+    "handle_create_latex_compile_record",
 ]

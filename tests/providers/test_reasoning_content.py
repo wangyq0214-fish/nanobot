@@ -7,6 +7,8 @@ providers that return a reasoning_content field (e.g. MiMo, DeepSeek-R1).
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from nanobot.providers.openai_compat_provider import OpenAICompatProvider
 
 
@@ -80,6 +82,53 @@ def test_parse_chunks_dict_accumulates_reasoning_content() -> None:
 
     result = OpenAICompatProvider._parse_chunks(chunks)
 
+    assert result.content == "answer"
+    assert result.reasoning_content == "Step 1. Step 2."
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_emits_reasoning_content_deltas(monkeypatch) -> None:
+    """OpenAI-compatible chat streaming forwards reasoning_content deltas."""
+    provider = OpenAICompatProvider(api_key="test", api_base="https://example.test")
+    chunks = [
+        {
+            "choices": [{
+                "finish_reason": None,
+                "delta": {"content": None, "reasoning_content": "Step 1. "},
+            }],
+        },
+        {
+            "choices": [{
+                "finish_reason": None,
+                "delta": {"content": "answer", "reasoning_content": "Step 2."},
+            }],
+        },
+        {"choices": [{"finish_reason": "stop", "delta": {}}]},
+    ]
+
+    async def fake_create(**kwargs):
+        class FakeStream:
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                for chunk in chunks:
+                    yield chunk
+
+        return FakeStream()
+
+    monkeypatch.setattr(provider._client.chat.completions, "create", fake_create)
+    seen: list[str] = []
+
+    async def on_reasoning(delta: str) -> None:
+        seen.append(delta)
+
+    result = await provider.chat_stream(
+        [{"role": "user", "content": "hi"}],
+        on_reasoning_delta=on_reasoning,
+    )
+
+    assert seen == ["Step 1. ", "Step 2."]
     assert result.content == "answer"
     assert result.reasoning_content == "Step 1. Step 2."
 

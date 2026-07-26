@@ -892,6 +892,189 @@ class FileStorage(BaseStorage):
         resources.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         return resources
 
+    # Student resource operations
+    async def create_student_resource(self, resource_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student resource. Returns created resource data."""
+        student_id = resource_data.get("student_id")
+        resource_id = str(uuid.uuid4())[:8]
+        resource_data["id"] = resource_id
+        resource_data["created_at"] = datetime.utcnow().isoformat()
+        resource_data["updated_at"] = datetime.utcnow().isoformat()
+
+        # Create student resources directory
+        resources_dir = self.base_path / "student_resources" / student_id
+        resources_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save resource data
+        resource_file = resources_dir / f"{resource_id}.json"
+        self._save_json(resource_file, resource_data)
+
+        return resource_data
+
+    async def get_student_resource(self, resource_id: int) -> Optional[Dict[str, Any]]:
+        """Get student resource by ID. Returns None if not found."""
+        # Search through all student directories
+        student_resources_dir = self.base_path / "student_resources"
+        if not student_resources_dir.exists():
+            return None
+
+        for student_dir in student_resources_dir.iterdir():
+            if student_dir.is_dir():
+                resource_file = student_dir / f"{resource_id}.json"
+                if resource_file.exists():
+                    return self._load_json(resource_file)
+        return None
+
+    async def delete_student_resource(self, resource_id: int, student_id: str) -> bool:
+        """Delete student resource. Returns True if successful."""
+        resource_file = self.base_path / "student_resources" / student_id / f"{resource_id}.json"
+        if resource_file.exists():
+            resource_file.unlink()
+            return True
+        return False
+
+    async def list_student_resources(self, student_id: str, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List student resources, optionally filtered by type."""
+        resources_dir = self.base_path / "student_resources" / student_id
+        if not resources_dir.exists():
+            return []
+
+        resources = []
+        for resource_file in resources_dir.glob("*.json"):
+            resource = self._load_json(resource_file)
+            if resource:
+                if resource_type is None or resource.get("resource_type") == resource_type:
+                    resources.append(resource)
+
+        # Sort by created_at descending
+        resources.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return resources
+
+    async def update_student_resource(self, resource_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student resource. Returns updated resource or None."""
+        resource_file = self.base_path / "student_resources" / student_id / f"{resource_id}.json"
+        if not resource_file.exists():
+            return None
+
+        resource = self._load_json(resource_file)
+        if not resource:
+            return None
+
+        # Update fields
+        for key, value in update_data.items():
+            if key in resource:
+                resource[key] = value
+
+        resource["updated_at"] = datetime.utcnow().isoformat()
+
+        # Save updated resource
+        self._save_json(resource_file, resource)
+        return resource
+
+    # Student category operations
+    async def create_student_category(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student category. Returns created category data."""
+        student_id = category_data.get("student_id")
+        category_id = str(uuid.uuid4())[:8]
+        category_data["id"] = category_id
+        category_data["question_count"] = 0
+        category_data["created_at"] = datetime.utcnow().isoformat()
+        category_data["updated_at"] = datetime.utcnow().isoformat()
+
+        # Create categories directory
+        categories_dir = self.base_path / "student_categories" / student_id
+        categories_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save category data
+        category_file = categories_dir / f"{category_id}.json"
+        self._save_json(category_file, category_data)
+
+        return category_data
+
+    async def get_student_category(self, category_id: int) -> Optional[Dict[str, Any]]:
+        """Get student category by ID. Returns None if not found."""
+        # Search through all student directories
+        student_categories_dir = self.base_path / "student_categories"
+        if not student_categories_dir.exists():
+            return None
+
+        for student_dir in student_categories_dir.iterdir():
+            if student_dir.is_dir():
+                category_file = student_dir / f"{category_id}.json"
+                if category_file.exists():
+                    return self._load_json(category_file)
+        return None
+
+    async def delete_student_category(self, category_id: int, student_id: str) -> bool:
+        """Delete student category. Returns True if successful."""
+        category_file = self.base_path / "student_categories" / student_id / f"{category_id}.json"
+        if category_file.exists():
+            category_file.unlink()
+            return True
+        return False
+
+    async def list_student_categories(self, student_id: str) -> List[Dict[str, Any]]:
+        """List student categories."""
+        categories_dir = self.base_path / "student_categories" / student_id
+        if not categories_dir.exists():
+            return []
+
+        categories = []
+        for category_file in categories_dir.glob("*.json"):
+            category = self._load_json(category_file)
+            if category:
+                categories.append(category)
+
+        # Sort by name
+        categories.sort(key=lambda x: x.get("name", ""))
+        return categories
+
+    async def update_student_category(self, category_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student category. Returns updated category or None."""
+        category_file = self.base_path / "student_categories" / student_id / f"{category_id}.json"
+        if not category_file.exists():
+            return None
+
+        category = self._load_json(category_file)
+        if not category:
+            return None
+
+        # Update fields
+        for key, value in update_data.items():
+            if key in category:
+                category[key] = value
+
+        category["updated_at"] = datetime.utcnow().isoformat()
+
+        # Save updated category
+        self._save_json(category_file, category)
+        return category
+
+    async def update_category_question_count(self, category_id: int) -> None:
+        """Update the question count for a category."""
+        # Search for the category
+        category = await self.get_student_category(category_id)
+        if not category:
+            return
+
+        student_id = category.get("student_id")
+
+        # Count questions in this category
+        resources_dir = self.base_path / "student_resources" / student_id
+        if not resources_dir.exists():
+            count = 0
+        else:
+            count = 0
+            for resource_file in resources_dir.glob("*.json"):
+                resource = self._load_json(resource_file)
+                if resource and resource.get("category_id") == category_id:
+                    count += 1
+
+        # Update the category
+        category["question_count"] = count
+        category_file = self.base_path / "student_categories" / student_id / f"{category_id}.json"
+        self._save_json(category_file, category)
+
     # Tutor profile operations
     async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
         """Get tutor profile for a student. Returns None if not found."""
@@ -1178,6 +1361,381 @@ class FileStorage(BaseStorage):
             result = await self.add_to_question_bank(q_data)
             results.append(result)
         return results
+
+    # Research result operations
+    def _get_research_results_file(self, user_id: str) -> Path:
+        """Get the research results JSON file path for a user."""
+        return self.base_path / "users" / "researcher" / user_id / "research_results.json"
+
+    def _load_research_results(self, user_id: str) -> List[Dict[str, Any]]:
+        """Load all research results for a user."""
+        results_file = self._get_research_results_file(user_id)
+        return self._load_json(results_file) or []
+
+    def _save_research_results(self, user_id: str, results: List[Dict[str, Any]]) -> None:
+        """Save all research results for a user."""
+        results_file = self._get_research_results_file(user_id)
+        results_file.parent.mkdir(parents=True, exist_ok=True)
+        self._save_json(results_file, results)
+
+    async def create_research_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new research result. Returns created result data."""
+        user_id = data.get("user_id")
+        if not user_id:
+            raise ValueError("user_id is required")
+
+        valid_fields = {
+            'user_id', 'user_role', 'title', 'content', 'chat_id', 'session_title',
+            'source_message_id', 'project_id', 'project_name', 'status', 'sections',
+            'citations', 'attachments', 'tags', 'metadata'
+        }
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+
+        results = self._load_research_results(user_id)
+        new_id = max((r.get("id", 0) for r in results), default=0) + 1
+        filtered["id"] = new_id
+        filtered["created_at"] = datetime.utcnow().isoformat()
+        filtered["updated_at"] = datetime.utcnow().isoformat()
+
+        results.insert(0, filtered)
+        self._save_research_results(user_id, results)
+
+        logger.info(f"Created research result: {new_id} for user {user_id}")
+        return filtered
+
+    async def get_research_result(self, result_id: int) -> Optional[Dict[str, Any]]:
+        """Get research result by ID. Returns None if not found."""
+        # Search across all users
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return None
+        for user_dir in users_dir.iterdir():
+            if user_dir.is_dir():
+                results = self._load_research_results(user_dir.name)
+                for r in results:
+                    if r.get("id") == result_id:
+                        return r
+        return None
+
+    async def list_research_results(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List research results for a user."""
+        results = self._load_research_results(user_id)
+        results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        # Add content preview
+        for r in results:
+            content = r.get("content", "")
+            r["contentPreview"] = content[:150] + "..." if len(content) > 150 else content
+        return results
+
+    async def delete_research_result(self, result_id: int) -> bool:
+        """Delete research result. Returns True if successful."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return False
+        for user_dir in users_dir.iterdir():
+            if user_dir.is_dir():
+                results = self._load_research_results(user_dir.name)
+                for i, r in enumerate(results):
+                    if r.get("id") == result_id:
+                        results.pop(i)
+                        self._save_research_results(user_dir.name, results)
+                        return True
+        return False
+
+    async def update_research_result(self, result_id: int, data: Dict[str, Any]) -> bool:
+        """Update research result data. Returns True if successful."""
+        updatable_fields = {
+            'title', 'content', 'tags', 'session_title', 'source_message_id',
+            'project_id', 'project_name', 'status', 'sections', 'citations',
+            'attachments', 'metadata'
+        }
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return False
+        for user_dir in users_dir.iterdir():
+            if user_dir.is_dir():
+                results = self._load_research_results(user_dir.name)
+                for r in results:
+                    if r.get("id") == result_id:
+                        for key, value in data.items():
+                            if key in updatable_fields:
+                                r[key] = value
+                        r["updated_at"] = datetime.utcnow().isoformat()
+                        self._save_research_results(user_dir.name, results)
+                        return True
+        return False
+
+    def _get_research_projects_file(self, user_id: str) -> Path:
+        """Get researcher projects JSON file path."""
+        return self.base_path / "users" / "researcher" / user_id / "research_projects.json"
+
+    def _get_research_attachments_file(self, user_id: str) -> Path:
+        """Get researcher attachments JSON file path."""
+        return self.base_path / "users" / "researcher" / user_id / "research_attachments.json"
+
+    def _get_latex_drafts_file(self, user_id: str) -> Path:
+        """Get researcher LaTeX drafts JSON file path."""
+        return self.base_path / "users" / "researcher" / user_id / "latex_drafts.json"
+
+    def _load_latex_drafts(self, user_id: str) -> List[Dict[str, Any]]:
+        return self._load_json(self._get_latex_drafts_file(user_id)) or []
+
+    def _save_latex_drafts(self, user_id: str, drafts: List[Dict[str, Any]]) -> None:
+        self._save_json(self._get_latex_drafts_file(user_id), drafts)
+
+    def _load_research_projects(self, user_id: str) -> List[Dict[str, Any]]:
+        return self._load_json(self._get_research_projects_file(user_id)) or []
+
+    def _save_research_projects(self, user_id: str, projects: List[Dict[str, Any]]) -> None:
+        path = self._get_research_projects_file(user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._save_json(path, projects)
+
+    def _load_research_attachments(self, user_id: str) -> List[Dict[str, Any]]:
+        return self._load_json(self._get_research_attachments_file(user_id)) or []
+
+    def _save_research_attachments(self, user_id: str, attachments: List[Dict[str, Any]]) -> None:
+        path = self._get_research_attachments_file(user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._save_json(path, attachments)
+
+    async def create_research_project(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a researcher project."""
+        user_id = data.get("user_id")
+        if not user_id:
+            raise ValueError("user_id is required")
+        projects = self._load_research_projects(user_id)
+        project = {
+            "id": max((p.get("id", 0) for p in projects), default=0) + 1,
+            "userId": user_id,
+            "userRole": data.get("user_role", "researcher"),
+            "name": data.get("name", ""),
+            "description": data.get("description", ""),
+            "status": data.get("status", "active"),
+            "metadata": data.get("metadata", {}),
+            "createdAt": datetime.utcnow().isoformat(),
+            "updatedAt": datetime.utcnow().isoformat(),
+        }
+        projects.insert(0, project)
+        self._save_research_projects(user_id, projects)
+        return project
+
+    async def list_research_projects(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List researcher projects."""
+        projects = self._load_research_projects(user_id)
+        return [p for p in projects if p.get("userRole", user_role) == user_role]
+
+    async def create_research_attachment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a workspace attachment."""
+        user_id = data.get("user_id")
+        if not user_id:
+            raise ValueError("user_id is required")
+        attachments = self._load_research_attachments(user_id)
+        attachment = {
+            "id": max((a.get("id", 0) for a in attachments), default=0) + 1,
+            "userId": user_id,
+            "userRole": data.get("user_role", "researcher"),
+            "projectId": data.get("project_id"),
+            "chatId": data.get("chat_id", ""),
+            "fileName": data.get("file_name", ""),
+            "fileType": data.get("file_type", ""),
+            "filePath": data.get("file_path", ""),
+            "parseStatus": data.get("parse_status", "pending"),
+            "summary": data.get("summary", ""),
+            "metadata": data.get("metadata", {}),
+            "chunks": [],
+            "createdAt": datetime.utcnow().isoformat(),
+            "updatedAt": datetime.utcnow().isoformat(),
+        }
+        attachments.insert(0, attachment)
+        self._save_research_attachments(user_id, attachments)
+        return attachment
+
+    async def get_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Get a workspace attachment."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return None
+        for user_dir in users_dir.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for item in self._load_research_attachments(user_dir.name):
+                if item.get("id") == attachment_id:
+                    return item
+        return None
+
+    async def list_research_attachments(
+        self,
+        user_id: str,
+        user_role: str = "researcher",
+        chat_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List workspace attachments."""
+        attachments = [
+            a for a in self._load_research_attachments(user_id)
+            if a.get("userRole", user_role) == user_role
+        ]
+        if chat_id:
+            attachments = [a for a in attachments if a.get("chatId") == chat_id]
+        return attachments
+
+    async def create_research_attachment_chunks(self, attachment_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create chunks for a workspace attachment."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return 0
+        for user_dir in users_dir.iterdir():
+            if not user_dir.is_dir():
+                continue
+            attachments = self._load_research_attachments(user_dir.name)
+            for item in attachments:
+                if item.get("id") == attachment_id:
+                    item["chunks"] = [
+                        {
+                            "id": idx + 1,
+                            "attachmentId": attachment_id,
+                            "chunkIndex": chunk.get("chunk_index", chunk.get("chunkIndex", idx)),
+                            "pageNumber": chunk.get("page_number", chunk.get("pageNumber", 0)),
+                            "sheetName": chunk.get("sheet_name", chunk.get("sheetName", "")),
+                            "content": chunk.get("content", ""),
+                            "metadata": chunk.get("metadata", {}),
+                        }
+                        for idx, chunk in enumerate(chunks)
+                    ]
+                    item["updatedAt"] = datetime.utcnow().isoformat()
+                    self._save_research_attachments(user_dir.name, attachments)
+                    return len(chunks)
+        return 0
+
+    async def get_research_attachment_chunks(self, attachment_id: int) -> List[Dict[str, Any]]:
+        """Get chunks for a workspace attachment."""
+        attachment = await self.get_research_attachment(attachment_id)
+        return attachment.get("chunks", []) if attachment else []
+
+    async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or update a LaTeX draft in local development storage."""
+        user_id = data.get("user_id")
+        if not user_id:
+            raise ValueError("user_id is required")
+        drafts = self._load_latex_drafts(user_id)
+        draft = None
+        draft_id = data.get("id") or data.get("draft_id")
+        file_name = data.get("file_name", "document.tex")
+        for item in drafts:
+            if (draft_id and item.get("id") == int(draft_id)) or (
+                not draft_id and item.get("fileName") == file_name
+            ):
+                draft = item
+                break
+        now = datetime.utcnow().isoformat()
+        content = data.get("content", "")
+        if draft is None:
+            draft = {
+                "id": max((d.get("id", 0) for d in drafts), default=0) + 1,
+                "userId": user_id,
+                "userRole": data.get("user_role", "researcher"),
+                "projectId": data.get("project_id"),
+                "chatId": data.get("chat_id", ""),
+                "title": data.get("title") or file_name.replace(".tex", ""),
+                "fileName": file_name,
+                "content": content,
+                "currentVersion": 1,
+                "status": data.get("status", "draft"),
+                "tags": data.get("tags", []),
+                "metadata": data.get("metadata", {}),
+                "versions": [],
+                "compileRecords": [],
+                "attachmentIds": data.get("attachment_ids", []),
+                "createdAt": now,
+                "updatedAt": now,
+            }
+            drafts.insert(0, draft)
+        elif draft.get("content") != content:
+            draft["currentVersion"] = int(draft.get("currentVersion", 1)) + 1
+            draft["content"] = content
+            draft["updatedAt"] = now
+        for key, source in (
+            ("title", "title"),
+            ("fileName", "file_name"),
+            ("chatId", "chat_id"),
+            ("projectId", "project_id"),
+            ("status", "status"),
+            ("tags", "tags"),
+            ("metadata", "metadata"),
+            ("attachmentIds", "attachment_ids"),
+        ):
+            if source in data:
+                draft[key] = data[source]
+        draft.setdefault("versions", []).insert(0, {
+            "id": len(draft.get("versions", [])) + 1,
+            "draftId": draft["id"],
+            "versionNumber": draft.get("currentVersion", 1),
+            "content": content,
+            "changeSource": data.get("change_source", "autosave"),
+            "metadata": data.get("metadata", {}),
+            "createdAt": now,
+        })
+        self._save_latex_drafts(user_id, drafts)
+        return {k: v for k, v in draft.items() if k not in {"versions", "compileRecords"}}
+
+    async def get_latex_draft(self, draft_id: int) -> Optional[Dict[str, Any]]:
+        """Get a LaTeX draft by ID."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return None
+        for user_dir in users_dir.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for draft in self._load_latex_drafts(user_dir.name):
+                if draft.get("id") == draft_id:
+                    return {k: v for k, v in draft.items() if k not in {"versions", "compileRecords"}}
+        return None
+
+    async def list_latex_drafts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List LaTeX drafts."""
+        return [
+            {k: v for k, v in draft.items() if k not in {"versions", "compileRecords"}}
+            for draft in self._load_latex_drafts(user_id)
+            if draft.get("userRole", user_role) == user_role
+        ]
+
+    async def list_latex_draft_versions(self, draft_id: int) -> List[Dict[str, Any]]:
+        """List LaTeX draft versions."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return []
+        for user_dir in users_dir.iterdir():
+            for draft in self._load_latex_drafts(user_dir.name):
+                if draft.get("id") == draft_id:
+                    return draft.get("versions", [])
+        return []
+
+    async def create_latex_compile_record(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a compile record in local development storage."""
+        draft_id = int(data.get("draft_id") or data.get("draftId"))
+        users_dir = self.base_path / "users" / "researcher"
+        now = datetime.utcnow().isoformat()
+        if users_dir.exists():
+            for user_dir in users_dir.iterdir():
+                drafts = self._load_latex_drafts(user_dir.name)
+                for draft in drafts:
+                    if draft.get("id") == draft_id:
+                        records = draft.setdefault("compileRecords", [])
+                        record = {
+                            "id": len(records) + 1,
+                            "draftId": draft_id,
+                            "versionId": data.get("version_id", data.get("versionId")),
+                            "status": data.get("status", "pending"),
+                            "engine": data.get("engine", "xelatex"),
+                            "log": data.get("log", ""),
+                            "outputName": data.get("output_name", data.get("outputName", "")),
+                            "metadata": data.get("metadata", {}),
+                            "createdAt": now,
+                        }
+                        records.insert(0, record)
+                        self._save_latex_drafts(user_dir.name, drafts)
+                        return record
+        raise ValueError("draft not found")
 
     # Health check
     async def health_check(self) -> Dict[str, Any]:

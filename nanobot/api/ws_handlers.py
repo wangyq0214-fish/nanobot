@@ -120,9 +120,26 @@ async def handle_save_source(
     if ".." in path:
         await _err(channel, connection, "invalid path")
         return
-    source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
-    target = (source_dir / path).resolve()
-    if not str(target).startswith(str(source_dir.resolve())):
+    if role == "researcher" and Path(path).suffix.lower() == ".tex":
+        file_name = Path(path).name or "document.tex"
+        draft = await channel.storage.save_latex_draft({
+            "user_id": user_id,
+            "user_role": role,
+            "chat_id": envelope.get("chat_id", ""),
+            "title": envelope.get("title") or Path(file_name).stem or "document",
+            "file_name": file_name,
+            "content": content,
+            "status": envelope.get("status", "draft"),
+            "metadata": {"legacyPath": path, "source": "save_source"},
+            "change_source": envelope.get("change_source", "legacy-save-source"),
+        })
+        await channel._send_event(connection, "source_saved", path=path, draft=draft)
+        return
+
+    # Legacy non-LaTeX source saves still use the user directory.
+    user_dir = Path.home() / ".nanobot" / "users" / role / user_id
+    target = (user_dir / path).resolve()
+    if not str(target).startswith(str(user_dir.resolve())):
         await _err(channel, connection, "access denied")
         return
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -307,11 +324,12 @@ async def handle_ai_generate_questions_ws(
             conn_meta, role,
         )
 
-        if role != "teacher":
-            logger.warning("[ws] ai_generate_questions rejected: role={!r} is not teacher", role)
+        # Allow both teachers and students to generate questions
+        if role not in ("teacher", "student"):
+            logger.warning("[ws] ai_generate_questions rejected: role={!r} is not teacher or student", role)
             await channel._send_event(
                 connection, "ai_generate_questions_result",
-                request_id=request_id, error="Only teachers can generate questions",
+                request_id=request_id, error="Only teachers and students can generate questions",
             )
             return
 
@@ -336,6 +354,63 @@ async def handle_ai_generate_questions_ws(
         logger.error("[ws] ai_generate_questions failed: {}", e)
         await channel._send_event(
             connection, "ai_generate_questions_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_ai_parse_questions_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Parse user-pasted text into standardized questions via AI with streaming."""
+    from nanobot.api.ai_generate_questions import parse_questions_streaming
+
+    request_id = envelope.get("request_id", "")
+    content = envelope.get("content", "")
+
+    if not content:
+        await channel._send_event(
+            connection, "ai_parse_questions_result",
+            request_id=request_id, error="missing content",
+        )
+        return
+
+    conn_meta = _get_conn_meta(channel, connection)
+    role = conn_meta.get("role", "")
+
+    # Allow both teachers and students to parse questions
+    if role not in ("teacher", "student"):
+        await channel._send_event(
+            connection, "ai_parse_questions_result",
+            request_id=request_id, error="Only teachers and students can parse questions",
+        )
+        return
+
+    try:
+        logger.info("[ws] ai_parse_questions: content_len={}", len(content))
+
+        # Callback to send each question as it's parsed
+        async def on_question_parsed(question):
+            await channel._send_event(
+                connection, "ai_parse_question_item",
+                request_id=request_id,
+                question=question,
+            )
+
+        result = await parse_questions_streaming(content=content, callback=on_question_parsed)
+
+        # Send final result
+        await channel._send_event(
+            connection, "ai_parse_questions_result",
+            request_id=request_id,
+            questions=result["questions"],
+            total_points=result["total_points"],
+        )
+    except Exception as e:
+        logger.error("[ws] ai_parse_questions failed: {}", e)
+        await channel._send_event(
+            connection, "ai_parse_questions_result",
             request_id=request_id, error=str(e),
         )
 
@@ -1022,6 +1097,62 @@ async def handle_ai_paper_summary_ws(
         )
 
 
+async def handle_researcher_clarify_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Generate the deep-mode clarification schema without creating a chat turn."""
+    from nanobot.api.researcher_clarification import generate_researcher_clarification
+
+    request_id = envelope.get("request_id", "")
+    chat_id = envelope.get("chat_id", "")
+    question = envelope.get("question", "")
+
+    if not isinstance(question, str) or not question.strip():
+        await channel._send_event(
+            connection,
+            "researcher_clarification",
+            request_id=request_id,
+            chat_id=chat_id,
+            error="missing question",
+        )
+        return
+
+    try:
+        conn_meta = _get_conn_meta(channel, connection)
+        role = conn_meta.get("role", "")
+        if role != "researcher":
+            await channel._send_event(
+                connection,
+                "researcher_clarification",
+                request_id=request_id,
+                chat_id=chat_id,
+                error="Only researchers can use deep clarification",
+            )
+            return
+
+        result = await generate_researcher_clarification(question)
+        await channel._send_event(
+            connection,
+            "researcher_clarification",
+            request_id=request_id,
+            chat_id=chat_id,
+            analysis=result.get("analysis", ""),
+            questions=result.get("questions", []),
+            error=result.get("error"),
+        )
+    except Exception as e:
+        logger.error("[ws] researcher_clarify failed: {}", e)
+        await channel._send_event(
+            connection,
+            "researcher_clarification",
+            request_id=request_id,
+            chat_id=chat_id,
+            error=str(e),
+        )
+
+
 async def handle_delete_session_ws(
     channel: Any,
     connection: Any,
@@ -1062,6 +1193,568 @@ async def handle_delete_session_ws(
         await _err(channel, connection, "Failed to delete session")
 
 
+async def handle_save_research_result_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Handle saving research result via WebSocket envelope."""
+    from nanobot.storage.factory import get_storage
+
+    request_id = envelope.get("request_id")
+    content = envelope.get("content")
+    if not content or not isinstance(content, str):
+        await _err(channel, connection, "missing content")
+        return
+
+    conn_meta = _get_conn_meta(channel, connection)
+    role = conn_meta.get("role", "")
+    user_id = conn_meta.get("user_id", "")
+
+    if not role or not user_id:
+        await _err(channel, connection, "not authenticated")
+        return
+
+    if role != "researcher":
+        await _err(channel, connection, "Only researchers can save research results")
+        return
+
+    chat_id = envelope.get("chat_id", "")
+    session_title = envelope.get("session_title", "")
+
+    title = str(envelope.get("title") or _extract_research_title(content)).strip()
+
+    try:
+        storage = get_storage()
+        result = await storage.create_research_result({
+            "user_id": user_id,
+            "user_role": role,
+            "title": title,
+            "content": content,
+            "chat_id": chat_id,
+            "session_title": session_title,
+            "source_message_id": envelope.get("source_message_id") or envelope.get("sourceMessageId", ""),
+            "project_id": _optional_int(envelope.get("project_id") or envelope.get("projectId")),
+            "project_name": str(envelope.get("project_name") or envelope.get("projectName", "")).strip(),
+            "status": envelope.get("status", "saved"),
+            "sections": envelope.get("sections") if isinstance(envelope.get("sections"), list) else [],
+            "citations": envelope.get("citations") if isinstance(envelope.get("citations"), list) else [],
+            "attachments": envelope.get("attachments") if isinstance(envelope.get("attachments"), list) else [],
+            "tags": envelope.get("tags") if isinstance(envelope.get("tags"), list) else [],
+            "metadata": envelope.get("metadata") if isinstance(envelope.get("metadata"), dict) else {},
+        })
+        logger.info(f"User {user_id} saved research result via WS: {result.get('id')}")
+        await channel._send_event(
+            connection,
+            "research_result_saved",
+            request_id=request_id,
+            result=result,
+        )
+    except Exception as e:
+        logger.error("Failed to save research result: {}", e)
+        await _err(channel, connection, f"Failed to save: {str(e)}")
+
+
+def _optional_int(value: Any) -> int | None:
+    """Parse an optional integer field."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_research_title(content: str, max_len: int = 60) -> str:
+    """Extract a title from AI content."""
+    # Try to find first heading
+    for line in content.split("\n"):
+        line = line.strip()
+        if line.startswith("#"):
+            title = line.lstrip("#").strip()
+            if title:
+                return title[:max_len]
+
+    # Try to find first non-empty line
+    for line in content.split("\n"):
+        line = line.strip()
+        if line and len(line) > 5:
+            title = line.replace("**", "").replace("*", "").replace("`", "")
+            return title[:max_len] + ("..." if len(title) > max_len else "")
+
+    # Fallback
+    clean = content.replace("\n", " ").strip()
+    return clean[:max_len] + ("..." if len(clean) > max_len else "")
+
+
+# -- Student resource & category handlers -----------------------------------
+
+
+async def handle_student_resource_list_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """List student resources via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    resource_type = envelope.get("resource_type")
+    category_id = envelope.get("category_id")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_resource_list_result",
+            request_id=request_id, error="Only students can access resources",
+        )
+        return
+
+    try:
+        resources = await channel.storage.list_student_resources(user_id, resource_type)
+        # Filter by category if specified
+        if category_id is not None:
+            resources = [r for r in resources if r.get("category_id") == category_id]
+        await channel._send_event(
+            connection, "student_resource_list_result",
+            request_id=request_id, resources=resources,
+        )
+    except Exception as e:
+        logger.error("[ws] student_resource_list failed: {}", e)
+        await channel._send_event(
+            connection, "student_resource_list_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_resource_create_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Create a student resource via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    resource_type = envelope.get("resource_type", "question")
+    title = envelope.get("title", "")
+    content = envelope.get("content", "")
+    source_type = envelope.get("source_type", "manual")
+    source_id = envelope.get("source_id")
+    category_id = envelope.get("category_id")
+    metadata = envelope.get("metadata", {})
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_resource_create_result",
+            request_id=request_id, error="Only students can create resources",
+        )
+        return
+
+    if not title:
+        await channel._send_event(
+            connection, "student_resource_create_result",
+            request_id=request_id, error="title is required",
+        )
+        return
+
+    try:
+        resource_data = {
+            "student_id": user_id,
+            "resource_type": resource_type,
+            "title": title,
+            "content": content,
+            "source_type": source_type,
+            "source_id": source_id,
+            "category_id": category_id,
+            "metadata_extra": metadata,
+        }
+        resource = await channel.storage.create_student_resource(resource_data)
+
+        # Update category question count if categorized
+        if category_id:
+            await channel.storage.update_category_question_count(category_id)
+
+        logger.info("[ws] student_resource_create: id={}, type={}, user={}", resource.get("id"), resource_type, user_id)
+        await channel._send_event(
+            connection, "student_resource_create_result",
+            request_id=request_id, ok=True, resource=resource,
+        )
+    except Exception as e:
+        logger.error("[ws] student_resource_create failed: {}", e)
+        await channel._send_event(
+            connection, "student_resource_create_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_resource_delete_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Delete a student resource via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    resource_id = envelope.get("resource_id")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_resource_delete_result",
+            request_id=request_id, error="Only students can delete resources",
+        )
+        return
+
+    if not resource_id:
+        await channel._send_event(
+            connection, "student_resource_delete_result",
+            request_id=request_id, error="resource_id is required",
+        )
+        return
+
+    try:
+        # Get the resource first to know its category
+        resource = await channel.storage.get_student_resource(int(resource_id))
+        category_id = resource.get("category_id") if resource else None
+
+        success = await channel.storage.delete_student_resource(int(resource_id), user_id)
+        if success:
+            # Update category question count
+            if category_id:
+                await channel.storage.update_category_question_count(category_id)
+            await channel._send_event(
+                connection, "student_resource_delete_result",
+                request_id=request_id, ok=True,
+            )
+        else:
+            await channel._send_event(
+                connection, "student_resource_delete_result",
+                request_id=request_id, error="Resource not found",
+            )
+    except Exception as e:
+        logger.error("[ws] student_resource_delete failed: {}", e)
+        await channel._send_event(
+            connection, "student_resource_delete_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_resource_update_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Update a student resource via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    resource_id = envelope.get("resource_id")
+    update_fields = envelope.get("data", {})
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_resource_update_result",
+            request_id=request_id, error="Only students can update resources",
+        )
+        return
+
+    if not resource_id:
+        await channel._send_event(
+            connection, "student_resource_update_result",
+            request_id=request_id, error="resource_id is required",
+        )
+        return
+
+    try:
+        # Map metadata to metadata_extra for storage
+        if "metadata" in update_fields:
+            update_fields["metadata_extra"] = update_fields.pop("metadata")
+
+        resource = await channel.storage.update_student_resource(int(resource_id), user_id, update_fields)
+        if resource:
+            await channel._send_event(
+                connection, "student_resource_update_result",
+                request_id=request_id, ok=True, resource=resource,
+            )
+        else:
+            await channel._send_event(
+                connection, "student_resource_update_result",
+                request_id=request_id, error="Resource not found",
+            )
+    except Exception as e:
+        logger.error("[ws] student_resource_update failed: {}", e)
+        await channel._send_event(
+            connection, "student_resource_update_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_resource_categorize_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Set category for a student resource via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    resource_id = envelope.get("resource_id")
+    category_id = envelope.get("category_id")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_resource_categorize_result",
+            request_id=request_id, error="Only students can categorize resources",
+        )
+        return
+
+    if not resource_id:
+        await channel._send_event(
+            connection, "student_resource_categorize_result",
+            request_id=request_id, error="resource_id is required",
+        )
+        return
+
+    try:
+        # Get old category for count update
+        old_resource = await channel.storage.get_student_resource(int(resource_id))
+        old_category_id = old_resource.get("category_id") if old_resource else None
+
+        resource = await channel.storage.update_student_resource(
+            int(resource_id), user_id, {"category_id": category_id}
+        )
+        if resource:
+            # Update category question counts
+            if old_category_id:
+                await channel.storage.update_category_question_count(old_category_id)
+            if category_id:
+                await channel.storage.update_category_question_count(category_id)
+
+            await channel._send_event(
+                connection, "student_resource_categorize_result",
+                request_id=request_id, ok=True, resource=resource,
+            )
+        else:
+            await channel._send_event(
+                connection, "student_resource_categorize_result",
+                request_id=request_id, error="Resource not found",
+            )
+    except Exception as e:
+        logger.error("[ws] student_resource_categorize failed: {}", e)
+        await channel._send_event(
+            connection, "student_resource_categorize_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_categories_list_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """List student categories via WebSocket."""
+    request_id = envelope.get("request_id", "")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_categories_list_result",
+            request_id=request_id, error="Only students can access categories",
+        )
+        return
+
+    try:
+        categories = await channel.storage.list_student_categories(user_id)
+        await channel._send_event(
+            connection, "student_categories_list_result",
+            request_id=request_id, categories=categories,
+        )
+    except Exception as e:
+        logger.error("[ws] student_categories_list failed: {}", e)
+        await channel._send_event(
+            connection, "student_categories_list_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_category_create_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Create a student category via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    name = envelope.get("name", "").strip()
+    description = envelope.get("description", "")
+    color = envelope.get("color")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_category_create_result",
+            request_id=request_id, error="Only students can create categories",
+        )
+        return
+
+    if not name:
+        await channel._send_event(
+            connection, "student_category_create_result",
+            request_id=request_id, error="Category name is required",
+        )
+        return
+
+    try:
+        # Check for duplicate name
+        existing = await channel.storage.list_student_categories(user_id)
+        for cat in existing:
+            if cat.get("name") == name:
+                await channel._send_event(
+                    connection, "student_category_create_result",
+                    request_id=request_id, error="Category with this name already exists",
+                )
+                return
+
+        category_data = {
+            "student_id": user_id,
+            "name": name,
+            "description": description,
+            "color": color,
+        }
+        category = await channel.storage.create_student_category(category_data)
+        logger.info("[ws] student_category_create: id={}, name={}, user={}", category.get("id"), name, user_id)
+        await channel._send_event(
+            connection, "student_category_create_result",
+            request_id=request_id, ok=True, category=category,
+        )
+    except Exception as e:
+        logger.error("[ws] student_category_create failed: {}", e)
+        await channel._send_event(
+            connection, "student_category_create_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_category_update_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Update a student category via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    category_id = envelope.get("category_id")
+    name = envelope.get("name")
+    description = envelope.get("description")
+    color = envelope.get("color")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_category_update_result",
+            request_id=request_id, error="Only students can update categories",
+        )
+        return
+
+    if not category_id:
+        await channel._send_event(
+            connection, "student_category_update_result",
+            request_id=request_id, error="category_id is required",
+        )
+        return
+
+    try:
+        update_data = {}
+        if name is not None:
+            update_data["name"] = name
+        if description is not None:
+            update_data["description"] = description
+        if color is not None:
+            update_data["color"] = color
+
+        category = await channel.storage.update_student_category(int(category_id), user_id, update_data)
+        if category:
+            await channel._send_event(
+                connection, "student_category_update_result",
+                request_id=request_id, ok=True, category=category,
+            )
+        else:
+            await channel._send_event(
+                connection, "student_category_update_result",
+                request_id=request_id, error="Category not found",
+            )
+    except Exception as e:
+        logger.error("[ws] student_category_update failed: {}", e)
+        await channel._send_event(
+            connection, "student_category_update_result",
+            request_id=request_id, error=str(e),
+        )
+
+
+async def handle_student_category_delete_ws(
+    channel: Any,
+    connection: Any,
+    envelope: dict[str, Any],
+) -> None:
+    """Delete a student category via WebSocket."""
+    request_id = envelope.get("request_id", "")
+    category_id = envelope.get("category_id")
+
+    conn_meta = _get_conn_meta(channel, connection)
+    user_id = conn_meta.get("user_id", "")
+    role = conn_meta.get("role", "")
+
+    if role != "student":
+        await channel._send_event(
+            connection, "student_category_delete_result",
+            request_id=request_id, error="Only students can delete categories",
+        )
+        return
+
+    if not category_id:
+        await channel._send_event(
+            connection, "student_category_delete_result",
+            request_id=request_id, error="category_id is required",
+        )
+        return
+
+    try:
+        success = await channel.storage.delete_student_category(int(category_id), user_id)
+        if success:
+            await channel._send_event(
+                connection, "student_category_delete_result",
+                request_id=request_id, ok=True,
+            )
+        else:
+            await channel._send_event(
+                connection, "student_category_delete_result",
+                request_id=request_id, error="Category not found",
+            )
+    except Exception as e:
+        logger.error("[ws] student_category_delete failed: {}", e)
+        await channel._send_event(
+            connection, "student_category_delete_result",
+            request_id=request_id, error=str(e),
+        )
+
+
 # -- Dispatch table --------------------------------------------------------
 
 #: Maps envelope ``type`` to its handler function.
@@ -1070,10 +1763,12 @@ _ENVELOPE_HANDLERS: dict[str, Any] = {
     "attach": handle_attach,
     "message": handle_message,
     "save_source": handle_save_source,
+    "save_research_result": handle_save_research_result_ws,
     "delete_session": handle_delete_session_ws,
     "ai_grade_question": handle_ai_grade_question_ws,
     "ai_grade_submission": handle_ai_grade_submission_ws,
     "ai_generate_questions": handle_ai_generate_questions_ws,
+    "ai_parse_questions": handle_ai_parse_questions_ws,
     "create_homework": handle_create_homework_ws,
     "ai_tutor_evaluate": handle_ai_tutor_evaluate_ws,
     "ai_generate_derivation": handle_ai_generate_derivation_ws,
@@ -1083,6 +1778,17 @@ _ENVELOPE_HANDLERS: dict[str, Any] = {
     "upload_paper_end": handle_upload_paper_end_ws,
     "ai_polish": handle_ai_polish_ws,
     "ai_paper_summary": handle_ai_paper_summary_ws,
+    "researcher_clarify": handle_researcher_clarify_ws,
+    # Student resource & category operations
+    "student_resource_list": handle_student_resource_list_ws,
+    "student_resource_create": handle_student_resource_create_ws,
+    "student_resource_delete": handle_student_resource_delete_ws,
+    "student_resource_update": handle_student_resource_update_ws,
+    "student_resource_categorize": handle_student_resource_categorize_ws,
+    "student_categories_list": handle_student_categories_list_ws,
+    "student_category_create": handle_student_category_create_ws,
+    "student_category_update": handle_student_category_update_ws,
+    "student_category_delete": handle_student_category_delete_ws,
 }
 
 

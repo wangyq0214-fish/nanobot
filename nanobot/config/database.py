@@ -77,6 +77,7 @@ async def init_database(config: Optional[DatabaseConfig] = None) -> None:
 
         # Auto-create tables if they don't exist
         from nanobot.models.base import Base
+        import nanobot.models  # Import all models to register them with Base.metadata
         async with _engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             # Add annotations column if missing (migration for existing databases)
@@ -84,6 +85,20 @@ async def init_database(config: Optional[DatabaseConfig] = None) -> None:
                 await conn.execute(text("ALTER TABLE papers ADD COLUMN annotations TEXT DEFAULT '[]'"))
             except Exception:
                 pass  # Column already exists
+            # Research result structured fields (migration for existing databases).
+            for ddl in (
+                "ALTER TABLE research_results ADD COLUMN source_message_id VARCHAR(100) DEFAULT ''",
+                "ALTER TABLE research_results ADD COLUMN project_id INTEGER",
+                "ALTER TABLE research_results ADD COLUMN project_name VARCHAR(200) DEFAULT ''",
+                "ALTER TABLE research_results ADD COLUMN status VARCHAR(30) DEFAULT 'saved'",
+                "ALTER TABLE research_results ADD COLUMN sections JSON DEFAULT '[]'",
+                "ALTER TABLE research_results ADD COLUMN citations JSON DEFAULT '[]'",
+                "ALTER TABLE research_results ADD COLUMN attachments JSON DEFAULT '[]'",
+            ):
+                try:
+                    await conn.execute(text(ddl))
+                except Exception:
+                    pass  # Column already exists or backend uses compatible create_all
         logger.info("Database tables ensured")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")

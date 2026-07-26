@@ -26,6 +26,45 @@ class ContextBuilder:
     _MAX_RECENT_HISTORY = 50
     _MAX_HISTORY_CHARS = 32_000  # hard cap on recent history section size
     _RUNTIME_CONTEXT_END = "[/Runtime Context]"
+    _RESEARCHER_CLARIFICATION_PROMPT = """[研究者深度模式：问题澄清阶段]
+当前阶段不是回答用户问题，而是根据用户原始问题进行意图识别和问题澄清。
+
+请先分析这个问题可能涉及的关键维度，再生成一个用于前端渲染的动态澄清表单。
+
+严格只输出一个 JSON 对象，不要使用 Markdown，不要加解释文字。
+JSON 结构如下：
+{
+  "analysis": "用中文概括你识别到的研究对象、领域/方向、潜在比较对象、关键维度、产出类型和不确定点。不要直接回答原问题。",
+  "questions": [
+    {
+      "id": "short_snake_case_id",
+      "type": "single | multi | text | textarea",
+      "label": "面向用户的澄清问题",
+      "help": "可选，解释为什么需要这个信息",
+      "placeholder": "可选，text/textarea 的占位提示",
+      "options": [{"label": "选项文本", "value": "选项值"}],
+      "defaultValue": "默认值；multi 类型使用字符串数组"
+    }
+  ]
+}
+
+问题生成要求：
+1. questions 必须包含 4-7 个问题。
+2. 至少包含 1 个 single、1 个 multi、1 个 text 或 textarea。
+3. 所有选项都必须根据用户原始问题动态生成，不要使用通用固定选项。
+4. 问题需要覆盖：研究对象/领域确认、范围边界、重点维度、比较对象或资料约束、期望产出。
+5. 如果原问题涉及具体工具、论文、模型、方法或数据集，选项中要体现这些实体及合理候选项。
+"""
+    _RESEARCHER_CLARIFIED_PROMPT = """[研究者深度模式：澄清后正式研究阶段]
+用户刚刚完成问题澄清。请把 runtime context 中提供的原始问题、模型澄清分析、问卷结构和当前用户澄清答案作为研究约束。
+
+回答要求：
+1. 不要继续追问，除非关键条件仍完全缺失。
+2. 先用简短段落声明你采用的研究范围、关键假设和排除项。
+3. 围绕用户原始问题与澄清答案进行深度推理。
+4. 尽量进行多源交叉验证，区分事实、推断和待验证假设。
+5. 输出结构化研究结果，包含结论、依据、对比维度、风险/局限和下一步建议。
+"""
 
     def __init__(
         self,
@@ -114,6 +153,7 @@ class ContextBuilder:
     def _build_runtime_context(
         channel: str | None, chat_id: str | None, timezone: str | None = None,
         session_summary: str | None = None,
+        metadata_context: str | None = None,
     ) -> str:
         """Build untrusted runtime metadata block for injection before the user message."""
         lines = [f"Current Time: {current_time_str(timezone)}"]
@@ -121,7 +161,112 @@ class ContextBuilder:
             lines += [f"Channel: {channel}", f"Chat ID: {chat_id}"]
         if session_summary:
             lines += ["", "[Resumed Session]", session_summary]
+        if metadata_context:
+            lines += ["", "[Mode Context]", metadata_context]
         return ContextBuilder._RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines) + "\n" + ContextBuilder._RUNTIME_CONTEXT_END
+
+    @staticmethod
+    def build_researcher_clarified_metadata_context(metadata: dict[str, Any] | None) -> str:
+        if not isinstance(metadata, dict):
+            return ""
+        parts = []
+        if metadata.get("original_question"):
+            parts.append(f"Original Question:\n{metadata['original_question']}")
+        if metadata.get("model_clarification"):
+            parts.append(f"Model Clarification Analysis:\n{metadata['model_clarification']}")
+        if metadata.get("clarification_schema"):
+            parts.append(f"Clarification Form Schema:\n{metadata['clarification_schema']}")
+        attachments = metadata.get("attachments")
+        if isinstance(attachments, list) and attachments:
+            lines = []
+            for item in attachments[:10]:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("fileName") or item.get("name") or "attachment"
+                summary = item.get("summary") or ""
+                status = item.get("parseStatus") or ""
+                lines.append(f"- {name} ({status}): {summary}")
+            if lines:
+                parts.append("Uploaded Context Attachments:\n" + "\n".join(lines))
+        chunks = metadata.get("attachment_context_chunks")
+        if isinstance(chunks, list) and chunks:
+            lines = []
+            for chunk in chunks[:15]:
+                if not isinstance(chunk, dict):
+                    continue
+                label = chunk.get("fileName") or "attachment"
+                page = chunk.get("pageNumber")
+                content = chunk.get("content") or ""
+                page_part = f", page {page}" if page else ""
+                lines.append(f"[{label}{page_part}] {content}")
+            if lines:
+                parts.append("Database Attachment Excerpts:\n" + "\n\n".join(lines))
+        if metadata.get("output_template") == "research_deep_v1":
+            parts.append(
+                "Required Output Structure:\n"
+                "1. ????\n"
+                "2. ????\n"
+                "3. ???\n"
+                "4. ???????\n"
+                "5. ?????\n"
+                "6. ????????\n"
+                "7. ?????"
+            )
+        return "\n\n".join(parts)
+
+    def build_latex_writing_context(self, metadata: dict[str, Any] | None) -> str:
+        """Build context for LaTeX writing assistant."""
+        if not isinstance(metadata, dict):
+            return ""
+        latex_code = metadata.get("latex_code")
+        if not latex_code:
+            return ""
+
+        # Get file path from metadata
+        file_path = metadata.get("file_path", "")
+        if not file_path:
+            file_path = "latex/document.tex"
+
+        # Load latex-writing skill content
+        skill_content = self.skills.load_skill("latex-writing")
+        skill_section = ""
+        if skill_content:
+            skill_section = f"\n\n### LaTeX Writing Skill\n\n{self.skills._strip_frontmatter(skill_content)}"
+
+        return f"""[LaTeX Editor Context]
+The user is editing LaTeX file: `{file_path}`
+
+Current content:
+```latex
+{latex_code}
+```
+
+When the user asks you to modify the paper, operate on the live front-end editor instead of telling the user to upload or download a generated .tex file.
+Do not use read_file, write_file, or edit_file for this live editor task. The current editor content above is the source of truth.
+Do not output a normal ```latex code block as the final answer when the user asked you to directly modify the editor.
+Return a short human explanation plus one hidden editor action block using this exact fenced format:
+```latex-editor
+{{"action":"replace","search":"existing LaTeX snippet","replace":"new LaTeX snippet"}}
+```
+Supported actions are:
+- set: replace the whole editor content with "content"
+- replace: replace the first exact "search" match with "replace"
+- append: append "content" to the document
+- prepend: prepend "content" to the document
+- insert_after: insert "content" after exact "anchor"
+- insert_before: insert "content" before exact "anchor"
+- insert_line: insert "content" before one-based "line"
+- delete_line: delete one-based "line"
+For a newly generated complete document, use action "set" with the full LaTeX source in "content".
+Generated complete documents must be self-contained and compile with XeLaTeX:
+- Do not invent external image files; do not use \\includegraphics unless the user attached that file. Use a table or framed text placeholder instead.
+- Do not use natbib-only citation commands such as \\citet or \\citep. Use \\cite and a local thebibliography block.
+- Do not require a .bib file unless the user attached one.
+- Prefer standard packages: ctex, amsmath, graphicx, booktabs, geometry, hyperref, enumitem, xcolor.
+Use exact snippets from Current content for search/anchor. Prefer the smallest reliable edit. Add "compile": true only when the user asks to compile/preview PDF.
+Do not ask the user to upload a .tex file unless they explicitly want to import an existing local document.
+
+{skill_section}"""
 
     @staticmethod
     def _merge_message_content(left: Any, right: Any) -> str | list[dict[str, Any]]:
@@ -179,14 +324,23 @@ class ContextBuilder:
         current_role: str = "user",
         session_summary: str | None = None,
         mode: str | None = None,
+        metadata_context: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
-        runtime_ctx = self._build_runtime_context(channel, chat_id, self.timezone, session_summary=session_summary)
+        runtime_ctx = self._build_runtime_context(
+            channel, chat_id, self.timezone,
+            session_summary=session_summary,
+            metadata_context=metadata_context,
+        )
         user_content = self._build_user_content(current_message, media)
 
         # Build system prompt with optional mode prefix
         system_prompt = self.build_system_prompt(skill_names, channel=channel)
-        if mode == "deep":
+        if mode == "researcher_clarifying":
+            system_prompt = self._RESEARCHER_CLARIFICATION_PROMPT + "\n\n" + system_prompt
+        elif mode == "researcher_clarified":
+            system_prompt = self._RESEARCHER_CLARIFIED_PROMPT + "\n\n" + system_prompt
+        elif mode == "deep":
             system_prompt = "[深度推理模式] 请进行多源交叉验证，引用具体文献和数据，生成结构化分析报告。\n\n" + system_prompt
         elif mode == "quick":
             system_prompt = "[快速响应模式] 请简洁明了地回答，适合快速了解要点。\n\n" + system_prompt

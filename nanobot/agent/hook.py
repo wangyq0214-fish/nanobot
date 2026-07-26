@@ -41,6 +41,12 @@ class AgentHook:
     async def on_stream(self, context: AgentHookContext, delta: str) -> None:
         pass
 
+    async def on_reasoning_stream(self, context: AgentHookContext, delta: str) -> None:
+        pass
+
+    async def on_agent_message(self, context: AgentHookContext, message: dict[str, Any]) -> None:
+        pass
+
     async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
         pass
 
@@ -87,6 +93,12 @@ class CompositeHook(AgentHook):
 
     async def on_stream(self, context: AgentHookContext, delta: str) -> None:
         await self._for_each_hook_safe("on_stream", context, delta)
+
+    async def on_reasoning_stream(self, context: AgentHookContext, delta: str) -> None:
+        await self._for_each_hook_safe("on_reasoning_stream", context, delta)
+
+    async def on_agent_message(self, context: AgentHookContext, message: dict[str, Any]) -> None:
+        await self._for_each_hook_safe("on_agent_message", context, message)
 
     async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
         await self._for_each_hook_safe("on_stream_end", context, resuming=resuming)

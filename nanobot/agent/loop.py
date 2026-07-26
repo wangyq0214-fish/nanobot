@@ -99,6 +99,36 @@ class _LoopHook(AgentHook):
         if incremental and self._on_stream:
             await self._on_stream(incremental)
 
+    async def on_reasoning_stream(self, context: AgentHookContext, delta: str) -> None:
+        if not delta:
+            return
+        await self._loop.bus.publish_outbound(
+            OutboundMessage(
+                channel=self._channel,
+                chat_id=self._chat_id,
+                content=delta,
+                metadata={
+                    "_trace_message": True,
+                    "trace_role": "assistant",
+                    "trace_reasoning": True,
+                },
+            )
+        )
+
+    async def on_agent_message(self, context: AgentHookContext, message: dict[str, Any]) -> None:
+        metadata = self._loop._trace_metadata_for_entry(message)
+        if metadata is None:
+            return
+        content = self._loop._trace_entry_content(message)
+        await self._loop.bus.publish_outbound(
+            OutboundMessage(
+                channel=self._channel,
+                chat_id=self._chat_id,
+                content=content,
+                metadata=metadata,
+            )
+        )
+
     async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
         if self._on_stream_end:
             await self._on_stream_end(resuming=resuming)
@@ -126,7 +156,9 @@ class _LoopHook(AgentHook):
         for tc in context.tool_calls:
             args_str = json.dumps(tc.arguments, ensure_ascii=False)
             logger.info("Tool call: {}({})", tc.name, args_str[:200])
-        self._loop._set_tool_context(self._channel, self._chat_id, self._message_id)
+        self._loop._set_tool_context(
+            self._channel, self._chat_id, self._message_id,
+        )
 
     async def after_iteration(self, context: AgentHookContext) -> None:
         if (
@@ -376,7 +408,12 @@ class AgentLoop:
         finally:
             self._mcp_connecting = False
 
-    def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+    def _set_tool_context(
+        self,
+        channel: str,
+        chat_id: str,
+        message_id: str | None = None,
+    ) -> None:
         """Update context for all tools that need routing info."""
         # Compute the effective session key (accounts for unified sessions)
         # so that subagent results route to the correct pending queue.
@@ -685,6 +722,7 @@ class AgentLoop:
             (user_ws / "memory").mkdir(exist_ok=True)
             (user_ws / "sessions").mkdir(exist_ok=True)
             (user_ws / "source").mkdir(exist_ok=True)
+            (user_ws / "latex").mkdir(exist_ok=True)
             logger.info("Created user workspace: {}", user_ws)
 
         # Build per-user ContextBuilder with role workspace for shared files
@@ -953,12 +991,14 @@ class AgentLoop:
                 current_role=current_role,
                 mode=msg.metadata.get("mode") if msg.metadata else None,
             )
+
             final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
                 messages, session=session, channel=channel, chat_id=chat_id,
                 message_id=msg.metadata.get("message_id"),
                 pending_queue=pending_queue,
             )
-            self._save_turn(session, all_msgs, 1 + len(history))
+            saved_entries = self._save_turn(session, all_msgs, 1 + len(history))
+            await self._publish_realtime_trace(channel, chat_id, saved_entries)
             self._clear_runtime_checkpoint(session)
             self.sessions.save(session)
             self._schedule_background(self.consolidator.maybe_consolidate_by_tokens(session))
@@ -1012,6 +1052,21 @@ class AgentLoop:
         history = session.get_history(max_messages=0)
 
         pending_ask_id = pending_ask_user_id(history)
+        metadata = msg.metadata or {}
+        metadata = await self._enrich_research_attachment_metadata(metadata)
+        prompt_mode = metadata.get("mode")
+        if metadata.get("phase") == "clarifying":
+            prompt_mode = "researcher_clarifying"
+        elif metadata.get("phase") == "clarified":
+            prompt_mode = "researcher_clarified"
+        metadata_context = (
+            self.context.build_researcher_clarified_metadata_context(metadata)
+            if metadata.get("phase") == "clarified" else None
+        )
+        # Build LaTeX writing context if skill is latex-writing
+        if metadata.get("_skill") == "latex-writing" and not metadata_context:
+            metadata_context = self.context.build_latex_writing_context(metadata)
+
         if pending_ask_id:
             initial_messages = ask_user_tool_result_messages(
                 self.context.build_system_prompt(channel=msg.channel),
@@ -1027,7 +1082,8 @@ class AgentLoop:
                 media=msg.media if msg.media else None,
                 channel=msg.channel,
                 chat_id=msg.chat_id,
-                mode=msg.metadata.get("mode") if msg.metadata else None,
+                mode=prompt_mode,
+                metadata_context=metadata_context,
             )
 
         async def _bus_progress(
@@ -1071,7 +1127,11 @@ class AgentLoop:
         has_text = isinstance(msg.content, str) and msg.content.strip()
         if not pending_ask_id and (has_text or media_paths):
             extra: dict[str, Any] = {"media": list(media_paths)} if media_paths else {}
+            if metadata:
+                extra["metadata"] = metadata
             text = msg.content if isinstance(msg.content, str) else ""
+            if metadata.get("display_content"):
+                text = str(metadata.get("display_content") or "")
             session.add_message("user", text, **extra)
             self._mark_pending_user_turn(session)
             self.sessions.save(session)
@@ -1093,9 +1153,12 @@ class AgentLoop:
         if final_content is None or not final_content.strip():
             final_content = EMPTY_FINAL_RESPONSE_MESSAGE
 
-        # Skip the already-persisted user message when saving the turn
-        save_skip = 1 + len(history) + (1 if user_persisted_early else 0)
-        self._save_turn(session, all_msgs, save_skip)
+        # Skip the already-persisted user message when saving the turn.
+        # Clarification-schema generation is a UI-internal planning turn: keep
+        # the original user question, but do not persist the JSON schema reply.
+        if metadata.get("phase") != "clarifying":
+            save_skip = 1 + len(history) + (1 if user_persisted_early else 0)
+            self._save_turn(session, all_msgs, save_skip)
         self._clear_pending_user_turn(session)
         self._clear_runtime_checkpoint(session)
         self.sessions.save(session)
@@ -1170,14 +1233,15 @@ class AgentLoop:
 
         return filtered
 
-    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
+    def _save_turn(self, session: Session, messages: list[dict], skip: int) -> list[dict]:
         """Save new-turn messages into session, truncating large tool results."""
         from datetime import datetime
 
+        saved_entries: list[dict] = []
         for m in messages[skip:]:
             entry = dict(m)
             role, content = entry.get("role"), entry.get("content")
-            if role == "assistant" and not content and not entry.get("tool_calls"):
+            if role == "assistant" and not content and not entry.get("reasoning_content") and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context
             if role == "tool":
                 if isinstance(content, str) and len(content) > self.max_tool_result_chars:
@@ -1188,6 +1252,9 @@ class AgentLoop:
                         continue
                     entry["content"] = filtered
             elif role == "user":
+                if isinstance(entry.get("metadata"), dict) and entry["metadata"].get("display_content"):
+                    entry["content"] = str(entry["metadata"].get("display_content") or "")
+                    content = entry["content"]
                 if isinstance(content, str) and content.startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
                     # Strip the entire runtime-context block (including any session summary).
                     # The block is bounded by _RUNTIME_CONTEXT_TAG and _RUNTIME_CONTEXT_END.
@@ -1218,7 +1285,120 @@ class AgentLoop:
                 entry["metadata"] = m["metadata"]
             entry.setdefault("timestamp", datetime.now().isoformat())
             session.messages.append(entry)
+            saved_entries.append(entry)
         session.updated_at = datetime.now()
+        return saved_entries
+
+    async def _publish_realtime_trace(self, channel: str, chat_id: str, entries: list[dict]) -> None:
+        for entry in entries:
+            metadata = self._trace_metadata_for_entry(entry)
+            if metadata is None:
+                continue
+            await self.bus.publish_outbound(
+                OutboundMessage(
+                    channel=channel,
+                    chat_id=chat_id,
+                    content=self._trace_entry_content(entry),
+                    metadata=metadata,
+                )
+            )
+
+    @staticmethod
+    async def _enrich_research_attachment_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+        """Attach small database-backed file excerpts to researcher runtime metadata."""
+        if not isinstance(metadata, dict):
+            return metadata
+        attachments = metadata.get("attachments")
+        if not isinstance(attachments, list) or not attachments:
+            return metadata
+        enriched = dict(metadata)
+        excerpts: list[dict[str, Any]] = []
+        try:
+            from nanobot.storage.factory import get_storage
+
+            storage = get_storage()
+            for attachment in attachments[:5]:
+                if not isinstance(attachment, dict) or not attachment.get("id"):
+                    continue
+                chunks = await storage.get_research_attachment_chunks(int(attachment["id"]))
+                for chunk in chunks[:3]:
+                    content = str(chunk.get("content") or "").strip()
+                    if not content:
+                        continue
+                    excerpts.append({
+                        "attachmentId": attachment.get("id"),
+                        "fileName": attachment.get("fileName", "attachment"),
+                        "chunkIndex": chunk.get("chunkIndex"),
+                        "pageNumber": chunk.get("pageNumber"),
+                        "content": content[:1200],
+                    })
+        except Exception as exc:
+            logger.warning("Failed to enrich researcher attachment metadata: {}", exc)
+        if excerpts:
+            enriched["attachment_context_chunks"] = excerpts
+        return enriched
+
+    @staticmethod
+    def _trace_metadata_for_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
+        role = entry.get("role")
+        if role == "tool":
+            return {
+                "_trace_message": True,
+                "trace_role": "tool",
+                "trace_name": entry.get("name") or "tool",
+            }
+        if role == "assistant" and entry.get("reasoning_content"):
+            return {
+                "_trace_message": True,
+                "trace_role": "assistant",
+                "trace_reasoning": True,
+            }
+        if role == "assistant" and entry.get("tool_calls"):
+            calls = entry.get("tool_calls")
+            return {
+                "_trace_message": True,
+                "trace_role": "assistant",
+                "trace_reasoning": False,
+                "trace_name": "tool_calls",
+                "trace_tool_calls": calls,
+            }
+        return None
+
+    @classmethod
+    def _trace_entry_content(cls, entry: dict[str, Any]) -> str:
+        if entry.get("role") == "assistant" and entry.get("tool_calls"):
+            return cls._trace_tool_calls_to_text(entry.get("tool_calls"))
+        if entry.get("role") == "assistant" and entry.get("reasoning_content"):
+            return cls._trace_content_to_text(entry.get("reasoning_content"))
+        return cls._trace_content_to_text(entry.get("content") or entry.get("reasoning_content"))
+
+    @classmethod
+    def _trace_tool_calls_to_text(cls, calls: Any) -> str:
+        if not isinstance(calls, list):
+            return cls._trace_content_to_text(calls)
+        lines = ["Tool calls:"]
+        for index, call in enumerate(calls, start=1):
+            if not isinstance(call, dict):
+                lines.append(f"{index}. {cls._trace_content_to_text(call)}")
+                continue
+            function = call.get("function") if isinstance(call.get("function"), dict) else {}
+            name = function.get("name") or call.get("name") or "tool"
+            arguments = function.get("arguments") or call.get("arguments") or ""
+            lines.append(f"{index}. {name}")
+            if arguments:
+                lines.append(cls._trace_content_to_text(arguments))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _trace_content_to_text(content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        try:
+            import json
+
+            return json.dumps(content, ensure_ascii=False, indent=2)
+        except Exception:
+            return str(content)
 
     def _persist_subagent_followup(self, session: Session, msg: InboundMessage) -> bool:
         """Persist subagent follow-ups before prompt assembly so history stays durable.

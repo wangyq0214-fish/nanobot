@@ -13,7 +13,19 @@ from .notification import Notification
 from .paper import Paper, PaperChunk
 from .progress import LearningProgress
 from .question_bank import QuestionBank
+from .research_result import ResearchResult
+from .research_workspace import (
+    LatexCompileRecord,
+    LatexDraft,
+    LatexDraftAttachment,
+    LatexDraftVersion,
+    ResearchAttachment,
+    ResearchAttachmentChunk,
+    ResearchProject,
+)
 from .resource import CourseResource
+from .student_category import StudentCategory
+from .student_resource import StudentResource
 from .tutor_profile import TutorProfile
 from .user import User
 
@@ -28,6 +40,8 @@ __all__ = [
     "Question",
     "Submission",
     "CourseResource",
+    "StudentCategory",
+    "StudentResource",
     "LearningProgress",
     "Notification",
     "AuditLog",
@@ -35,4 +49,12 @@ __all__ = [
     "TutorProfile",
     "Paper",
     "PaperChunk",
+    "ResearchResult",
+    "ResearchProject",
+    "ResearchAttachment",
+    "ResearchAttachmentChunk",
+    "LatexDraft",
+    "LatexDraftVersion",
+    "LatexCompileRecord",
+    "LatexDraftAttachment",
 ]

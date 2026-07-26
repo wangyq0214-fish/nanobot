@@ -184,12 +184,17 @@ async def test_runner_streaming_hook_receives_deltas_and_end_signal():
 
     provider = MagicMock()
     streamed: list[str] = []
+    reasoning_streamed: list[str] = []
     endings: list[bool] = []
 
-    async def chat_stream_with_retry(*, on_content_delta, **kwargs):
+    async def chat_stream_with_retry(*, on_content_delta, on_reasoning_delta=None, **kwargs):
+        if on_reasoning_delta:
+            await on_reasoning_delta("think ")
         await on_content_delta("he")
+        if on_reasoning_delta:
+            await on_reasoning_delta("more")
         await on_content_delta("llo")
-        return LLMResponse(content="hello", tool_calls=[], usage={})
+        return LLMResponse(content="hello", tool_calls=[], usage={}, reasoning_content="think more")
 
     provider.chat_stream_with_retry = chat_stream_with_retry
     provider.chat_with_retry = AsyncMock()
@@ -202,6 +207,9 @@ async def test_runner_streaming_hook_receives_deltas_and_end_signal():
 
         async def on_stream(self, context: AgentHookContext, delta: str) -> None:
             streamed.append(delta)
+
+        async def on_reasoning_stream(self, context: AgentHookContext, delta: str) -> None:
+            reasoning_streamed.append(delta)
 
         async def on_stream_end(self, context: AgentHookContext, *, resuming: bool) -> None:
             endings.append(resuming)
@@ -218,8 +226,52 @@ async def test_runner_streaming_hook_receives_deltas_and_end_signal():
 
     assert result.final_content == "hello"
     assert streamed == ["he", "llo"]
+    assert reasoning_streamed == ["think ", "more"]
     assert endings == [False]
     provider.chat_with_retry.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runner_emits_agent_messages_when_tools_are_generated():
+    from nanobot.agent.hook import AgentHook, AgentHookContext
+    from nanobot.agent.runner import AgentRunSpec, AgentRunner
+    from nanobot.providers.base import ToolCallRequest
+
+    provider = MagicMock()
+    provider.chat_stream_with_retry = AsyncMock()
+    provider.chat_with_retry = AsyncMock(side_effect=[
+        LLMResponse(
+            content="",
+            tool_calls=[ToolCallRequest(id="call_1", name="read_file", arguments={"path": "a.txt"})],
+            finish_reason="tool_calls",
+        ),
+        LLMResponse(content="done", tool_calls=[], finish_reason="stop"),
+    ])
+
+    tools = MagicMock()
+    tools.get_definitions.return_value = [{"type": "function", "function": {"name": "read_file"}}]
+    tools.execute = AsyncMock(return_value="file contents")
+    emitted: list[dict] = []
+
+    class MessageHook(AgentHook):
+        async def on_agent_message(self, context: AgentHookContext, message: dict) -> None:
+            emitted.append(message)
+
+    runner = AgentRunner(provider)
+    result = await runner.run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "read it"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=3,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        hook=MessageHook(),
+    ))
+
+    assert result.final_content == "done"
+    assert [m["role"] for m in emitted] == ["assistant", "tool", "assistant"]
+    assert emitted[0]["tool_calls"][0]["function"]["name"] == "read_file"
+    assert emitted[1]["name"] == "read_file"
+    assert emitted[1]["content"] == "file contents"
 
 
 @pytest.mark.asyncio

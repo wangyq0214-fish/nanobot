@@ -289,6 +289,63 @@ class BaseStorage(ABC):
         """List resources in a course, optionally filtered by type."""
         pass
 
+    # Student resource operations
+    @abstractmethod
+    async def create_student_resource(self, resource_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student resource. Returns created resource data."""
+        pass
+
+    @abstractmethod
+    async def get_student_resource(self, resource_id: int) -> Optional[Dict[str, Any]]:
+        """Get student resource by ID. Returns None if not found."""
+        pass
+
+    @abstractmethod
+    async def delete_student_resource(self, resource_id: int, student_id: str) -> bool:
+        """Delete student resource. Returns True if successful."""
+        pass
+
+    @abstractmethod
+    async def list_student_resources(self, student_id: str, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List student resources, optionally filtered by type."""
+        pass
+
+    @abstractmethod
+    async def update_student_resource(self, resource_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student resource. Returns updated resource or None."""
+        pass
+
+    # Student category operations
+    @abstractmethod
+    async def create_student_category(self, category_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a student category. Returns created category data."""
+        pass
+
+    @abstractmethod
+    async def get_student_category(self, category_id: int) -> Optional[Dict[str, Any]]:
+        """Get student category by ID. Returns None if not found."""
+        pass
+
+    @abstractmethod
+    async def delete_student_category(self, category_id: int, student_id: str) -> bool:
+        """Delete student category. Returns True if successful."""
+        pass
+
+    @abstractmethod
+    async def list_student_categories(self, student_id: str) -> List[Dict[str, Any]]:
+        """List student categories."""
+        pass
+
+    @abstractmethod
+    async def update_student_category(self, category_id: int, student_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update student category. Returns updated category or None."""
+        pass
+
+    @abstractmethod
+    async def update_category_question_count(self, category_id: int) -> None:
+        """Update the question count for a category."""
+        pass
+
     # Tutor profile operations
     async def get_tutor_profile(self, student_id: str) -> Optional[Dict[str, Any]]:
         """Get tutor profile for a student. Returns None if not found."""
@@ -326,6 +383,81 @@ class BaseStorage(ABC):
     async def get_paper_chunks(self, paper_id: int) -> List[Dict[str, Any]]:
         """Get all chunks for a paper."""
         return []
+
+    # Research result operations (for researcher saved AI outputs)
+    async def create_research_result(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new research result. Returns created result data."""
+        raise NotImplementedError
+
+    async def get_research_result(self, result_id: int) -> Optional[Dict[str, Any]]:
+        """Get research result by ID. Returns None if not found."""
+        return None
+
+    async def list_research_results(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List research results for a user."""
+        return []
+
+    async def delete_research_result(self, result_id: int) -> bool:
+        """Delete research result. Returns True if successful."""
+        return False
+
+    async def update_research_result(self, result_id: int, data: Dict[str, Any]) -> bool:
+        """Update research result data. Returns True if successful."""
+        return False
+
+    # Research workspace operations
+    async def create_research_project(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a researcher project."""
+        raise NotImplementedError
+
+    async def list_research_projects(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List researcher projects."""
+        return []
+
+    async def create_research_attachment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a workspace attachment."""
+        raise NotImplementedError
+
+    async def get_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Get a workspace attachment."""
+        return None
+
+    async def list_research_attachments(
+        self,
+        user_id: str,
+        user_role: str = "researcher",
+        chat_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List workspace attachments for a researcher."""
+        return []
+
+    async def create_research_attachment_chunks(self, attachment_id: int, chunks: List[Dict[str, Any]]) -> int:
+        """Create chunks for a workspace attachment."""
+        return 0
+
+    async def get_research_attachment_chunks(self, attachment_id: int) -> List[Dict[str, Any]]:
+        """Get chunks for a workspace attachment."""
+        return []
+
+    async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or update a LaTeX draft."""
+        raise NotImplementedError
+
+    async def get_latex_draft(self, draft_id: int) -> Optional[Dict[str, Any]]:
+        """Get a LaTeX draft by ID."""
+        return None
+
+    async def list_latex_drafts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List LaTeX drafts for a researcher."""
+        return []
+
+    async def list_latex_draft_versions(self, draft_id: int) -> List[Dict[str, Any]]:
+        """List versions for a LaTeX draft."""
+        return []
+
+    async def create_latex_compile_record(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a compile record for a LaTeX draft."""
+        raise NotImplementedError
 
     # Health check
     @abstractmethod

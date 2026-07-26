@@ -56,15 +56,15 @@
         </div>
         <div class="paper-authors" v-if="paper.authors?.length">{{ formatAuthors(paper.authors) }}</div>
         <div class="paper-meta">
-          <span v-if="paper.year">📅 {{ paper.year }}</span>
+          <span v-if="paper.year">{{ paper.year }}</span>
           <span v-if="paper.citations">📊 引用 {{ paper.citations }}</span>
         </div>
         <div class="paper-abstract" v-if="paper.abstract">{{ truncate(paper.abstract, 200) }}</div>
         <div class="paper-actions">
           <button class="btn-import" @click="doImport(paper)" :disabled="importingId === paper.id || !paper.pdfUrl">
-            {{ importingId === paper.id ? '导入中…' : '📥 导入到文库' }}
+            {{ importingId === paper.id ? '导入中…' : '导入到文库' }}
           </button>
-          <a v-if="paper.pdfUrl" :href="paper.pdfUrl" target="_blank" class="btn-pdf">📄 PDF</a>
+          <a v-if="paper.pdfUrl" :href="paper.pdfUrl" target="_blank" class="btn-pdf">PDF</a>
           <span v-if="importedIds.has(paper.id)" class="imported">✅ 已导入</span>
         </div>
       </div>
