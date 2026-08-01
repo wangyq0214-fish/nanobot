@@ -29,8 +29,11 @@ async def handle_list_papers(
 ) -> Response:
     """List all papers for the current user."""
     user_id = identity.get("user_id", "")
+    role = identity.get("role", "researcher")
+    if role != "researcher":
+        return http_error(403, "Only researchers can access papers")
 
-    papers = await storage.list_papers(user_id=user_id)
+    papers = await storage.list_papers(user_id=user_id, user_role=role)
     return http_json_response({"papers": papers})
 
 
@@ -42,6 +45,9 @@ async def handle_upload_paper(
 ) -> Response:
     """Upload a PDF paper. Expects multipart/form-data or JSON with base64."""
     user_id = identity.get("user_id", "")
+    role = identity.get("role", "researcher")
+    if role != "researcher":
+        return http_error(403, "Only researchers can upload papers")
     query = parse_query(request.path)
 
     # Parse the data parameter (JSON with base64-encoded file)
@@ -94,6 +100,7 @@ async def handle_upload_paper(
         "full_text": pdf_data["full_text"],
         "source": "upload",
         "user_id": user_id,
+        "user_role": role,
     })
 
     # Create chunks
@@ -121,13 +128,15 @@ async def handle_get_paper(
     paper_id: str,
 ) -> Response:
     """Get paper detail by ID."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can access papers")
     try:
         pid = int(paper_id)
     except ValueError:
         return http_error(400, "Invalid paper ID")
 
     paper = await storage.get_paper(pid)
-    if not paper:
+    if not _owns(paper, identity):
         return http_error(404, "Paper not found")
 
     return http_json_response({"paper": paper})
@@ -141,6 +150,8 @@ async def handle_get_paper_pdf(
     paper_id: str,
 ) -> Response:
     """Serve the PDF file for a paper."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can access papers")
     from websockets.datastructures import Headers as WsHeaders
 
     try:
@@ -149,7 +160,7 @@ async def handle_get_paper_pdf(
         return http_error(400, "Invalid paper ID")
 
     paper = await storage.get_paper(pid)
-    if not paper:
+    if not _owns(paper, identity):
         return http_error(404, "Paper not found")
 
     file_path = paper.get("filePath", "")
@@ -173,11 +184,15 @@ async def handle_get_paper_chunks(
     paper_id: str,
 ) -> Response:
     """Get text chunks for a paper."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can access papers")
     try:
         pid = int(paper_id)
     except ValueError:
         return http_error(400, "Invalid paper ID")
 
+    if not _owns(await storage.get_paper(pid), identity):
+        return http_error(404, "Paper not found")
     chunks = await storage.get_paper_chunks(pid)
     return http_json_response({"chunks": chunks})
 
@@ -190,6 +205,8 @@ async def handle_delete_paper(
     paper_id: str,
 ) -> Response:
     """Delete a paper."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can delete papers")
     try:
         pid = int(paper_id)
     except ValueError:
@@ -197,7 +214,7 @@ async def handle_delete_paper(
 
     # Get paper to find file path
     paper = await storage.get_paper(pid)
-    if not paper:
+    if not _owns(paper, identity):
         return http_error(404, "Paper not found")
 
     # Delete file if exists
@@ -219,13 +236,15 @@ async def handle_toggle_favorite(
     paper_id: str,
 ) -> Response:
     """Toggle paper favorite status."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can update papers")
     try:
         pid = int(paper_id)
     except ValueError:
         return http_error(400, "Invalid paper ID")
 
     paper = await storage.get_paper(pid)
-    if not paper:
+    if not _owns(paper, identity):
         return http_error(404, "Paper not found")
 
     new_favorite = not paper.get("isFavorite", False)
@@ -241,6 +260,8 @@ async def handle_update_tags(
     paper_id: str,
 ) -> Response:
     """Update paper tags."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can update papers")
     try:
         pid = int(paper_id)
     except ValueError:
@@ -255,6 +276,8 @@ async def handle_update_tags(
     if not isinstance(tags, list):
         return http_error(400, "tags must be a list")
 
+    if not _owns(await storage.get_paper(pid), identity):
+        return http_error(404, "Paper not found")
     await storage.update_paper(pid, {"tags": tags})
     return http_json_response({"tags": tags})
 
@@ -267,6 +290,8 @@ async def handle_update_annotations(
     paper_id: str,
 ) -> Response:
     """Update paper annotations (highlights)."""
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can update papers")
     try:
         pid = int(paper_id)
     except ValueError:
@@ -281,5 +306,17 @@ async def handle_update_annotations(
     if not isinstance(annotations, list):
         return http_error(400, "annotations must be a list")
 
+    if not _owns(await storage.get_paper(pid), identity):
+        return http_error(404, "Paper not found")
     await storage.update_paper(pid, {"annotations": annotations})
     return http_json_response({"annotations": annotations})
+
+
+def _owns(paper: dict | None, identity: dict[str, str]) -> bool:
+    """Require both the authenticated user id and role to match."""
+    if not paper:
+        return False
+    return (
+        (paper.get("userId") or paper.get("user_id")) == identity.get("user_id", "")
+        and (paper.get("userRole") or paper.get("user_role") or "researcher") == identity.get("role", "researcher")
+    )

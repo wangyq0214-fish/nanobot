@@ -53,6 +53,7 @@ class ResearchAttachment(Base):
     user_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     user_role: Mapped[str] = mapped_column(String(20), nullable=False, default="researcher")
     project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("research_projects.id"), nullable=True)
+    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     chat_id: Mapped[str] = mapped_column(String(100), default="")
     file_name: Mapped[str] = mapped_column(String(500), nullable=False)
     file_type: Mapped[str] = mapped_column(String(80), default="")
@@ -69,6 +70,7 @@ class ResearchAttachment(Base):
             "userId": self.user_id,
             "userRole": self.user_role,
             "projectId": self.project_id,
+            "jobId": self.job_id,
             "chatId": self.chat_id,
             "fileName": self.file_name,
             "fileType": self.file_type,

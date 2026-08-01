@@ -1,6 +1,7 @@
 """Shell execution tool."""
 
 import asyncio
+import locale
 import os
 import re
 import shutil
@@ -82,6 +83,17 @@ class ExecTool(Tool):
     _MAX_TIMEOUT = 600
     _MAX_OUTPUT = 10_000
 
+    @staticmethod
+    def _decode_output(raw: bytes) -> str:
+        """Decode subprocess output across UTF-8 and Windows code pages."""
+        if not raw:
+            return ""
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            encoding = locale.getpreferredencoding(False) or "utf-8"
+            return raw.decode(encoding, errors="replace")
+
     @property
     def description(self) -> str:
         return (
@@ -158,10 +170,10 @@ class ExecTool(Tool):
             output_parts = []
 
             if stdout:
-                output_parts.append(stdout.decode("utf-8", errors="replace"))
+                output_parts.append(self._decode_output(stdout))
 
             if stderr:
-                stderr_text = stderr.decode("utf-8", errors="replace")
+                stderr_text = self._decode_output(stderr)
                 if stderr_text.strip():
                     output_parts.append(f"STDERR:\n{stderr_text}")
 

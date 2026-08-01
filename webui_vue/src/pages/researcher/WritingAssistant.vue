@@ -9,6 +9,9 @@
       <div class="actions">
         <button @click="createNewFile">新建</button>
         <button @click="loadFileList(true)" :disabled="loadingFile">打开</button>
+        <button @click="handleManualSave" :disabled="savingFile || !latexCode.trim()">
+          {{ savingFile ? '保存中...' : '保存' }}
+        </button>
         <button @click="triggerFileInput">附件 {{ attachments.length ? `(${attachments.length})` : '' }}</button>
         <input ref="fileInput" hidden type="file" multiple accept="image/*,.bib,.sty,.cls" @change="handleFileChange" />
         <button class="primary" @click="handleCompile" :disabled="compiling || !latexCode.trim()">
@@ -345,6 +348,27 @@ function buildDraftPayload(changeSource = 'autosave') {
   }
 }
 
+function handleDeletedSession(event) {
+  if (event.detail?.chatId !== writingChatId.value) return
+  stopChatListener()
+  writingChatId.value = ''
+  chatMessages.value = [{ role: 'assistant', content: welcome }]
+  ensureWritingChatId()
+  void loadHistory(writingChatId.value)
+}
+
+async function handleManualSave() {
+  if (!latexCode.value.trim()) return
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  const draft = await persistCurrentDraft('manual')
+  if (!draft) {
+    alert('保存失败，请检查登录状态或稍后重试')
+  }
+}
+
 async function persistCurrentDraft(changeSource = 'autosave') {
   if (!saveFilePath.value) {
     fileName.value = fileName.value || 'document'
@@ -409,14 +433,10 @@ async function loadFromFile(file) {
   loadingFile.value = true
   try {
     const draftId = file?.id
-    let content = fileContentCache.get(String(draftId))
-    let draft = file
-    if (content === undefined) {
-      const data = await fetchLatexDraft(draftId)
-      draft = data.data || file
-      content = draft.content || ''
-      fileContentCache.set(String(draftId), content)
-    }
+    const data = await fetchLatexDraft(draftId)
+    const draft = data.data || file
+    const content = draft.content || ''
+    fileContentCache.set(String(draftId), content)
     latexCode.value = content
     currentDraftId.value = draftId
     currentDraftVersion.value = draft.currentVersion || null
@@ -716,6 +736,7 @@ function handleChatResponse(ev) {
 }
 
 onMounted(async () => {
+  window.addEventListener('nanobot-session-deleted', handleDeletedSession)
   ensureWritingChatId()
   const savedDraftId = localStorage.getItem('nanobot_latex_draft_id')
   const savedPath = localStorage.getItem('nanobot_latex_file_path')
@@ -747,6 +768,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('nanobot-session-deleted', handleDeletedSession)
   cleanup()
   stopChatListener()
 })

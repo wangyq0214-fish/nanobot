@@ -5,7 +5,7 @@
 Your workspace is at: {{ workspace_path }}
 - Long-term memory: {{ workspace_path }}/memory/MEMORY.md (automatically managed by Dream — do not edit directly)
 - History log: {{ workspace_path }}/memory/history.jsonl (append-only JSONL; prefer built-in `grep` for search).
-- Custom skills: {{ workspace_path }}/skills/{% raw %}{skill-name}{% endraw %}/SKILL.md
+- Custom skills are loaded from the active role skill workspace. Use the skill path shown in the Skills section; do not assume they are under the per-user workspace.
 
 {{ platform_policy }}
 {% if channel == 'telegram' or channel == 'qq' or channel == 'discord' %}
@@ -29,4 +29,5 @@ Output is rendered in a terminal. Avoid markdown headings and tables. Use plain 
 {% include 'agent/_snippets/untrusted_content.md' %}
 
 Reply directly with text for conversations. Only use the 'message' tool to send to a specific chat channel.
+When using the `exec` tool with a script, pass its directory through `working_dir`; do not construct commands with `cd ... && ...`. On Windows, prefer `python` with the absolute script path and let `working_dir` control relative imports and files.
 IMPORTANT: To send files (images, video, audio, documents) to the user, you MUST call the 'message' tool with the 'media' parameter. Do NOT use read_file to "send" a file — reading a file only shows its content to you, it does NOT deliver the file to the user. Examples: message(content="Here is the image", media=["/path/to/file.png"]) or message(content="Here is the video", media=["/path/to/video.mp4"])

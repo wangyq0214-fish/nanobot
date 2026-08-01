@@ -24,6 +24,7 @@ from nanobot.api.utils import (
     parse_query,
     query_first,
 )
+from nanobot.config.paths import get_path_root
 
 _MAX_ISSUED_TOKENS = 10_000
 
@@ -336,12 +337,12 @@ class AuthManager:
     @staticmethod
     def create_user_workspace(role: str, user_id: str) -> None:
         """Create user workspace with USER.md and directory structure."""
-        templates_dir = Path.home() / ".nanobot" / "templates" / role
+        templates_dir = get_path_root() / "templates" / role
         if not templates_dir.is_dir():
             logger.warning("Template directory not found: {}", templates_dir)
             return
 
-        users_dir = Path.home() / ".nanobot" / "users" / role / user_id
+        users_dir = get_path_root() / "users" / role / user_id
         if users_dir.exists():
             return
 

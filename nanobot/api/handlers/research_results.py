@@ -55,6 +55,9 @@ async def handle_create_research_result(
     if not content:
         return http_error(400, "content is required")
 
+    project_id = _optional_int(payload.get("projectId"))
+    if project_id is not None and await storage.get_research_project(project_id, user_id, role) is None:
+        return http_error(403, "Project does not belong to the current researcher")
     result_data = {
         "user_id": user_id,
         "user_role": role,
@@ -63,12 +66,13 @@ async def handle_create_research_result(
         "chat_id": payload.get("chatId", ""),
         "session_title": payload.get("sessionTitle", ""),
         "source_message_id": payload.get("sourceMessageId", ""),
-        "project_id": _optional_int(payload.get("projectId")),
+        "project_id": project_id,
         "project_name": str(payload.get("projectName", "")).strip(),
         "status": payload.get("status", "saved"),
         "sections": _ensure_list(payload.get("sections")),
         "citations": _ensure_list(payload.get("citations")),
         "attachments": _ensure_list(payload.get("attachments")),
+        "resources": _ensure_list(payload.get("resources")),
         "tags": payload.get("tags", []),
         "metadata": payload.get("metadata", {}),
     }
@@ -98,7 +102,7 @@ async def handle_get_research_result(
         return http_error(404, "Research result not found")
 
     # Check ownership
-    if result.get("userId") != user_id and result.get("user_id") != user_id:
+    if not _owns(result, identity):
         return http_error(403, "Access denied")
 
     return http_json_response({"ok": True, "data": result})
@@ -124,7 +128,7 @@ async def handle_delete_research_result(
         return http_error(404, "Research result not found")
 
     owner_id = result.get("userId") or result.get("user_id")
-    if owner_id != user_id:
+    if owner_id != user_id or (result.get("userRole") or result.get("user_role") or "researcher") != role:
         return http_error(403, "Access denied")
 
     deleted = await storage.delete_research_result(int(result_id))
@@ -170,7 +174,7 @@ async def handle_update_research_result(
         return http_error(404, "Research result not found")
 
     owner_id = result.get("userId") or result.get("user_id")
-    if owner_id != user_id:
+    if owner_id != user_id or (result.get("userRole") or result.get("user_role") or "researcher") != role:
         return http_error(403, "Access denied")
 
     query = parse_query(request.path)
@@ -178,6 +182,11 @@ async def handle_update_research_result(
     if isinstance(payload, Response):
         return payload
 
+    if "projectId" in payload:
+        project_id = _optional_int(payload.get("projectId"))
+        if project_id is not None and await storage.get_research_project(project_id, user_id, role) is None:
+            return http_error(403, "Project does not belong to the current researcher")
+        payload = {**payload, "project_id": project_id}
     updated = await storage.update_research_result(int(result_id), payload)
     if not updated:
         return http_error(500, "Failed to update research result")
@@ -209,3 +218,7 @@ def _extract_title(content: str, max_len: int = 60) -> str:
     # Fallback: first N characters
     clean = content.replace("\n", " ").strip()
     return clean[:max_len] + ("..." if len(clean) > max_len else "")
+
+
+def _owns(result: dict | None, identity: dict[str, str]) -> bool:
+    return bool(result and (result.get("userId") or result.get("user_id")) == identity.get("user_id") and (result.get("userRole") or result.get("user_role") or "researcher") == identity.get("role", "researcher"))

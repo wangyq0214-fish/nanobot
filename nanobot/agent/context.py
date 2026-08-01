@@ -66,6 +66,26 @@ JSON 结构如下：
 5. 输出结构化研究结果，包含结论、依据、对比维度、风险/局限和下一步建议。
 """
 
+    _RESEARCH_RESOURCE_OUTPUT_GUIDANCE = """Research output contract for the researcher workspace:
+- Prefer Markdown tables for compact comparisons and include units in column headers.
+- When numeric rows support a visual comparison, add one `research-resource` fenced JSON block.
+- The block must contain `{"version": 1, "resources": [...]}` and use only these resource types: chart, table, image, citation, file.
+- Chart resources use `chart: {"kind": "line|bar|scatter|pie", "xKey": "...", "series": [{"key": "...", "label": "..."}], "rows": [...]}`.
+- Table resources use `table: {"columns": [{"key": "...", "label": "..."}], "rows": [...]}`.
+- Attach `sourceRefs` with source type, id or URL, page number when available, and a short evidence label to every chart/table/citation.
+- Do not invent image URLs or source references. Use image resources only for a real media output or a user-provided source.
+- Keep the prose readable; do not duplicate the full resource data in the surrounding answer.
+"""
+
+    _WEB_OUTPUT_GUIDANCE = """Web application output rules:
+- Return the useful result directly in the assistant response for rendering in the web page.
+- Do not create Markdown, HTML, JSON, or other report files merely to deliver the answer.
+- Do not use write_file, edit_file, or shell redirection for normal response output.
+- Use structured Markdown tables or the existing research-resource fenced JSON block inline when they improve page rendering.
+- Only create or modify a file when the user explicitly asks to save/export it, or when a tool requires a temporary input file.
+- When a script writes an artifact as part of its required workflow, report the artifact path but also summarize the result inline.
+"""
+
     def __init__(
         self,
         workspace: Path,
@@ -82,7 +102,12 @@ JSON 结构如下：
         self.role_workspace = role_workspace or workspace
         self.timezone = timezone
         self.memory = MemoryStore(workspace)
-        self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
+        # Skills are role-scoped when a role workspace is provided. User
+        # workspaces hold sessions, memory, and files, not per-user skills.
+        self.skills = SkillsLoader(
+            role_workspace or workspace,
+            disabled_skills=set(disabled_skills) if disabled_skills else None,
+        )
         self.agent_profile = agent_profile or {}  # 新增：智能体配置
         self.agent_manager = agent_manager  # 新增：智能体管理器引用
         self.role = role or ""
@@ -132,6 +157,20 @@ JSON 结构如下：
             )
             history_text = truncate_text(history_text, self._MAX_HISTORY_CHARS)
             parts.append("# Recent History\n\n" + history_text)
+
+        if self.role == "researcher":
+            parts.append(self._RESEARCH_RESOURCE_OUTPUT_GUIDANCE)
+            skill_root = str(self.role_workspace.expanduser().resolve() / "skills")
+            parts.append(
+                "# Role Skill Runtime\n\n"
+                f"The shared skills for role '{self.role}' are under `{skill_root}`.\n"
+                "User workspaces do not contain copies of role skills. Before running a bundled "
+                "script, resolve its absolute path under the matching skill directory, or set "
+                "the shell working directory to that skill directory. Do not use the old "
+                "`C:\\Users\\...\\.nanobot` path unless it is the active role workspace."
+            )
+        if channel in {"websocket", "web", "http"}:
+            parts.append(self._WEB_OUTPUT_GUIDANCE)
 
         return "\n\n---\n\n".join(parts)
 
@@ -248,6 +287,8 @@ Return a short human explanation plus one hidden editor action block using this 
 ```latex-editor
 {{"action":"replace","search":"existing LaTeX snippet","replace":"new LaTeX snippet"}}
 ```
+The fence name must be exactly `latex-editor`; never output `-editor` or omit the backticks.
+The action block must be complete, valid JSON. Inside JSON strings, every LaTeX backslash must be escaped as `\\\\` (for example, `\\\\documentclass`), and JSON newlines must be represented as `\\n`.
 Supported actions are:
 - set: replace the whole editor content with "content"
 - replace: replace the first exact "search" match with "replace"
@@ -258,6 +299,7 @@ Supported actions are:
 - insert_line: insert "content" before one-based "line"
 - delete_line: delete one-based "line"
 For a newly generated complete document, use action "set" with the full LaTeX source in "content".
+Before emitting a `set` action, verify that `content` contains `\\documentclass`, `\\begin{{document}}`, and `\\end{{document}}` and that the JSON is not truncated.
 Generated complete documents must be self-contained and compile with XeLaTeX:
 - Do not invent external image files; do not use \\includegraphics unless the user attached that file. Use a table or framed text placeholder instead.
 - Do not use natbib-only citation commands such as \\citet or \\citep. Use \\cite and a local thebibliography block.

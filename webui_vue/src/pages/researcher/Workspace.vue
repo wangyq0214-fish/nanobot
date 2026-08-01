@@ -2,6 +2,10 @@
 <div class="workspace-page">
   <!-- 顶部动态提示 -->
   <div class="top-hint">
+    <button class="resource-toggle" type="button" title="打开研究资源" @click="resourceSidebarOpen = !resourceSidebarOpen">
+      <span class="resource-toggle-dot">{{ conversationResources.length }}</span>
+      研究资源
+    </button>
     <div class="hint-badge">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -14,6 +18,7 @@
   </div>
 
   <!-- 中心核心区域 -->
+  <div class="workspace-shell">
   <div class="center-area" :class="{ 'has-chat': messages.length > 0 }">
     <!-- 欢迎语 -->
     <div class="welcome-section" v-show="messages.length === 0">
@@ -42,7 +47,10 @@
             </svg>
           </div>
           <div class="msg-body">
-            <div class="aux-timeline-container">
+            <div
+              class="aux-timeline-container"
+              :class="{ 'reasoning-timeline-container': msg.items.some(item => item.role !== 'tool') }"
+            >
               <div class="aux-timeline-line"></div>
               <div
                 v-for="item in msg.items"
@@ -108,8 +116,22 @@
           >
             {{ msg.collapsed ? '展开' : '收起' }}
           </button>
+          <template v-if="!msg.collapsed && !isAuxiliaryMessage(msg)">
+            <template v-for="(part, partIndex) in messageParts(msg)" :key="`${part.type}-${partIndex}`">
+              <div
+                v-if="part.type === 'text' && part.content.trim()"
+                class="msg-content"
+                v-html="renderMarkdown(part.content)"
+              ></div>
+              <ResearchResourceRenderer
+                v-else-if="part.type === 'resources'"
+                :resources="part.resources"
+                @select="focusResource"
+              />
+            </template>
+          </template>
           <div
-            v-if="!msg.collapsed"
+            v-else-if="!msg.collapsed && msg.content"
             class="msg-content"
             :class="{ auxiliary: isAuxiliaryMessage(msg) }"
             v-html="renderMarkdown(msg.content)"
@@ -311,7 +333,7 @@
 
       <div class="scenarios-grid">
         <div
-          v-for="scenario in scenarios"
+          v-for="scenario in scenarios.filter(item => item.path !== '/researcher/toolbench')"
           :key="scenario.path"
           class="scenario-card"
           @click="router.push(scenario.path)"
@@ -326,29 +348,36 @@
     </div>
   </div>
 
+  <ResearchResourceSidebar
+    :open="resourceSidebarOpen"
+    :resources="conversationResources"
+    @close="resourceSidebarOpen = false"
+  />
+  </div>
+
   <Teleport to="body">
     <div v-if="saveDialogOpen" class="save-dialog-overlay" @click.self="closeSaveDialog">
       <div class="save-dialog-card">
         <div class="save-dialog-header">
-          <h3>???????</h3>
-          <button @click="closeSaveDialog">?</button>
+          <h3>保存到研究成果</h3>
+          <button @click="closeSaveDialog">×</button>
         </div>
         <div class="save-dialog-body">
-          <label>??</label>
+          <label>标题</label>
           <input v-model="saveForm.title" type="text" />
-          <label>????</label>
-          <input v-model="saveForm.projectName" type="text" placeholder="????????????" />
-          <label>??</label>
-          <input v-model="saveForm.tagsText" type="text" placeholder="??????? PIM, ??, ??" />
-          <label>????</label>
+          <label>项目名称</label>
+          <input v-model="saveForm.projectName" type="text" placeholder="可选，用于归档到项目" />
+          <label>标签</label>
+          <input v-model="saveForm.tagsText" type="text" placeholder="逗号分隔，例如 PIM, 能耗, 综述" />
+          <label>关联附件</label>
           <div class="save-attachment-list" v-if="workspaceAttachments.length">
             <span v-for="item in workspaceAttachments" :key="item.id">{{ item.fileName }}</span>
           </div>
-          <p v-else class="save-muted">??????????</p>
+          <p v-else class="save-muted">暂无关联附件</p>
         </div>
         <div class="save-dialog-footer">
-          <button class="secondary-action" @click="closeSaveDialog">??</button>
-          <button class="primary-action" @click="confirmSaveResult" :disabled="savingResult">{{ savingResult ? '???...' : '??' }}</button>
+          <button class="secondary-action" @click="closeSaveDialog">取消</button>
+          <button class="primary-action" @click="confirmSaveResult" :disabled="savingResult">{{ savingResult ? '保存中...' : '保存' }}</button>
         </div>
       </div>
     </div>
@@ -366,6 +395,10 @@ import { useGateway } from '../../composables/useGateway.js'
 import { useSessions } from '../../composables/useSessions.js'
 import { useResearchResults } from '../../composables/useResearchResults.js'
 import { useResearchWorkspace } from '../../composables/useResearchWorkspace.js'
+import DOMPurify from 'dompurify'
+import ResearchResourceRenderer from '../../components/ResearchResourceRenderer.vue'
+import ResearchResourceSidebar from '../../components/ResearchResourceSidebar.vue'
+import { researchMessageParts, resourcesForMessage, stripResearchResourceBlocks, useResearchResources } from '../../composables/useResearchResources.js'
 
 marked.setOptions({ breaks: true, gfm: true })
 marked.use(markedKatex({
@@ -376,7 +409,7 @@ marked.use(markedKatex({
 
 const router = useRouter()
 const { user } = useAuth()
-const { sendMessage, sendResearcherClarification, onChat, getChatId, getToken, currentChatId } = useGateway()
+const { sendMessage, sendResearcherClarification, onChat, getChatId, getToken, currentChatId, newChat, switchSession } = useGateway()
 const { fetchSessionMessages } = useSessions()
 const { saveResult } = useResearchResults()
 const { projects, attachments, uploadingAttachment, fetchProjects, fetchAttachments, uploadAttachment } = useResearchWorkspace()
@@ -386,9 +419,11 @@ const isFocused = ref(false)
 const chatMode = ref('quick')
 const sending = ref(false)
 const messages = ref([])
+const { resources: conversationResources } = useResearchResources(messages)
 const chatAreaRef = ref(null)
 const fileInputRef = ref(null)
 const workspaceAttachments = ref([])
+const resourceSidebarOpen = ref(false)
 const saveDialogOpen = ref(false)
 const savingResult = ref(false)
 const saveTargetMessage = ref(null)
@@ -464,7 +499,27 @@ const scenarios = [
 
 function renderMarkdown(text) {
   if (!text) return ''
-  return marked.parse(text)
+  const html = marked.parse(stripResearchResourceBlocks(text))
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed'],
+    // KaTeX uses sanitized inline styles for fractions, baselines, and sizing.
+    // Keep DOMPurify's default style handling instead of removing those rules.
+    FORBID_ATTR: ['onerror', 'onclick', 'onload'],
+  })
+}
+
+function messageResources(message) {
+  return resourcesForMessage(message)
+}
+
+function messageParts(message) {
+  return researchMessageParts(message)
+}
+
+function focusResource(resource) {
+  resourceSidebarOpen.value = false
+  nextTick(() => document.getElementById(`resource-${resource.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
 }
 
 async function saveToResults(msg) {
@@ -504,6 +559,7 @@ async function confirmSaveResult() {
         summary: item.summary,
       })),
       citations: buildAttachmentCitations(),
+      resources: messageResources(msg),
       metadata: { savedFrom: 'researcher_workspace' },
     }
     const result = await saveResult(payload)
@@ -517,12 +573,12 @@ async function confirmSaveResult() {
 }
 
 function parseTags(text) {
-  return String(text || '').split(/[,?]/).map(t => t.trim()).filter(Boolean)
+  return String(text || '').split(/[,，]/).map(t => t.trim()).filter(Boolean)
 }
 
 function extractResultTitle(content) {
   const firstHeading = String(content || '').split('\n').find(line => line.trim().replace(/^#+\s*/, '').length > 4)
-  return (firstHeading || '???????').replace(/^#+\s*/, '').replace(/[\*`]/g, '').slice(0, 80)
+  return (firstHeading || '未命名研究成果').replace(/^#+\s*/, '').replace(/[\*`]/g, '').slice(0, 80)
 }
 
 function extractStructuredSections(content) {
@@ -584,7 +640,7 @@ function buildWorkspaceContextMeta() {
   }
 }
 
-function applyClarificationFallback(reason = '??????????????????') {
+function applyClarificationFallback(reason = '澄清问卷生成失败，请直接补充关键信息。') {
   if (!clarificationPending.value || clarificationReady.value) return
   clarificationQuestion.value = reason
   clarificationSchema.value = createFallbackClarificationSchema()
@@ -598,7 +654,7 @@ function applyClarificationFallback(reason = '??????????????????') {
 function startClarificationTimeout() {
   if (clarificationTimeoutTimer) clearTimeout(clarificationTimeoutTimer)
   clarificationTimeoutTimer = setTimeout(() => {
-    applyClarificationFallback('?????? 30 ???????????????')
+    applyClarificationFallback('澄清问卷生成超过 30 秒，请直接补充关键信息。')
   }, 30000)
 }
 
@@ -928,16 +984,59 @@ function stopChatListener() {
   activeAiMessageId = null
 }
 
+function findActiveAiMessage() {
+  if (activeAiMessageId) {
+    const active = messages.value.find(m => m.id === activeAiMessageId)
+    if (active) return active
+  }
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const message = messages.value[i]
+    if (message?.role === 'user') break
+    if (message?.role === 'ai' && message.loading && !isAuxiliaryMessage(message)) {
+      return message
+    }
+  }
+  const last = messages.value[messages.value.length - 1]
+  return last?.role === 'ai' && !isAuxiliaryMessage(last) ? last : null
+}
+
+function removeEmptyAiPlaceholder(message) {
+  if (!message || isAuxiliaryMessage(message) || String(message.content || '').trim()) return false
+  const index = messages.value.indexOf(message)
+  if (index < 0) return false
+  messages.value.splice(index, 1)
+  return true
+}
+
+function resetActiveResponseState() {
+  sending.value = false
+  activeStreamId = null
+  activeAiMessageId = null
+}
+
+function isDuplicateReasoningText(text) {
+  const normalized = String(text || '').trim()
+  if (!normalized) return false
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const message = messages.value[i]
+    if (message?.role === 'user') break
+    if (message?.reasoning && String(message.content || '').trim() === normalized) {
+      return true
+    }
+  }
+  return false
+}
+
 function upsertStreamingAiMessage(ev) {
   const streamId = ev.stream_id || '__default_stream__'
   if (activeStreamId !== streamId || !activeAiMessageId) {
     activeStreamId = streamId
     activeAiMessageId = `ai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 
-    const last = messages.value[messages.value.length - 1]
-    if (last && last.role === 'ai' && last.loading && !last.content) {
-      last.id = activeAiMessageId
-      last.streamId = streamId
+    const pending = findActiveAiMessage()
+    if (pending && pending.role === 'ai' && pending.loading && !pending.content && !isAuxiliaryMessage(pending)) {
+      pending.id = activeAiMessageId
+      pending.streamId = streamId
     } else {
       messages.value.push({ id: activeAiMessageId, streamId, role: 'ai', content: '', loading: true, hidden: clarificationPending.value })
     }
@@ -983,59 +1082,61 @@ function ensureChatListener(chatId = getChatId()) {
       if (clarificationPending.value && !clarificationReady.value) {
         clearClarificationTimeout()
         applyClarificationResponse(clarificationStreamText)
-        sending.value = false
-        activeStreamId = null
-        activeAiMessageId = null
+        resetActiveResponseState()
         scrollToBottom()
         return
       }
       const target = activeAiMessageId
         ? messages.value.find(m => m.id === activeAiMessageId)
-        : messages.value[messages.value.length - 1]
+        : findActiveAiMessage()
       if (target && target.role === 'ai') {
-        target.loading = false
-        sending.value = false
-        activeStreamId = null
-        activeAiMessageId = null
+        if (!removeEmptyAiPlaceholder(target)) target.loading = false
+        resetActiveResponseState()
         scrollToBottom()
       }
     } else if (ev.event === 'message') {
       // Non-streaming complete message
       const text = ev.text || ev.content || ''
-      if (!text) return
+      const mediaUrls = normalizeMediaUrls(ev.media_urls || ev.mediaUrls)
+      const resources = Array.isArray(ev.resources) ? ev.resources : []
+      if (!text && !mediaUrls.length && !resources.length) return
       if (ev.kind === 'trace') {
         appendRealtimeTrace(ev)
+        scrollToBottom()
+        return
+      }
+      if (isDuplicateReasoningText(text)) {
+        removeEmptyAiPlaceholder(findActiveAiMessage())
+        resetActiveResponseState()
         scrollToBottom()
         return
       }
       if (clarificationPending.value && !clarificationReady.value) {
         clearClarificationTimeout()
         applyClarificationResponse(text)
-        sending.value = false
-        activeStreamId = null
-        activeAiMessageId = null
+        resetActiveResponseState()
         scrollToBottom()
         return
       }
       const target = activeAiMessageId
         ? messages.value.find(m => m.id === activeAiMessageId)
-        : messages.value[messages.value.length - 1]
+        : findActiveAiMessage()
       if (target && target.role === 'ai' && target.loading) {
-        target.content = text
+        if (text) target.content = text
+        if (mediaUrls.length) target.mediaUrls = [...(target.mediaUrls || []), ...mediaUrls]
+        if (resources.length) target.resources = resources
         target.loading = false
       } else {
-        messages.value.push({ role: 'ai', content: text, loading: false })
+        messages.value.push({ role: 'ai', content: text, mediaUrls, resources, loading: false })
       }
-      sending.value = false
-      activeStreamId = null
-      activeAiMessageId = null
+      resetActiveResponseState()
       scrollToBottom()
     } else if (ev.event === 'error') {
-      const last = messages.value[messages.value.length - 1]
+      const last = findActiveAiMessage()
       if (last && last.role === 'ai' && last.loading) {
         last.content = '⚠️ 请求出错：' + (ev.detail || ev.text || '未知错误')
         last.loading = false
-        sending.value = false
+        resetActiveResponseState()
         scrollToBottom()
       }
     }
@@ -1202,6 +1303,15 @@ function getAuxPreview(item) {
   return text.length > 60 ? text.slice(0, 60) + '...' : text
 }
 
+function normalizeMediaUrls(value) {
+  if (!Array.isArray(value)) return []
+  return value.map(item => {
+    if (typeof item === 'string') return { url: item, name: '' }
+    if (!item || typeof item !== 'object') return null
+    return { url: String(item.url || ''), name: String(item.name || '') }
+  }).filter(item => item?.url)
+}
+
 function mapSessionMessage(m) {
   if (m.role === 'user') {
     return [{
@@ -1209,13 +1319,16 @@ function mapSessionMessage(m) {
       content: stringifySessionContent(m.metadata?.display_content || m.content),
       loading: false,
       mode: m.metadata?.mode || null,
+      mediaUrls: normalizeMediaUrls(m.media_urls || m.mediaUrls),
     }]
   }
 
   if (m.role === 'assistant') {
     const content = stringifySessionContent(m.content).trim()
     const reasoning = stringifySessionContent(m.reasoning_content).trim()
-    if (!content && !reasoning && !m.tool_calls?.length) return null
+    const mediaUrls = normalizeMediaUrls(m.media_urls || m.mediaUrls)
+    const resources = Array.isArray(m.resources) ? m.resources : []
+    if (!content && !reasoning && !m.tool_calls?.length && !mediaUrls.length && !resources.length) return null
     const mapped = []
     if (reasoning) {
       mapped.push(normalizeAuxiliaryMessage({
@@ -1225,6 +1338,8 @@ function mapSessionMessage(m) {
         collapsed: false,
         loading: false,
         mode: m.metadata?.mode || null,
+        mediaUrls,
+        resources,
       }))
     }
     if (!content && m.tool_calls?.length) {
@@ -1235,8 +1350,10 @@ function mapSessionMessage(m) {
         collapsed: false,
         loading: false,
         mode: m.metadata?.mode || null,
+        mediaUrls,
+        resources,
       }))
-    } else if (content || !reasoning) {
+    } else if (content || !reasoning || mediaUrls.length || resources.length) {
       mapped.push({
         role: 'ai',
         content,
@@ -1244,6 +1361,8 @@ function mapSessionMessage(m) {
         collapsed: false,
         loading: false,
         mode: m.metadata?.mode || null,
+        mediaUrls,
+        resources,
       })
     }
     return mapped
@@ -1293,6 +1412,21 @@ function promoteFallbackAnswers(mappedMessages) {
   return mappedMessages
 }
 
+function dedupeAuxiliaryMessages(mappedMessages) {
+  const result = []
+  for (const message of mappedMessages) {
+    const previous = result[result.length - 1]
+    const isDuplicate = previous
+      && isAuxiliaryMessage(message)
+      && isAuxiliaryMessage(previous)
+      && message.role === previous.role
+      && message.name === previous.name
+      && String(message.content || '').trim() === String(previous.content || '').trim()
+    if (!isDuplicate) result.push(message)
+  }
+  return result
+}
+
 function appendRealtimeTrace(ev) {
   const text = ev.text || ev.content || ''
   if (!text) return
@@ -1308,6 +1442,9 @@ function appendRealtimeTrace(ev) {
   }
   if (ev.reasoning) {
     const last = messages.value[messages.value.length - 1]
+    if (last && isAuxiliaryMessage(last) && last.reasoning && text === String(last.content || '').trim()) {
+      return
+    }
     if (last?.role === 'ai' && last.reasoning) {
       if (text === last.content || last.content.endsWith(text)) return
       if (text.startsWith(last.content)) {
@@ -1344,6 +1481,7 @@ async function loadHistory(chatId = currentChatId.value || getChatId()) {
         .flatMap(m => mapSessionMessage(m) || [])
         .filter(Boolean)
       history = promoteFallbackAnswers(history)
+      history = dedupeAuxiliaryMessages(history)
     }
   } catch (err) {
     // Silently ignore — fresh session
@@ -1357,7 +1495,28 @@ async function loadHistory(chatId = currentChatId.value || getChatId()) {
   ensureChatListener(chatId)
 }
 
+async function handleDeletedWorkspaceSession(event) {
+  const deletedChatId = event.detail?.chatId
+  if (!deletedChatId || deletedChatId !== (currentChatId.value || getChatId())) return
+  stopChatListener()
+  messages.value = []
+  resetClarificationState()
+  try {
+    const newChatId = await newChat()
+    if (newChatId) {
+      switchSession(newChatId)
+      await loadHistory(newChatId)
+    }
+  } catch {}
+}
+
 onMounted(async () => {
+  window.addEventListener('nanobot-session-deleted', handleDeletedWorkspaceSession)
+  const routedQuestion = router.currentRoute.value.query.question || router.currentRoute.value.query.topic
+  if (routedQuestion) {
+    query.value = String(routedQuestion)
+    messages.value.push({ role: 'user', content: query.value, mode: 'quick' })
+  }
   fetchProjects().catch(() => {})
   const chatId = currentChatId.value || getChatId()
   if (chatId) {
@@ -1382,6 +1541,7 @@ watch(clarificationAnswers, () => {
 }, { deep: true })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('nanobot-session-deleted', handleDeletedWorkspaceSession)
   clearClarificationTimeout()
   stopChatListener()
 })
@@ -1405,8 +1565,28 @@ onBeforeUnmount(() => {
   margin-bottom: 48px;
   width: 100%;
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
+
+.resource-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #dfe6df;
+  background: #fff;
+  color: #536057;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.resource-toggle:hover { border-color: #526e5a; color: #263d2e; }
+.resource-toggle-dot { min-width: 18px; height: 18px; display: inline-grid; place-items: center; border-radius: 50%; background: #e6efe7; color: #35583e; font-size: 10px; }
+
+.workspace-shell { width: 100%; max-width: 1160px; min-height: 0; flex: 1; display: flex; gap: 18px; align-items: stretch; }
 
 .hint-badge {
   display: inline-flex;
@@ -1809,6 +1989,24 @@ onBeforeUnmount(() => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.workspace-shell > .center-area { flex: 1; min-width: 0; }
+
+/* Keep a group of reasoning nodes inside one scrollable viewport. */
+.reasoning-timeline-container {
+  height: 420px;
+  max-height: 420px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 640px) {
+  .reasoning-timeline-container {
+    height: 320px;
+    max-height: 320px;
+  }
+}
+
 .msg-content :deep(p),
 .aux-detail-content :deep(p) {
   margin: 0 0 10px;
@@ -1939,13 +2137,18 @@ onBeforeUnmount(() => {
 
 .msg-content :deep(.katex-display),
 .aux-detail-content :deep(.katex-display) {
-  margin: 12px 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 14px 0;
+  padding: 3px 2px;
   overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
 }
 
 .msg-content :deep(.katex),
 .aux-detail-content :deep(.katex) {
-  font-size: 1.05em;
+  font-size: 1.1em;
 }
 
 .msg-loading {

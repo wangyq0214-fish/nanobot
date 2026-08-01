@@ -283,7 +283,7 @@ async def _search_openalex(query: str, limit: int = 20, offset: int = 0,
         "per_page": min(limit, 100),
         "page": (offset // limit) + 1,
         "sort": "relevance_score:desc",
-        "select": "id,title,authorships,abstract_inverted_index,publication_year,cited_by_count,doi,open_access,primary_location",
+        "select": "id,title,authorships,abstract_inverted_index,publication_year,cited_by_count,doi,open_access,primary_location,concepts,publication_date",
     }
     filters = ["type:article"]
     if year_from:
@@ -346,6 +346,11 @@ async def _search_openalex(query: str, limit: int = 20, offset: int = 0,
                     "venue": venue,
                     "doi": doi,
                     "source": "openalex",
+                    "authorships": item.get("authorships") or [],
+                    "concepts": item.get("concepts") or [],
+                    "publicationDate": item.get("publication_date") or "",
+                    "openAccess": item.get("open_access") or {},
+                    "primaryLocation": item.get("primary_location") or {},
                 })
 
             total = data.get("meta", {}).get("count", 0)
@@ -417,6 +422,9 @@ async def handle_import_paper(
 ) -> Response:
     """Import a paper from a URL (download PDF, parse, and store)."""
     user_id = identity.get("user_id", "")
+    role = identity.get("role", "researcher")
+    if role != "researcher":
+        return http_error(403, "Only researchers can import papers")
     query = parse_query(request.path)
     payload = parse_mutation_data(query)
     if isinstance(payload, Response):
@@ -486,6 +494,7 @@ async def handle_import_paper(
         "source_id": source_id,
         "pdf_url": pdf_url,
         "user_id": user_id,
+        "user_role": role,
     })
 
     # Create chunks

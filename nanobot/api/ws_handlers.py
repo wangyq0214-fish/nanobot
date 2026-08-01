@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from loguru import logger
+from nanobot.config.paths import get_path_root
 
 
 def _get_conn_meta(channel: Any, connection: Any) -> dict[str, Any]:
@@ -137,7 +138,7 @@ async def handle_save_source(
         return
 
     # Legacy non-LaTeX source saves still use the user directory.
-    user_dir = Path.home() / ".nanobot" / "users" / role / user_id
+    user_dir = get_path_root() / "users" / role / user_id
     target = (user_dir / path).resolve()
     if not str(target).startswith(str(user_dir.resolve())):
         await _err(channel, connection, "access denied")
@@ -907,7 +908,7 @@ async def handle_upload_paper_end_ws(
             return
 
         # Save file
-        upload_dir = Path.home() / ".nanobot" / "uploads" / "papers"
+        upload_dir = get_path_root() / "uploads" / "papers"
         upload_dir.mkdir(parents=True, exist_ok=True)
         safe_name = f"{uuid.uuid4().hex[:12]}_{file_name}"
         file_path = upload_dir / safe_name
@@ -1177,7 +1178,7 @@ async def handle_delete_session_ws(
 
     # Reconstruct full key with user prefix for user workspace
     full_key = f"{role}:{user_id}:{key}"
-    user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+    user_sessions_dir = get_path_root() / "users" / role / user_id / "sessions"
     safe_key = SessionManager.safe_key(full_key)
     session_file = user_sessions_dir / f"{safe_key}.jsonl"
 
@@ -1240,6 +1241,7 @@ async def handle_save_research_result_ws(
             "sections": envelope.get("sections") if isinstance(envelope.get("sections"), list) else [],
             "citations": envelope.get("citations") if isinstance(envelope.get("citations"), list) else [],
             "attachments": envelope.get("attachments") if isinstance(envelope.get("attachments"), list) else [],
+            "resources": envelope.get("resources") if isinstance(envelope.get("resources"), list) else [],
             "tags": envelope.get("tags") if isinstance(envelope.get("tags"), list) else [],
             "metadata": envelope.get("metadata") if isinstance(envelope.get("metadata"), dict) else {},
         })

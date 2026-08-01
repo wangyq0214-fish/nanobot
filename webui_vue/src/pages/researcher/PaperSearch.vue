@@ -7,7 +7,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
         文献搜索
       </button>
-      <button class="tab-btn" :class="{ active: activeTab === 'hotspot' }" @click="activeTab = 'hotspot'">
+      <button v-if="false" class="tab-btn" :class="{ active: activeTab === 'hotspot' }" @click="activeTab = 'hotspot'">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
         热点看板
       </button>
@@ -170,8 +170,10 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { usePaperSearch } from '../../composables/usePaperSearch.js'
+import { useAuthFetch } from '../../composables/useAuthFetch.js'
 
 const { loading, error, results, total, searchPapers, importPaper } = usePaperSearch()
+const { authMutate } = useAuthFetch()
 
 const STORAGE_KEY = 'nanobot-paper-search'
 
@@ -282,10 +284,7 @@ function truncate(s, n) { return s?.length > n ? s.substring(0, n) + '…' : s }
 async function loadHotspot(key) {
   hLoading.value = true
   try {
-    const auth = getAuth()
-    const body = JSON.stringify({ query: getDomainQuery(key), source: 'openalex', limit: 10 })
-    const resp = await fetch(`/api/researcher/search?${auth}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-    const data = await resp.json()
+    const data = await authMutate('/api/researcher/search', { query: getDomainQuery(key), source: 'openalex', limit: 10 })
     hPapers.value = (data.results || []).map(p => ({
       title: p.title, authors: Array.isArray(p.authors) ? p.authors.slice(0, 3).join(', ') : p.authors,
       journal: p.venue || '', citations: p.citations || 0, tags: [p.source || ''], doi: p.doi
@@ -307,14 +306,6 @@ async function loadHotspot(key) {
     hInsight.value = `${domains.find(d => d.key === key)?.label}领域研究热点集中在${hRanking.value.slice(0, 3).map(r => r.keyword).join('、')}等方向。`
   } catch (e) { console.error(e) }
   hLoading.value = false
-}
-
-function getAuth() {
-  try {
-    const u = JSON.parse(localStorage.getItem('nanobot-webui.user'))
-    const token = sessionStorage.getItem('nanobot-webui.api_token') || ''
-    return `role=${u.role}&user_id=${u.userId}&token=${token}`
-  } catch { return '' }
 }
 
 function getDomainQuery(key) {

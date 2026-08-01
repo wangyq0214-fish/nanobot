@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const target = process.env.NANOBOT_API_URL ?? 'http://127.0.0.1:8765'
+const apiTarget = process.env.NANOBOT_HTTP_URL ?? 'http://127.0.0.1:8767'
 const wsTarget = target.replace(/^http/, 'ws')
 const latexTarget = process.env.LATEX_API_URL ?? 'http://10.100.132.162:8001'
 
@@ -22,7 +23,7 @@ export default defineConfig({
     hmr: { host: '127.0.0.1', port: 5174 },
     proxy: {
       '/webui': { target, changeOrigin: true },
-      '/api': { target, changeOrigin: true },
+      '/api': { target: apiTarget, changeOrigin: true },
       '/compile': { target: latexTarget, changeOrigin: true },
       '/compile-with-files': { target: latexTarget, changeOrigin: true },
       '/': {

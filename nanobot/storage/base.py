@@ -364,7 +364,7 @@ class BaseStorage(ABC):
         """Get paper by ID. Returns None if not found."""
         return None
 
-    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_papers(self, user_id: Optional[str] = None, user_role: str = "researcher") -> List[Dict[str, Any]]:
         """List papers, optionally filtered by user."""
         return []
 
@@ -438,6 +438,31 @@ class BaseStorage(ABC):
     async def get_research_attachment_chunks(self, attachment_id: int) -> List[Dict[str, Any]]:
         """Get chunks for a workspace attachment."""
         return []
+
+    async def delete_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Delete a workspace attachment and return the deleted record."""
+        return None
+
+    # Research artifact operations
+    async def create_research_artifact(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a researcher artifact."""
+        raise NotImplementedError
+
+    async def get_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        """Get a researcher artifact."""
+        return None
+
+    async def list_research_artifacts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        """List researcher artifacts."""
+        return []
+
+    async def update_research_artifact(self, artifact_id: int, data: Dict[str, Any]) -> bool:
+        """Update a researcher artifact."""
+        return False
+
+    async def delete_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        """Delete a researcher artifact and return the deleted record."""
+        return None
 
     async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create or update a LaTeX draft."""

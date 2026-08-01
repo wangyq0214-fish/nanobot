@@ -2,6 +2,10 @@
 <div class="research-hotspot">
   <!-- Header -->
   <header class="hotspot-header">
+    <div class="hotspot-heading">
+      <strong>前沿课题 / 研究热点</strong>
+      <span>来源：OpenAlex，可追溯至论文样本</span>
+    </div>
     <div class="domain-selector" @click="showDomainDropdown = !showDomainDropdown">
       <span class="domain-current">{{ currentDomainData.label }}领域</span>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -27,6 +31,10 @@
         placeholder="检索论文、知识网络、特定流派..."
         @keyup.enter="handleSearch"
       >
+    </div>
+    <div class="hotspot-actions">
+      <button class="workspace-btn" @click="saveTopicObservation">加入课题观察</button>
+      <button class="workspace-btn primary" @click="saveResearchQuestion">保存为研究问题</button>
     </div>
   </header>
 
@@ -276,9 +284,11 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useOpenAlex } from '../../composables/useOpenAlex.js'
 
 const { loading: apiLoading, error: apiError, dataSource, fetchDomainData, searchPapers, getWorkDetails, reconstructAbstract } = useOpenAlex()
+const router = useRouter()
 
 const currentDomain = ref('fruit')
 const searchQuery = ref('')
@@ -431,6 +441,23 @@ function closePaperModal() {
 
 function openDoi(doi) {
   if (doi) window.open(doi, '_blank')
+}
+
+function saveTopicObservation() {
+  const data = currentDomainData.value
+  const observations = JSON.parse(localStorage.getItem('researcher:topic-observations') || '[]')
+  const item = { id: `topic:${currentDomain.value}`, title: `${data.label}研究热点`, domain: currentDomain.value, keywords: data.keywords, papers: data.papers, trendYears: data.trendYears, trendValues: data.trendValues, updatedAt: new Date().toISOString() }
+  const next = [item, ...observations.filter(entry => entry.id !== item.id)]
+  localStorage.setItem('researcher:topic-observations', JSON.stringify(next))
+  router.push({ path: '/researcher/workspace', query: { topic: item.title } })
+}
+
+function saveResearchQuestion() {
+  const data = currentDomainData.value
+  const question = `基于${data.label}近年论文增长趋势，${data.keywords.slice(0, 3).join('、')}方向的关键研究空白是什么？`
+  const questions = JSON.parse(localStorage.getItem('researcher:research-questions') || '[]')
+  localStorage.setItem('researcher:research-questions', JSON.stringify([{ content: question, source: 'OpenAlex', domain: currentDomain.value, papers: data.papers, createdAt: new Date().toISOString() }, ...questions]))
+  router.push({ path: '/researcher/workspace', query: { question } })
 }
 
 // Close dropdown on click outside

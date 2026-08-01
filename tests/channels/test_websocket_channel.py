@@ -19,6 +19,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.channels.websocket import (
     WebSocketChannel,
     WebSocketConfig,
+    _RequestWithRawPath,
     _is_valid_chat_id,
     _normalize_config_path,
     _parse_envelope,
@@ -79,6 +80,19 @@ def test_parse_query_extracts_token_and_client_id() -> None:
     query = parse_query("/?token=secret&client_id=u1")
     assert query.get("token") == ["secret"]
     assert query.get("client_id") == ["u1"]
+
+
+def test_http_request_proxy_preserves_query_for_legacy_handlers() -> None:
+    request = MagicMock(raw_path="/api/users/validate?role=researcher&user_id=Q", headers={})
+    request.path = "/api/users/validate"
+
+    proxied = _RequestWithRawPath(request)
+
+    assert proxied.path == request.raw_path
+    assert parse_query(proxied.path) == {
+        "role": ["researcher"],
+        "user_id": ["Q"],
+    }
 
 
 @pytest.mark.parametrize(

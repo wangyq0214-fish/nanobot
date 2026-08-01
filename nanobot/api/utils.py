@@ -84,6 +84,19 @@ def parse_mutation_data(query: dict[str, list[str]]) -> dict[str, Any] | Respons
     return payload
 
 
+async def parse_request_mutation(request: Any) -> dict[str, Any] | Response:
+    """Read JSON mutations while retaining the legacy query-param format."""
+    if hasattr(request, "json"):
+        try:
+            payload = await request.json()
+        except Exception:
+            return http_error(400, "invalid JSON body")
+        if not isinstance(payload, dict):
+            return http_error(400, "JSON body must be an object")
+        return payload
+    return parse_mutation_data(parse_query(request.path))
+
+
 def generate_id() -> str:
     """Generate a short unique ID."""
     return uuid.uuid4().hex[:12]

@@ -46,7 +46,8 @@ class Paper(Base):
     ai_summary: Mapped[str] = mapped_column(Text, default="")
 
     # User metadata
-    user_id: Mapped[str] = mapped_column(String(64), default="")
+    user_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    user_role: Mapped[str] = mapped_column(String(20), default="researcher", index=True)
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)
     tags: Mapped[str] = mapped_column(Text, default="[]")
     annotations: Mapped[str] = mapped_column(Text, default="[]")
@@ -89,6 +90,7 @@ class Paper(Base):
             "url": self.url,
             "aiSummary": self.ai_summary,
             "userId": self.user_id,
+            "userRole": self.user_role,
             "isFavorite": self.is_favorite,
             "tags": tags,
             "annotations": annotations,

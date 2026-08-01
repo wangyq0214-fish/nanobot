@@ -12,7 +12,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>
           </svg>
-          <span>数据源导入</span>
+        <span>本地临时数据分析</span>
         </label>
         <div class="upload-area" @click="triggerUpload" @dragover.prevent @drop.prevent="onDrop">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -20,10 +20,9 @@
           </svg>
           <div class="upload-text">点击或拖拽解析矩阵文件</div>
           <div class="upload-hint" v-if="fileName">{{ fileName }}</div>
-          <div class="upload-hint" v-else>支持 CSV / Excel (.xlsx .xls)</div>
+          <div class="upload-hint" v-else>仅在当前浏览器处理 CSV / Excel</div>
           <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" @change="onFileChange" style="display:none">
         </div>
-        <button class="btn-sample" @click="loadSampleData">加载园艺实验数据</button>
       </div>
 
       <div class="control-section">
@@ -127,7 +126,7 @@
       <div class="insight-card corr-card">
         <div class="insight-header">
           <div class="insight-bar"></div>
-          <span>智能相关性推论</span>
+          <span>本地临时相关性分析</span>
         </div>
         <div v-if="!corrResult" class="empty-hint">请选择两个数值变量以计算相关性</div>
         <template v-else>
@@ -212,10 +211,10 @@ const corrResult = computed(() => {
   const sig = pVal < 0.05
   const absR = Math.abs(r)
   let conclusion = ''
-  if (absR >= 0.8) conclusion = '矩阵判定该指数具备极强正相关，可能存在多重共线性风险，建议执行进一步的偏相关消融核验。'
-  else if (absR >= 0.6) conclusion = '强相关，具有重要生物学意义，建议结合领域知识进一步验证。'
-  else if (absR >= 0.4) conclusion = '中等程度相关，可结合其他变量综合判断。'
-  else conclusion = '弱相关或无线性关系，建议尝试非线性模型或增加样本量。'
+  if (absR >= 0.8) conclusion = '当前样本呈强线性相关，仅用于探索，不能据此推断因果关系。'
+  else if (absR >= 0.6) conclusion = '当前样本呈较强相关，仍需结合领域知识和额外数据验证。'
+  else if (absR >= 0.4) conclusion = '当前样本呈中等相关，仅用于探索性分析。'
+  else conclusion = '当前样本相关性较弱，不能据此推断因果关系。'
   return {
     xCol: xCol.value, yCol: yCol.value,
     r: r.toFixed(4), n,

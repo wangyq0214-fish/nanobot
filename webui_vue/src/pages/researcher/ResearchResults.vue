@@ -8,6 +8,13 @@
     </div>
   </div>
 
+  <div class="filters-bar">
+    <input v-model="searchText" class="filter-input" placeholder="搜索标题或摘要" />
+    <select v-model="sortOrder" class="filter-select"><option value="newest">最新保存</option><option value="oldest">最早保存</option></select>
+    <select v-model="selectedTag" class="filter-select"><option value="">全部标签</option><option v-for="tag in allTags" :key="tag" :value="tag">{{ tag }}</option></select>
+    <select v-model="selectedSource" class="filter-select"><option value="">全部来源会话</option><option v-for="source in allSources" :key="source" :value="source">{{ source }}</option></select>
+  </div>
+
   <!-- 加载状态 -->
   <div v-if="loading && results.length === 0" class="loading-state">
     <div class="loading-spinner"></div>
@@ -29,15 +36,16 @@
   </div>
 
   <!-- 研究成果列表 -->
-  <div v-else class="results-list">
+  <div v-else-if="filteredResults.length" class="results-list">
     <div
-      v-for="item in results"
+      v-for="item in filteredResults"
       :key="item.id"
       class="result-card"
       @click="openResult(item)"
     >
       <div class="card-header">
         <h3 class="card-title">{{ item.title }}</h3>
+        <button class="btn-edit" @click.stop="openEdit(item)" title="编辑标题和标签">编辑</button>
         <button class="btn-delete" @click.stop="confirmDelete(item)" title="删除">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -65,6 +73,7 @@
       </div>
     </div>
   </div>
+  <div v-else class="empty-filter-state">没有符合当前筛选条件的研究成果。</div>
 
   <!-- 详情弹窗 -->
   <Teleport to="body">
@@ -82,10 +91,17 @@
           <div class="detail-meta">
             <span>保存于 {{ formatTime(selectedResult.createdAt) }}</span>
           </div>
-          <div class="detail-content" v-html="renderMarkdown(selectedResult.content)"></div>
+          <template v-for="(part, index) in resultParts(selectedResult)" :key="`${part.type}-${index}`">
+            <div v-if="part.type === 'text' && part.content.trim()" class="detail-content" v-html="renderMarkdown(part.content)"></div>
+            <ResearchResourceRenderer v-else-if="part.type === 'resources'" :resources="part.resources" />
+          </template>
         </div>
         <div class="dialog-footer">
           <button class="btn-cancel" @click="selectedResult = null">关闭</button>
+          <button class="btn-cancel" @click="openEdit(selectedResult)">编辑标题和标签</button>
+          <button class="btn-cancel" @click="exportResult('markdown')">Markdown</button>
+          <button class="btn-cancel" @click="exportResult('pdf')">PDF</button>
+          <button class="btn-cancel" @click="exportResult('docx')">DOCX</button>
           <button class="btn-copy" @click="copyContent">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
@@ -93,6 +109,19 @@
             复制内容
           </button>
         </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <Teleport to="body">
+    <div v-if="editTarget" class="dialog-overlay" @click.self="editTarget = null">
+      <div class="dialog-card edit-dialog">
+        <div class="dialog-header"><h3>编辑研究成果</h3><button class="btn-close" @click="editTarget = null">×</button></div>
+        <div class="dialog-body edit-form">
+          <label>标题<input v-model="editForm.title" maxlength="200" /></label>
+          <label>标签<input v-model="editForm.tags" placeholder="用逗号分隔多个标签" /></label>
+        </div>
+        <div class="dialog-footer"><button class="btn-cancel" @click="editTarget = null">取消</button><button class="btn-copy" @click="saveEdit">保存</button></div>
       </div>
     </div>
   </Teleport>
@@ -123,16 +152,46 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
+import markedKatex from 'marked-katex-extension'
+import DOMPurify from 'dompurify'
 import { useResearchResults } from '../../composables/useResearchResults.js'
+import { useAuthFetch } from '../../composables/useAuthFetch.js'
+import ResearchResourceRenderer from '../../components/ResearchResourceRenderer.vue'
+import { researchMessageParts, stripResearchResourceBlocks } from '../../composables/useResearchResources.js'
+
+marked.setOptions({ breaks: true, gfm: true })
+marked.use(markedKatex({ throwOnError: false, output: 'html', nonStandard: true }))
 
 const router = useRouter()
-const { results, loading, fetchResults, fetchResult, deleteResult } = useResearchResults()
+const { results, loading, fetchResults, fetchResult, deleteResult, updateResult } = useResearchResults()
+const { authDownload } = useAuthFetch()
 
 const selectedResult = ref(null)
 const deleteTarget = ref(null)
+const searchText = ref('')
+const selectedTag = ref('')
+const selectedSource = ref('')
+const sortOrder = ref('newest')
+const editTarget = ref(null)
+const editForm = ref({ title: '', tags: '' })
+
+const allTags = computed(() => [...new Set(results.value.flatMap(item => item.tags || []))].sort())
+const allSources = computed(() => [...new Set(results.value.map(item => item.sessionTitle || item.session_title).filter(Boolean))].sort())
+const filteredResults = computed(() => results.value
+  .filter(item => {
+    const haystack = `${item.title || ''} ${item.contentPreview || ''}`.toLowerCase()
+    const tags = item.tags || []
+    const source = item.sessionTitle || item.session_title || ''
+    return (!searchText.value || haystack.includes(searchText.value.toLowerCase()))
+      && (!selectedTag.value || tags.includes(selectedTag.value))
+      && (!selectedSource.value || source === selectedSource.value)
+  })
+  .sort((a, b) => sortOrder.value === 'oldest'
+    ? new Date(a.createdAt || a.created_at) - new Date(b.createdAt || b.created_at)
+    : new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at)))
 
 onMounted(() => {
   fetchResults()
@@ -162,7 +221,16 @@ function formatTime(isoString) {
 
 function renderMarkdown(text) {
   if (!text) return ''
-  return marked.parse(text)
+  const html = marked.parse(stripResearchResourceBlocks(text))
+  return DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+    FORBID_ATTR: ['onerror', 'onclick', 'onload'],
+  })
+}
+
+function resultParts(item) {
+  return researchMessageParts(item || {})
 }
 
 async function openResult(item) {
@@ -175,6 +243,44 @@ async function openResult(item) {
 
 function confirmDelete(item) {
   deleteTarget.value = item
+}
+
+function openEdit(item) {
+  editTarget.value = item
+  editForm.value = { title: item.title || '', tags: (item.tags || []).join(', ') }
+}
+
+async function saveEdit() {
+  if (!editTarget.value || !editForm.value.title.trim()) return
+  const tags = [...new Set(editForm.value.tags.split(',').map(tag => tag.trim()).filter(Boolean))]
+  await updateResult(editTarget.value.id, { title: editForm.value.title.trim(), tags })
+  if (selectedResult.value?.id === editTarget.value.id) {
+    selectedResult.value.title = editForm.value.title.trim()
+    selectedResult.value.tags = tags
+  }
+  editTarget.value = null
+}
+
+function downloadFile(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportResult(format) {
+  const item = selectedResult.value
+  if (!item) return
+  const title = item.title || 'research-result'
+  const file = await authDownload(`/api/researcher/results/${item.id}/export?format=${format}`)
+  const url = URL.createObjectURL(file.blob)
+  const link = document.createElement('a'); link.href = url; link.download = file.filename || `${title}.${format === 'markdown' ? 'md' : format}`; link.click(); URL.revokeObjectURL(url)
+}
+
+function escapeHtml(value) {
+  return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
 }
 
 async function doDelete() {
@@ -228,6 +334,19 @@ async function copyContent() {
   letter-spacing: 0.5px;
   margin: 0;
 }
+
+.filters-bar { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; }
+.filter-input, .filter-select, .edit-form input { min-height:36px; padding:0 10px; border:1px solid #e3e3e3; border-radius:8px; background:#fff; color:#333; font-size:13px; }
+.filter-input { flex:1 1 220px; }
+.filter-select { min-width:130px; }
+.btn-edit { border:1px solid #e3e3e3; background:#fff; color:#666; border-radius:7px; padding:5px 9px; cursor:pointer; margin-right:6px; }
+.btn-edit:hover { border-color:#526e5a; color:#526e5a; }
+.empty-filter-state { padding:56px 0; text-align:center; color:#888; }
+.edit-dialog { width:480px; max-width:90vw; }
+.edit-form { display:flex; flex-direction:column; gap:16px; }
+.edit-form label { display:flex; flex-direction:column; gap:7px; font-size:13px; color:#555; }
+.edit-form input { width:100%; box-sizing:border-box; }
+body.dark .filter-input, body.dark .filter-select, body.dark .edit-form input, body.dark .btn-edit { background:#242424; border-color:#444; color:#eee; }
 
 /* 加载状态 */
 .loading-state {
@@ -478,6 +597,20 @@ async function copyContent() {
   font-size: 14px;
   line-height: 1.8;
   color: #333;
+}
+
+.detail-content :deep(.katex-display) {
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 14px 0;
+  padding: 3px 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.detail-content :deep(.katex) {
+  font-size: 1.1em;
 }
 
 .detail-content :deep(h1),

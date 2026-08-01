@@ -304,14 +304,15 @@ class AgentLoop:
             asyncio.Semaphore(_max) if _max > 0 else None
         )
         # Per-user workspace support: templates directory for role-based workspaces
-        nanobot_root = Path.home() / ".nanobot"
-        candidate = nanobot_root / "templates"
-        if candidate.is_dir():
-            self._templates_dir = candidate
-        elif workspace.parent.name == "templates" and workspace.parent.parent.name == "nanobot":
+        # Prefer the templates directory associated with the configured
+        # workspace. This keeps project-local runtimes independent from an
+        # older user-level ~/.nanobot installation.
+        if workspace.parent.name == "templates" and workspace.parent.parent.name == ".nanobot":
             self._templates_dir = workspace.parent
         else:
-            self._templates_dir = None
+            nanobot_root = Path.home() / ".nanobot"
+            candidate = nanobot_root / "templates"
+            self._templates_dir = candidate if candidate.is_dir() else None
         self._user_workspaces: dict[str, tuple[ContextBuilder, SessionManager]] = {}
 
         # Ensure default workspace has required subdirectories for fallback
@@ -351,17 +352,25 @@ class AgentLoop:
         allowed_dir = (
             self.workspace if (self.restrict_to_workspace or self.exec_config.sandbox) else None
         )
-        extra_read = [BUILTIN_SKILLS_DIR] if allowed_dir else None
+        skill_workspace = self.context.role_workspace
+        extra_read = ([BUILTIN_SKILLS_DIR, skill_workspace] if allowed_dir else None)
         self.tools.register(AskUserTool())
         self.tools.register(
             ReadFileTool(
-                workspace=self.workspace, allowed_dir=allowed_dir, extra_allowed_dirs=extra_read
+                workspace=self.workspace, allowed_dir=allowed_dir,
+                extra_allowed_dirs=extra_read, skill_workspace=skill_workspace,
             )
         )
         for cls in (WriteFileTool, EditFileTool, ListDirTool):
-            self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
+            self.tools.register(cls(
+                workspace=self.workspace, allowed_dir=allowed_dir,
+                skill_workspace=skill_workspace,
+            ))
         for cls in (GlobTool, GrepTool):
-            self.tools.register(cls(workspace=self.workspace, allowed_dir=allowed_dir))
+            self.tools.register(cls(
+                workspace=self.workspace, allowed_dir=allowed_dir,
+                skill_workspace=skill_workspace,
+            ))
         self.tools.register(NotebookEditTool(workspace=self.workspace, allowed_dir=allowed_dir))
         if self.exec_config.enable:
             self.tools.register(
@@ -913,7 +922,7 @@ class AgentLoop:
         # Temporarily swap to per-user context/sessions when available
         _orig_context = self.context
         _orig_sessions = self.sessions
-        _orig_tool_workspaces: list[tuple[Any, Path | None, Path | None]] = []
+        _orig_tool_workspaces: list[tuple[Any, Path | None, Path | None, Path | None]] = []
         if user_ctx_sessions:
             self.context, self.sessions = user_ctx_sessions
             # Update filesystem tools to use the per-user workspace
@@ -921,8 +930,13 @@ class AgentLoop:
             user_allowed = user_ws if (self.restrict_to_workspace or self.exec_config.sandbox) else None
             for tool in self.tools._tools.values():
                 if hasattr(tool, '_workspace'):
-                    _orig_tool_workspaces.append((tool, tool._workspace, tool._allowed_dir))
+                    _orig_tool_workspaces.append((
+                        tool, tool._workspace, tool._allowed_dir,
+                        getattr(tool, '_skill_workspace', None),
+                    ))
                     tool._workspace = user_ws
+                    if hasattr(tool, '_skill_workspace'):
+                        tool._skill_workspace = self.context.role_workspace
                     if user_allowed is not None:
                         tool._allowed_dir = user_allowed
             logger.debug("Using user workspace: {}", user_ws)
@@ -934,9 +948,10 @@ class AgentLoop:
             )
         finally:
             # Restore original tool workspaces
-            for tool, orig_ws, orig_allowed in _orig_tool_workspaces:
+            for tool, orig_ws, orig_allowed, orig_skill_workspace in _orig_tool_workspaces:
                 tool._workspace = orig_ws
                 tool._allowed_dir = orig_allowed
+                tool._skill_workspace = orig_skill_workspace
             self.context = _orig_context
             self.sessions = _orig_sessions
 

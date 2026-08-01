@@ -119,6 +119,26 @@ const routes = [
         component: () => import('../pages/researcher/ResearchResults.vue'),
       },
       {
+        path: 'materials',
+        name: 'ResearcherMaterials',
+        component: () => import('../pages/researcher/Materials.vue'),
+      },
+      {
+        path: 'projects',
+        name: 'ResearcherProjects',
+        component: () => import('../pages/researcher/CourseRadar.vue'),
+      },
+      {
+        path: 'artifacts',
+        name: 'ArtifactCenter',
+        component: () => import('../pages/researcher/ArtifactCenter.vue'),
+      },
+      {
+        path: 'create-artifact',
+        name: 'CreateArtifact',
+        component: () => import('../pages/researcher/CreateArtifact.vue'),
+      },
+      {
         path: 'agents',
         name: 'AgentMatrix',
         component: () => import('../pages/researcher/AgentMatrix.vue'),
@@ -142,16 +162,6 @@ const routes = [
         path: 'writing-assistant',
         name: 'WritingAssistant',
         component: () => import('../pages/researcher/WritingAssistant.vue'),
-      },
-      {
-        path: 'topic-radar',
-        name: 'TopicRadar',
-        component: () => import('../pages/researcher/TopicRadar.vue'),
-      },
-      {
-        path: 'toolbench',
-        name: 'ToolBench',
-        component: () => import('../pages/researcher/ToolBench.vue'),
       },
     ],
   },

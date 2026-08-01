@@ -510,9 +510,9 @@ class StorageWrapper:
         """Get paper by ID."""
         return await self.storage.get_paper(paper_id)
 
-    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_papers(self, user_id: Optional[str] = None, user_role: str = "researcher") -> List[Dict[str, Any]]:
         """List papers, optionally filtered by user."""
-        return await self.storage.list_papers(user_id)
+        return await self.storage.list_papers(user_id, user_role)
 
     async def delete_paper(self, paper_id: int) -> bool:
         """Delete paper and its chunks."""
@@ -584,6 +584,68 @@ class StorageWrapper:
     async def get_research_attachment_chunks(self, attachment_id: int) -> List[Dict[str, Any]]:
         """Get chunks for a workspace attachment."""
         return await self.storage.get_research_attachment_chunks(attachment_id)
+
+    async def update_research_attachment(self, attachment_id: int, data: Dict[str, Any]) -> bool:
+        method = getattr(self.storage, "update_research_attachment", None)
+        return await method(attachment_id, data) if method else False
+
+    async def delete_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Delete a workspace attachment."""
+        return await self.storage.delete_research_attachment(attachment_id)
+
+    async def get_research_project(self, project_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        method = getattr(self.storage, "get_research_project", None)
+        return await method(project_id, user_id, user_role) if method else None
+
+    async def update_research_project(self, project_id: int, user_id: str, user_role: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        method = getattr(self.storage, "update_research_project", None)
+        return await method(project_id, user_id, user_role, data) if method else None
+
+    async def delete_research_project(self, project_id: int, user_id: str, user_role: str = "researcher") -> bool:
+        method = getattr(self.storage, "delete_research_project", None)
+        return await method(project_id, user_id, user_role) if method else False
+
+    async def get_research_project_links(self, project_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        method = getattr(self.storage, "get_research_project_links", None)
+        return await method(project_id, user_id, user_role) if method else None
+
+    async def replace_research_project_links(self, project_id: int, user_id: str, user_role: str, paper_ids: list[int], result_ids: list[int]) -> Optional[Dict[str, Any]]:
+        method = getattr(self.storage, "replace_research_project_links", None)
+        return await method(project_id, user_id, user_role, paper_ids, result_ids) if method else None
+
+    async def create_research_job(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.storage.create_research_job(data)
+
+    async def get_research_job(self, job_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        return await self.storage.get_research_job(job_id, user_id, user_role)
+
+    async def retry_research_job(self, job_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        return await self.storage.retry_research_job(job_id, user_id, user_role)
+
+    async def claim_research_job(self) -> Optional[Dict[str, Any]]:
+        return await self.storage.claim_research_job()
+
+    async def recover_research_jobs(self) -> None:
+        await self.storage.recover_research_jobs()
+
+    async def update_research_job(self, job_id: int, data: Dict[str, Any]) -> bool:
+        return await self.storage.update_research_job(job_id, data)
+
+    # Research artifact operations
+    async def create_research_artifact(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        return await self.storage.create_research_artifact(data)
+
+    async def get_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        return await self.storage.get_research_artifact(artifact_id)
+
+    async def list_research_artifacts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        return await self.storage.list_research_artifacts(user_id, user_role)
+
+    async def update_research_artifact(self, artifact_id: int, data: Dict[str, Any]) -> bool:
+        return await self.storage.update_research_artifact(artifact_id, data)
+
+    async def delete_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        return await self.storage.delete_research_artifact(artifact_id)
 
     async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create or update a LaTeX draft."""

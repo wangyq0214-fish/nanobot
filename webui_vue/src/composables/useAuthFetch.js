@@ -8,15 +8,23 @@
  */
 
 import { useGateway } from './useGateway.js'
+import { useAuth } from './useAuth.js'
 
 export function useAuthFetch() {
-  const { getToken } = useGateway()
+  const { getToken, refreshTokens } = useGateway()
+  const { user } = useAuth()
 
   async function parseResponse(res) {
     const text = await res.text()
+    const contentType = res.headers.get('content-type') || ''
     if (!text) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return {}
+    }
+    if (!contentType.includes('application/json')) {
+      const snippet = text.trim().slice(0, 120)
+      if (!res.ok) throw new Error(snippet || `HTTP ${res.status}`)
+      throw new Error(`Expected JSON response, received ${contentType || 'unknown content type'}`)
     }
     try {
       const body = JSON.parse(text)
@@ -42,56 +50,79 @@ export function useAuthFetch() {
     return headers
   }
 
+  async function request(url, options = {}, retry = true) {
+    const res = await fetch(url, {
+      ...options,
+      headers: { ...authHeaders(), ...(options.headers || {}) },
+      credentials: 'same-origin',
+    })
+    if (res.status === 401 && retry && user.value?.userId) {
+      try {
+        await refreshTokens()
+        return request(url, options, false)
+      } catch {
+        // Let parseResponse surface the original authentication error.
+      }
+    }
+    return parseResponse(res)
+  }
+
   /**
    * Authenticated GET request.
    */
   async function authGet(url) {
-    const res = await fetch(url, {
-      headers: authHeaders(),
-      credentials: 'same-origin',
-    })
-    return parseResponse(res)
+    return request(url)
   }
 
   /**
    * Authenticated POST request with JSON body.
    */
   async function authPost(url, body) {
-    const res = await fetch(url, {
+    return request(url, {
       method: 'POST',
-      headers: authHeaders(),
       body: JSON.stringify(body),
-      credentials: 'same-origin',
     })
-    return parseResponse(res)
   }
 
   /**
    * Authenticated DELETE request.
    */
   async function authDelete(url) {
-    const res = await fetch(url, {
+    return request(url, {
       method: 'DELETE',
-      headers: authHeaders(),
-      credentials: 'same-origin',
     })
-    return parseResponse(res)
   }
 
-  /**
-   * Authenticated request for mutations via query param data.
-   * Used by handlers that read mutation data from query params.
-   */
   async function authMutate(url, data) {
-    const params = new URLSearchParams()
-    params.set('data', JSON.stringify(data))
-    const sep = url.includes('?') ? '&' : '?'
-    const res = await fetch(`${url}${sep}${params}`, {
-      headers: authHeaders(),
-      credentials: 'same-origin',
+    return request(url, {
+      method: 'POST',
+      body: JSON.stringify(data),
     })
-    return parseResponse(res)
   }
 
-  return { authHeaders, authGet, authPost, authDelete, authMutate }
+  async function authPut(url, data) {
+    return request(url, { method: 'PUT', body: JSON.stringify(data) })
+  }
+
+  async function authPatch(url, data) {
+    return request(url, { method: 'PATCH', body: JSON.stringify(data) })
+  }
+
+  async function authDownload(url) {
+    const res = await fetch(url, { headers: authHeaders(), credentials: 'same-origin' })
+    if (res.status === 401 && user.value?.userId) {
+      await refreshTokens()
+      return authDownload(url)
+    }
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`
+      try { message = (await res.json()).error || message } catch {}
+      throw new Error(message)
+    }
+    const disposition = res.headers.get('content-disposition') || ''
+    const match = disposition.match(/filename="?([^";]+)"?/i)
+    return { blob: await res.blob(), filename: match?.[1] || '' }
+  }
+
+  return { authHeaders, authGet, authPost, authDelete, authMutate, authPut, authPatch, authDownload }
 }

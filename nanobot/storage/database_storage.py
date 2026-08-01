@@ -33,6 +33,10 @@ from ..models import (
     Paper,
     PaperChunk,
     ResearchResult,
+    ResearchArtifact,
+    ResearchJob,
+    ResearchProjectPaper,
+    ResearchProjectResult,
     ResearchAttachment,
     ResearchAttachmentChunk,
     ResearchProject,
@@ -68,6 +72,10 @@ class DatabaseStorage(BaseStorage):
             LatexDraftVersion.__table__,
             LatexCompileRecord.__table__,
             LatexDraftAttachment.__table__,
+            ResearchArtifact.__table__,
+            ResearchProjectPaper.__table__,
+            ResearchProjectResult.__table__,
+            ResearchJob.__table__,
         ]
         engine = get_engine()
         async with engine.begin() as conn:
@@ -910,7 +918,7 @@ class DatabaseStorage(BaseStorage):
                 'title', 'authors', 'abstract', 'year', 'doi', 'citation_count', 'venue',
                 'file_path', 'file_name', 'page_count', 'full_text',
                 'source', 'source_id', 'pdf_url', 'url',
-                'ai_summary', 'user_id', 'is_favorite', 'tags', 'annotations',
+                'ai_summary', 'user_id', 'user_role', 'is_favorite', 'tags', 'annotations',
             }
             data = {k: v for k, v in paper_data.items() if k in valid_fields}
             # Ensure JSON fields are serialized
@@ -936,12 +944,13 @@ class DatabaseStorage(BaseStorage):
             paper = result.scalar_one_or_none()
             return paper.to_dict() if paper else None
 
-    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_papers(self, user_id: Optional[str] = None, user_role: str = "researcher") -> List[Dict[str, Any]]:
         """List papers, optionally filtered by user."""
         async with get_session() as session:
             query = select(Paper)
             if user_id:
                 query = query.where(Paper.user_id == user_id)
+                query = query.where(Paper.user_role == user_role)
             query = query.order_by(Paper.created_at.desc())
             result = await session.execute(query)
             papers = result.scalars().all()
@@ -1113,7 +1122,7 @@ class DatabaseStorage(BaseStorage):
                 'user_id', 'user_role', 'title', 'content',
                 'chat_id', 'session_title', 'source_message_id',
                 'project_id', 'project_name', 'status', 'sections',
-                'citations', 'attachments', 'tags', 'metadata_'
+                'citations', 'attachments', 'resources', 'tags', 'metadata_'
             }
             filtered = {}
             for k, v in data.items():
@@ -1170,7 +1179,7 @@ class DatabaseStorage(BaseStorage):
             updatable_fields = {
                 'title', 'content', 'tags', 'session_title',
                 'source_message_id', 'project_id', 'project_name', 'status',
-                'sections', 'citations', 'attachments', 'metadata_',
+                'sections', 'citations', 'attachments', 'resources', 'metadata_',
             }
             if "metadata" in data:
                 data = {**data, "metadata_": data["metadata"]}
@@ -1219,7 +1228,7 @@ class DatabaseStorage(BaseStorage):
         await self._ensure_research_workspace_tables()
         async with get_session() as session:
             valid_fields = {
-                'user_id', 'user_role', 'project_id', 'chat_id', 'file_name',
+                'user_id', 'user_role', 'project_id', 'job_id', 'chat_id', 'file_name',
                 'file_type', 'file_path', 'parse_status', 'summary', 'metadata_'
             }
             filtered = {}
@@ -1290,6 +1299,237 @@ class DatabaseStorage(BaseStorage):
                 .order_by(ResearchAttachmentChunk.chunk_index)
             )
             return [item.to_dict() for item in result.scalars().all()]
+
+    async def update_research_attachment(self, attachment_id: int, data: Dict[str, Any]) -> bool:
+        await self._ensure_research_workspace_tables()
+        aliases = {"parseStatus": "parse_status", "errorMessage": "error_message"}
+        values = {aliases.get(key, key): value for key, value in data.items()}
+        if "metadata" in values:
+            values["metadata_"] = values.pop("metadata")
+        allowed = {"parse_status", "summary", "metadata_", "project_id", "job_id"}
+        values = {key: value for key, value in values.items() if key in allowed}
+        async with get_session() as session:
+            result = await session.execute(update(ResearchAttachment).where(ResearchAttachment.id == attachment_id).values(**values))
+            return result.rowcount > 0
+
+    async def delete_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Delete an attachment and its extracted chunks."""
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(
+                select(ResearchAttachment).where(ResearchAttachment.id == attachment_id)
+            )
+            attachment = result.scalar_one_or_none()
+            if not attachment:
+                return None
+            value = attachment.to_dict()
+            await session.execute(
+                delete(ResearchAttachmentChunk).where(ResearchAttachmentChunk.attachment_id == attachment_id)
+            )
+            await session.delete(attachment)
+            return value
+
+    # Research artifact operations
+    async def create_research_artifact(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            valid_fields = {
+                "user_id", "user_role", "project_id", "artifact_type", "title", "status",
+                "source_refs", "content", "metadata_", "error_message",
+            }
+            filtered = {}
+            for key, value in data.items():
+                if key == "type":
+                    filtered["artifact_type"] = value
+                elif key == "metadata":
+                    filtered["metadata_"] = value
+                elif key in valid_fields:
+                    filtered[key] = value
+            artifact = ResearchArtifact(**filtered)
+            session.add(artifact)
+            await session.flush()
+            await session.refresh(artifact)
+            return artifact.to_dict()
+
+    async def get_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(select(ResearchArtifact).where(ResearchArtifact.id == artifact_id))
+            artifact = result.scalar_one_or_none()
+            return artifact.to_dict() if artifact else None
+
+    async def list_research_artifacts(self, user_id: str, user_role: str = "researcher") -> List[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(
+                select(ResearchArtifact)
+                .where(and_(ResearchArtifact.user_id == user_id, ResearchArtifact.user_role == user_role))
+                .order_by(ResearchArtifact.updated_at.desc())
+            )
+            return [item.to_summary_dict() for item in result.scalars().all()]
+
+    async def update_research_artifact(self, artifact_id: int, data: Dict[str, Any]) -> bool:
+        await self._ensure_research_workspace_tables()
+        updatable = {"title", "status", "source_refs", "content", "metadata_", "error_message"}
+        if "metadata" in data:
+            data = {**data, "metadata_": data["metadata"]}
+        if "errorMessage" in data:
+            data = {**data, "error_message": data["errorMessage"]}
+        if "sourceRefs" in data:
+            data = {**data, "source_refs": data["sourceRefs"]}
+        filtered = {key: value for key, value in data.items() if key in updatable}
+        if not filtered:
+            return False
+        async with get_session() as session:
+            result = await session.execute(
+                update(ResearchArtifact).where(ResearchArtifact.id == artifact_id).values(**filtered)
+            )
+            return result.rowcount > 0
+
+    async def delete_research_artifact(self, artifact_id: int) -> Optional[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(select(ResearchArtifact).where(ResearchArtifact.id == artifact_id))
+            artifact = result.scalar_one_or_none()
+            if not artifact:
+                return None
+            value = artifact.to_dict()
+            await session.delete(artifact)
+            return value
+
+    async def get_research_project(self, project_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(select(ResearchProject).where(and_(
+                ResearchProject.id == project_id,
+                ResearchProject.user_id == user_id,
+                ResearchProject.user_role == user_role,
+            )))
+            item = result.scalar_one_or_none()
+            return item.to_dict() if item else None
+
+    async def update_research_project(self, project_id: int, user_id: str, user_role: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        project = await self.get_research_project(project_id, user_id, user_role)
+        if not project:
+            return None
+        filtered = {key: value for key, value in data.items() if key in {"name", "description", "status", "metadata_"}}
+        if "metadata" in data:
+            filtered["metadata_"] = data["metadata"]
+        if filtered:
+            async with get_session() as session:
+                await session.execute(update(ResearchProject).where(ResearchProject.id == project_id).values(**filtered))
+        return await self.get_research_project(project_id, user_id, user_role)
+
+    async def delete_research_project(self, project_id: int, user_id: str, user_role: str = "researcher") -> bool:
+        project = await self.get_research_project(project_id, user_id, user_role)
+        if not project:
+            return False
+        async with get_session() as session:
+            await session.execute(delete(ResearchProjectPaper).where(ResearchProjectPaper.project_id == project_id))
+            await session.execute(delete(ResearchProjectResult).where(ResearchProjectResult.project_id == project_id))
+            result = await session.execute(delete(ResearchProject).where(ResearchProject.id == project_id))
+            return result.rowcount > 0
+
+    async def get_research_project_links(self, project_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        if not await self.get_research_project(project_id, user_id, user_role):
+            return None
+        async with get_session() as session:
+            papers = await session.execute(select(ResearchProjectPaper.paper_id).where(ResearchProjectPaper.project_id == project_id))
+            results = await session.execute(select(ResearchProjectResult.result_id).where(ResearchProjectResult.project_id == project_id))
+            return {"paperIds": list(papers.scalars().all()), "resultIds": list(results.scalars().all())}
+
+    async def replace_research_project_links(self, project_id: int, user_id: str, user_role: str, paper_ids: list[int], result_ids: list[int]) -> Optional[Dict[str, Any]]:
+        if not await self.get_research_project(project_id, user_id, user_role):
+            return None
+        async with get_session() as session:
+            paper_query = select(Paper.id).where(and_(Paper.id.in_(paper_ids or [-1]), Paper.user_id == user_id, Paper.user_role == user_role))
+            result_query = select(ResearchResult.id).where(and_(ResearchResult.id.in_(result_ids or [-1]), ResearchResult.user_id == user_id, ResearchResult.user_role == user_role))
+            valid_papers = list((await session.execute(paper_query)).scalars().all())
+            valid_results = list((await session.execute(result_query)).scalars().all())
+            await session.execute(delete(ResearchProjectPaper).where(ResearchProjectPaper.project_id == project_id))
+            await session.execute(delete(ResearchProjectResult).where(ResearchProjectResult.project_id == project_id))
+            for paper_id in valid_papers:
+                session.add(ResearchProjectPaper(project_id=project_id, paper_id=paper_id))
+            for result_id in valid_results:
+                session.add(ResearchProjectResult(project_id=project_id, result_id=result_id))
+            return {"paperIds": valid_papers, "resultIds": valid_results}
+
+    async def create_research_job(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            job = ResearchJob(**{key: value for key, value in data.items() if key in {
+                "user_id", "user_role", "job_type", "status", "progress", "payload", "result",
+                "error_message", "attempts", "max_attempts",
+            }})
+            session.add(job)
+            await session.flush()
+            await session.refresh(job)
+            return job.to_dict()
+
+    async def get_research_job(self, job_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(select(ResearchJob).where(and_(
+                ResearchJob.id == job_id, ResearchJob.user_id == user_id, ResearchJob.user_role == user_role,
+            )))
+            job = result.scalar_one_or_none()
+            return job.to_dict() if job else None
+
+    async def recover_research_jobs(self) -> None:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            await session.execute(update(ResearchJob).where(ResearchJob.status == "running").values(status="queued", started_at=None))
+
+    async def claim_research_job(self) -> Optional[Dict[str, Any]]:
+        await self._ensure_research_workspace_tables()
+        async with get_session() as session:
+            result = await session.execute(select(ResearchJob).where(
+                ResearchJob.status == "queued", ResearchJob.attempts < ResearchJob.max_attempts,
+            ).order_by(ResearchJob.created_at).with_for_update(skip_locked=True).limit(20))
+            job = None
+            for candidate in result.scalars().all():
+                if candidate.job_type != "attachment_parse":
+                    job = candidate
+                    break
+                running = await session.execute(select(func.count(ResearchJob.id)).where(and_(
+                    ResearchJob.user_id == candidate.user_id,
+                    ResearchJob.user_role == candidate.user_role,
+                    ResearchJob.job_type == "attachment_parse",
+                    ResearchJob.status == "running",
+                )))
+                if (running.scalar() or 0) < 2:
+                    job = candidate
+                    break
+            if not job:
+                return None
+            job.status = "running"
+            job.attempts += 1
+            job.started_at = datetime.utcnow()
+            job.progress = max(job.progress, 1)
+            await session.flush()
+            await session.refresh(job)
+            return job.to_dict()
+
+    async def update_research_job(self, job_id: int, data: Dict[str, Any]) -> bool:
+        await self._ensure_research_workspace_tables()
+        aliases = {"errorMessage": "error_message", "jobType": "job_type"}
+        values = {aliases.get(key, key): value for key, value in data.items()}
+        values = {key: value for key, value in values.items() if key in {
+            "status", "progress", "result", "error_message", "started_at", "finished_at", "payload",
+        }}
+        async with get_session() as session:
+            result = await session.execute(update(ResearchJob).where(ResearchJob.id == job_id).values(**values))
+            return result.rowcount > 0
+
+    async def retry_research_job(self, job_id: int, user_id: str, user_role: str = "researcher") -> Optional[Dict[str, Any]]:
+        job = await self.get_research_job(job_id, user_id, user_role)
+        if not job:
+            return None
+        async with get_session() as session:
+            await session.execute(update(ResearchJob).where(ResearchJob.id == job_id).values(
+                status="queued", progress=0, error_message="", finished_at=None,
+            ))
+        return await self.get_research_job(job_id, user_id, user_role)
 
     async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create or update a LaTeX draft and append a version when content changes."""

@@ -213,6 +213,12 @@
           {{ msg.role === 'ai' ? 'AI' : '您' }}
         </div>
         <div class="message-content" v-html="msg.content"></div>
+        <div v-if="msg.citations?.length" class="message-citations">
+          <button v-for="citation in msg.citations" :key="citation.chunkId" class="citation-card" @click="jumpToCitation(citation)">
+            <span>第 {{ citation.pageNumber || '?' }} 页</span><small>{{ citation.quote }}</small>
+          </button>
+        </div>
+        <div v-if="msg.insufficientEvidence" class="insufficient-evidence">未找到足够证据</div>
       </div>
     </div>
 
@@ -249,10 +255,12 @@ import { useRouter, useRoute } from 'vue-router'
 import VuePdfEmbed from 'vue-pdf-embed'
 import 'vue-pdf-embed/dist/styles/textLayer.css'
 import { useGateway } from '../../composables/useGateway.js'
+import { useAuthFetch } from '../../composables/useAuthFetch.js'
 
 const router = useRouter()
 const route = useRoute()
 const { getToken } = useGateway()
+const { authMutate } = useAuthFetch()
 
 const paper = ref(null)
 const loading = ref(true)
@@ -371,11 +379,14 @@ async function generateSummary() {
   summaryError.value = ''
 
   try {
-    const { sendAiPaperSummary } = useGateway()
-    const result = await sendAiPaperSummary(paper.value.id)
-    summary.value = result.summary || ''
-    if (result.error) summaryError.value = result.error
-    if (result.summary) paper.value.aiSummary = result.summary
+    const result = await authMutate(`/api/researcher/papers/${paper.value.id}/copilot`, {
+      paperId: paper.value.id,
+      message: '请基于论文证据生成结构化摘要，覆盖研究问题、方法、主要发现和局限，并为关键结论标注证据。',
+      conversationId: `paper-summary-${paper.value.id}`,
+    })
+    summary.value = result?.answer || '未找到足够证据。'
+    if (result?.insufficientEvidence) summaryError.value = '未找到足够证据，未生成未经验证的摘要。'
+    if (result?.answer) paper.value.aiSummary = result.answer
   } catch (err) {
     summaryError.value = err.message || 'AI 摘要生成失败'
   } finally {
@@ -407,7 +418,7 @@ const chatMessagesRef = ref(null)
 const chatMessages = ref([
   {
     role: 'ai',
-    content: '您好，首席研究员。我已完成对本篇论文的多维图谱重构，请问需要针对哪个核心算式、控制变量或消融缺陷进行深度探讨？'
+    content: '我会只依据这篇论文的可定位分片回答问题。'
   }
 ])
 
@@ -501,14 +512,23 @@ async function sendMessage() {
     }
   })
 
-  // Simulate AI response (replace with actual API call)
-  chatMessages.value.push({ role: 'ai', content: '正在分析您的问题...' })
+  if (!paper.value) return
+  const pending = { role: 'ai', content: '正在检索论文分片并核对证据...' }
+  chatMessages.value.push(pending)
+  try {
+    const result = await authMutate(`/api/researcher/papers/${paper.value.id}/copilot`, {
+      paperId: paper.value.id, message: userMsg, conversationId: `paper-${paper.value.id}`,
+    })
+    pending.content = result?.answer || '未找到足够证据，无法回答。'
+    pending.citations = result?.citations || []
+    pending.insufficientEvidence = Boolean(result?.insufficientEvidence)
+  } catch (error) {
+    pending.content = `Copilot 暂时不可用：${error.message || '请求失败'}`
+  }
+}
 
-  // TODO: Integrate with actual AI chat API
-  setTimeout(() => {
-    chatMessages.value[chatMessages.value.length - 1].content =
-      `关于"${userMsg}"，这是一个很好的问题。基于论文内容，我建议从以下几个角度进行分析...`
-  }, 1000)
+function jumpToCitation(citation) {
+  if (citation?.pageNumber) pdfPage.value = Math.max(1, Math.min(pdfTotal.value, citation.pageNumber))
 }
 
 function sendQuickAction(action) {

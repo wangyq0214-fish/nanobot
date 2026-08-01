@@ -26,39 +26,6 @@
             </div>
           </div>
 
-          <!-- Tool 2: OCR -->
-          <div class="tool-card" @click="activeTool = 'ocr'">
-            <div class="tool-card-body">
-              <div class="tool-icon-wrap">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                </svg>
-              </div>
-              <h3 class="tool-card-title">文献布局 OCR 解析</h3>
-              <p class="tool-card-desc">高精度切分双栏扫描件，将文献内部的表格公式抽离为标准 LaTeX 代码。</p>
-            </div>
-            <div class="tool-card-footer">
-              <span>适用：学生 / 独立研究员</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </div>
-          </div>
-
-          <!-- Tool 3: Sandbox -->
-          <div class="tool-card" @click="activeTool = 'sandbox'">
-            <div class="tool-card-body">
-              <div class="tool-icon-wrap">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/>
-                </svg>
-              </div>
-              <h3 class="tool-card-title">Pyodide 端测沙箱终端</h3>
-              <p class="tool-card-desc">无需耗费后端算力，直接在当前浏览器运行 Python 脚本清洗实验数据。</p>
-            </div>
-            <div class="tool-card-footer">
-              <span>适用：学生 / 极客研究员</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -68,8 +35,7 @@
       <DataLab @back="activeTool = null" />
     </div>
 
-    <!-- OCR placeholder -->
-    <div v-if="activeTool === 'ocr'" class="placeholder-view">
+    <div v-if="false" class="placeholder-view">
       <button class="back-btn" @click="activeTool = null">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         <span>返回工具选单</span>
@@ -83,8 +49,7 @@
       </div>
     </div>
 
-    <!-- Sandbox placeholder -->
-    <div v-if="activeTool === 'sandbox'" class="placeholder-view">
+    <div v-if="false" class="placeholder-view">
       <button class="back-btn" @click="activeTool = null">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         <span>返回工具选单</span>

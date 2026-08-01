@@ -14,6 +14,8 @@ from .paper import Paper, PaperChunk
 from .progress import LearningProgress
 from .question_bank import QuestionBank
 from .research_result import ResearchResult
+from .research_artifact import ResearchArtifact
+from .research_stability import ResearchJob, ResearchProjectPaper, ResearchProjectResult
 from .research_workspace import (
     LatexCompileRecord,
     LatexDraft,
@@ -50,6 +52,10 @@ __all__ = [
     "Paper",
     "PaperChunk",
     "ResearchResult",
+    "ResearchArtifact",
+    "ResearchJob",
+    "ResearchProjectPaper",
+    "ResearchProjectResult",
     "ResearchProject",
     "ResearchAttachment",
     "ResearchAttachmentChunk",

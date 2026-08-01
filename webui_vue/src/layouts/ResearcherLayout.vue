@@ -211,7 +211,7 @@ onMounted(() => {
   }
 })
 
-const navItems = [
+const legacyNavItems = [
   {
     path: '/researcher/workspace',
     label: '工作台主页',
@@ -242,16 +242,34 @@ const navItems = [
     label: '学术写作助手',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>'
   },
+  /* legacy unfinished routes intentionally omitted from the visible navigation
   {
     path: '/researcher/topic-radar',
     label: '前沿课题雷达',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h6"/><path d="M4 12h8"/><path d="M4 18h10"/><path d="M21.54 15a10 10 0 0 1-3.07 4.93"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg>'
   },
   {
+    path: '/researcher/research-hotspot',
+    label: '研究热点',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c1.5 3 4.5 4.5 4.5 8.5A4.5 4.5 0 1 1 7.5 11c0-2 1-3.5 2.5-5.5"/></svg>'
+  },
+  {
     path: '/researcher/toolbench',
     label: 'AI 工具台中心',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>'
   }
+  */
+]
+
+const navItems = [
+  { path: '/researcher/workspace', label: '工作台', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>' },
+  { path: '/researcher/materials', label: '我的资料', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6l2 2h8v14H4z"/><path d="M4 10h16"/></svg>' },
+  { path: '/researcher/projects', label: '我的课题', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="M8 5V3h8v2M8 12h8M12 8v8"/></svg>' },
+  { path: '/researcher/artifacts', label: '制品中心', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M12 11h4M12 16h4"/></svg>' },
+  { path: '/researcher/create-artifact', label: '创建制品', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>' },
+  { path: '/researcher/writing-assistant', label: 'LaTeX 写作', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5V4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 0 4 22V19.5Z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>' },
+  { path: '/researcher/paper-search', label: '论文检索', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><circle cx="11" cy="14" r="2"/><path d="m20 17-1.9-1.9"/></svg>' },
+  { path: '/researcher/paper-library', label: '论文库', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></svg>' }
 ]
 
 function isActive(path) {

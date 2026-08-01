@@ -28,6 +28,11 @@ def get_config_path() -> Path:
     """Get the configuration file path."""
     if _current_config_path:
         return _current_config_path
+    # Prefer a project-local configuration when nanobot is launched from a
+    # project directory. Fall back to the traditional per-user location.
+    project_config = Path.cwd() / ".nanobot" / "config.json"
+    if project_config.is_file():
+        return project_config
     return Path.home() / ".nanobot" / "config.json"
 
 
@@ -42,6 +47,7 @@ def load_config(config_path: Path | None = None) -> Config:
         Loaded configuration object.
     """
     path = config_path or get_config_path()
+    set_config_path(path.resolve())
 
     config = Config()
     if path.exists():

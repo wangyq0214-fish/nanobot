@@ -110,7 +110,7 @@ export function useOpenAlex() {
       const mainQuery = domainConfig.queries[0]
 
       // Search papers from multiple sources
-      const papers = await searchPapers(mainQuery, 10)
+      const papers = await searchPapers(mainQuery, 100)
 
       if (papers.length === 0) {
         throw new Error('未找到相关论文')
@@ -152,12 +152,11 @@ export function useOpenAlex() {
       }
 
       // Scale up counts for realistic display
-      const scaleFactor = 500
-      const scaledValues = trendValues.map(v => v * scaleFactor + Math.floor(Math.random() * 200))
+      const scaledValues = trendValues
 
       const latestCount = scaledValues[scaledValues.length - 1] || 0
-      const prevCount = scaledValues[scaledValues.length - 2] || 1
-      const growthRate = ((latestCount - prevCount) / prevCount * 100).toFixed(0)
+      const prevCount = scaledValues[scaledValues.length - 2] || 0
+      const growthRate = prevCount ? ((latestCount - prevCount) / prevCount * 100).toFixed(0) : '0'
 
       // Normalize paper format
       const normalizedPapers = papers.map(p => ({
@@ -168,7 +167,12 @@ export function useOpenAlex() {
         citations: p.citations || 0,
         year: p.year,
         tags: p.source ? [p.source] : [],
-        doi: p.doi
+        doi: p.doi,
+        abstract: p.abstract || null,
+        fullAuthorships: p.authorships || [],
+        concepts: p.concepts || [],
+        oaUrl: p.openAccess?.oa_url || p.pdfUrl || null,
+        pdfUrl: p.primaryLocation?.pdf_url || p.pdfUrl || null
       }))
 
       return {
@@ -206,8 +210,11 @@ export function useOpenAlex() {
    * Get work details (simplified - returns paper info)
    */
   async function getWorkDetails(workId) {
-    // For backend-sourced papers, we already have the details
-    return { id: workId, abstract: null }
+    const id = String(workId || '').replace('https://openalex.org/', '')
+    const data = await searchViaBackend(id, { source: 'openalex', limit: 1 })
+    const paper = data?.results?.[0]
+    if (!paper) throw new Error('Paper details unavailable')
+    return { id: paper.id, abstract_inverted_index: paper.abstract || null, open_access: paper.openAccess || {}, best_oa_location: paper.primaryLocation || {}, doi: paper.doi, authorships: paper.authorships || [], concepts: paper.concepts || [], cited_by_count: paper.citations || 0, publication_date: paper.publicationDate || null, primary_location: paper.primaryLocation || {} }
   }
 
   /**

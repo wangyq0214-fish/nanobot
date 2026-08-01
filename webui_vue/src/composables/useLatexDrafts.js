@@ -1,7 +1,7 @@
 import { useAuthFetch } from './useAuthFetch.js'
 
 export function useLatexDrafts() {
-  const { authGet, authMutate } = useAuthFetch()
+  const { authGet, authPost, authMutate } = useAuthFetch()
 
   async function fetchLatexDrafts() {
     return authGet('/api/researcher/latex-drafts')
@@ -12,7 +12,7 @@ export function useLatexDrafts() {
   }
 
   async function saveLatexDraft(payload) {
-    return authMutate('/api/researcher/latex-drafts/save', payload)
+    return authPost(`${import.meta.env.VITE_LATEX_API_URL || 'http://127.0.0.1:8766'}/api/researcher/latex-drafts/save`, payload)
   }
 
   async function fetchLatexDraftVersions(draftId) {

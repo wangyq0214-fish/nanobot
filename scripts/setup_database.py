@@ -70,6 +70,12 @@ async def create_tables(engine):
             except Exception as e:
                 logger.warning(f"  跳过表 {i}: {e}")
 
+        # Keep the standalone setup script aligned with the ORM models. This
+        # creates researcher stability tables that predate the documentation SQL.
+        from nanobot.models.base import Base
+        import nanobot.models  # noqa: F401
+        await conn.run_sync(Base.metadata.create_all)
+
     logger.info(f"✓ 成功创建 {len(sql_statements)} 个表")
 
 

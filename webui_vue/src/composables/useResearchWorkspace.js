@@ -10,7 +10,7 @@ const loadingProjects = ref(false)
 const uploadingAttachment = ref(false)
 
 export function useResearchWorkspace() {
-  const { authGet, authMutate } = useAuthFetch()
+  const { authGet, authMutate, authPut } = useAuthFetch()
 
   async function fetchProjects() {
     loadingProjects.value = true
@@ -30,6 +30,21 @@ export function useResearchWorkspace() {
       return data.data
     }
     return null
+  }
+
+  async function fetchProjectLinks(projectId) {
+    const data = await authGet(`/api/researcher/projects/${projectId}/links`)
+    return data?.ok ? data.data || { paperIds: [], resultIds: [] } : null
+  }
+
+  async function replaceProjectLinks(projectId, links) {
+    const data = await authPut(`/api/researcher/projects/${projectId}/links`, links)
+    return data?.ok ? data.data : null
+  }
+
+  async function migrateProjectLinks(links) {
+    const data = await authMutate('/api/researcher/projects/links/migrate', { links })
+    return data?.ok ? data.data || [] : null
   }
 
   async function fetchAttachments(chatId = '') {
@@ -68,6 +83,9 @@ export function useResearchWorkspace() {
     uploadingAttachment,
     fetchProjects,
     createProject,
+    fetchProjectLinks,
+    replaceProjectLinks,
+    migrateProjectLinks,
     fetchAttachments,
     uploadAttachment,
   }

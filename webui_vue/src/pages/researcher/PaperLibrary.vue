@@ -63,13 +63,6 @@
       >
         全部 ({{ papers.length }})
       </button>
-      <button
-        class="filter-tab"
-        :class="{ active: viewMode === 'knowledge' }"
-        @click="viewMode = 'knowledge'"
-      >
-        精选摘录 ({{ knowledgeItems.length }})
-      </button>
     </div>
   </div>
 
@@ -166,7 +159,7 @@
   </template>
 
   <!-- 知识摘录视图 -->
-  <template v-if="viewMode === 'knowledge'">
+  <template v-if="false">
     <div class="knowledge-list">
       <div
         v-for="item in knowledgeItems"

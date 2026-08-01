@@ -5,11 +5,9 @@
     </div>
     <div class="nav-center">
       <div class="nav-tabs">
-        <span class="nav-tab" :class="{ active: activeTab === 'hotspot' }" @click="$router.push('/researcher/hotspot')">研究热点</span>
         <span class="nav-tab" :class="{ active: activeTab === 'paper-search' }" @click="$router.push('/researcher/paper-search')">论文检索</span>
         <span class="nav-tab" :class="{ active: activeTab === 'paper-library' }" @click="$router.push('/researcher/paper-library')">论文库</span>
         <span class="nav-tab" :class="{ active: activeTab === 'writing-assistant' }" @click="$router.push('/researcher/writing-assistant')">写作辅导</span>
-        <span class="nav-tab" :class="{ active: activeTab === 'toolbench' }" @click="$router.push('/researcher/toolbench')">工具台中心</span>
       </div>
     </div>
     <div class="nav-right">
@@ -37,7 +35,7 @@ import { useAuth } from '../composables/useAuth.js'
 import { useGateway } from '../composables/useGateway.js'
 
 defineProps({
-  activeTab: { type: String, default: 'hotspot' },
+  activeTab: { type: String, default: 'paper-search' },
 })
 
 const router = useRouter()

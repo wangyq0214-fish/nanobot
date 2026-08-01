@@ -12,6 +12,21 @@ const loading = ref(false)
 const error = ref(null)
 const activeKey = ref(null)
 
+function clearDeletedChatStorage(chatId) {
+  if (!chatId) return
+  const storedChatId = localStorage.getItem(CHAT_ID_KEY)
+  if (storedChatId === chatId) localStorage.removeItem(CHAT_ID_KEY)
+  const userRaw = localStorage.getItem('nanobot-webui.user')
+  try {
+    const user = userRaw ? JSON.parse(userRaw) : null
+    if (user?.userId) {
+      const latexKey = `nanobot_latex_chat_id.researcher.${user.userId}`
+      if (localStorage.getItem(latexKey) === chatId) localStorage.removeItem(latexKey)
+    }
+  } catch {}
+  window.dispatchEvent(new CustomEvent('nanobot-session-deleted', { detail: { chatId } }))
+}
+
 export function useSessions() {
   const { authGet, authDelete } = useAuthFetch()
 
@@ -57,11 +72,8 @@ export function useSessions() {
               sessions.value = sessions.value.filter(s => s.key !== key)
               if (activeKey.value === key) activeKey.value = null
               // Clear stored chatId if deleting current session
-              const storedChatId = localStorage.getItem(CHAT_ID_KEY)
               const deletedChatId = extractChatId(key)
-              if (storedChatId === deletedChatId) {
-                localStorage.removeItem(CHAT_ID_KEY)
-              }
+              clearDeletedChatStorage(deletedChatId)
             }
             resolve(data.deleted)
           }
@@ -82,11 +94,8 @@ export function useSessions() {
       sessions.value = sessions.value.filter(s => s.key !== key)
       if (activeKey.value === key) activeKey.value = null
       // Clear stored chatId if deleting current session
-      const storedChatId = localStorage.getItem(CHAT_ID_KEY)
       const deletedChatId = extractChatId(key)
-      if (storedChatId === deletedChatId) {
-        localStorage.removeItem(CHAT_ID_KEY)
-      }
+      clearDeletedChatStorage(deletedChatId)
     }
     return body.deleted
   }

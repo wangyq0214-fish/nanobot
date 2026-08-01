@@ -50,6 +50,8 @@ let intentionallyClosed = false
 let currentUrl = ''
 let currentRole = ''
 let currentUserId = ''
+let tokenRefreshTimer = null
+let tokenRefreshPromise = null
 
 function _setStatus(ok) {
   connected.value = ok
@@ -102,8 +104,55 @@ function scheduleReconnect() {
   reconnectAttempts++
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
-    _doConnect(currentUrl)
+    refreshTokens().then(() => {
+      const url = deriveWsUrl(currentWsPath, wsToken)
+      _doConnect(url)
+    }).catch(() => scheduleReconnect())
   }, delay)
+}
+
+let currentWsPath = '/'
+
+function scheduleTokenRefresh(expiresIn) {
+  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer)
+  const ttlMs = Math.max(30000, Number(expiresIn || 300) * 1000)
+  const refreshIn = Math.max(10000, ttlMs - 30000)
+  tokenRefreshTimer = setTimeout(() => {
+    tokenRefreshTimer = null
+    refreshTokens().catch(() => {})
+  }, refreshIn)
+}
+
+async function refreshTokens() {
+  if (tokenRefreshPromise) return tokenRefreshPromise
+  if (!currentRole || !currentUserId) throw new Error('连接失败：缺少用户信息')
+
+  tokenRefreshPromise = (async () => {
+    const params = new URLSearchParams({ role: currentRole, user_id: currentUserId })
+    const resp = await fetch(`/webui/bootstrap?${params.toString()}`, { credentials: 'same-origin' })
+    if (!resp.ok) throw new Error(`Bootstrap failed: HTTP ${resp.status}`)
+    const boot = await resp.json()
+    if (boot.ws_token && boot.api_token) {
+      wsToken = boot.ws_token
+      apiToken = boot.api_token
+    } else if (boot.token) {
+      wsToken = boot.token
+      apiToken = boot.token
+    } else {
+      throw new Error('Bootstrap 缺少 token')
+    }
+    currentWsPath = boot.ws_path || currentWsPath || '/'
+    sessionStorage.setItem('nanobot-webui.ws_token', wsToken)
+    sessionStorage.setItem('nanobot-webui.api_token', apiToken)
+    scheduleTokenRefresh(boot.expires_in)
+    return boot
+  })()
+
+  try {
+    return await tokenRefreshPromise
+  } finally {
+    tokenRefreshPromise = null
+  }
 }
 
 /** Dispatch an event to all handlers registered for a chat_id. */
@@ -470,27 +519,7 @@ export function useGateway() {
 
     let boot
     try {
-      const resp = await fetch(`/webui/bootstrap${qs ? '?' + qs : ''}`, { credentials: 'same-origin' })
-      if (!resp.ok) throw new Error(`Bootstrap failed: HTTP ${resp.status}`)
-      boot = await resp.json()
-
-      // Support both new separate tokens and legacy single token
-      if (boot.ws_token && boot.api_token) {
-        // New separate token mode
-        wsToken = boot.ws_token
-        apiToken = boot.api_token
-        sessionStorage.setItem('nanobot-webui.ws_token', boot.ws_token)
-        sessionStorage.setItem('nanobot-webui.api_token', boot.api_token)
-      } else if (boot.token) {
-        // Legacy single token mode (backward compatible)
-        wsToken = boot.token
-        apiToken = boot.token
-        sessionStorage.setItem('nanobot-webui.ws_token', boot.token)
-        sessionStorage.setItem('nanobot-webui.api_token', boot.token)
-      } else {
-        throw new Error('Bootstrap 缺少 token 或 ws_path')
-      }
-
+      boot = await refreshTokens()
       if (!boot.ws_path) throw new Error('Bootstrap 缺少 ws_path')
     } catch (err) {
       connectionError.value = `无法连接 Gateway (${err.message})`
@@ -498,7 +527,8 @@ export function useGateway() {
     }
 
     // 2. Connect WebSocket (token passed via query parameter)
-    const url = deriveWsUrl(boot.ws_path, wsToken)
+    currentWsPath = boot.ws_path
+    const url = deriveWsUrl(currentWsPath, wsToken)
     return new Promise((resolve, reject) => {
       _doConnect(url)
       const sock = socket
@@ -616,6 +646,7 @@ export function useGateway() {
   function disconnect() {
     intentionallyClosed = true
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    if (tokenRefreshTimer) { clearTimeout(tokenRefreshTimer); tokenRefreshTimer = null }
     if (socket) { try { socket.close() } catch {} socket = null }
     _reset()
   }
@@ -1048,7 +1079,7 @@ export function useGateway() {
   }
 
   return {
-    connected, connectionError, currentChatId, connect, sendMessage, sendResearcherClarification,
+    connected, connectionError, currentChatId, connect, refreshTokens, sendMessage, sendResearcherClarification,
     disconnect, switchSession, getChatId, getToken, onChat, newChat,
     sendSaveSource, sendSaveResearchResult, sendAiGradeQuestion, sendAiGradeSubmission,
     sendAiGenerateQuestions, sendAiParseQuestions, sendCreateHomework, sendAiTutorEvaluate,

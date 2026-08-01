@@ -27,6 +27,8 @@ import ssl
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
+from aiohttp import web
+from nanobot.config.paths import get_path_root
 from urllib.parse import unquote
 
 from loguru import logger
@@ -49,14 +51,28 @@ from nanobot.api.handlers import (
     handle_courses_list,
     handle_create_latex_compile_record,
     handle_create_research_result,
+    handle_create_research_artifact,
     handle_create_research_project,
+    handle_delete_research_project,
+    handle_export_research_artifact,
+    handle_export_research_result,
+    handle_paper_copilot,
+    handle_get_research_job,
+    handle_get_research_project_links,
+    handle_migrate_research_project_links,
+    handle_retry_research_job,
+    handle_update_research_project,
+    handle_update_research_project_links,
     handle_delete_paper,
     handle_delete_research_result,
+    handle_delete_research_artifact,
+    handle_delete_research_attachment,
     handle_get_paper,
     handle_get_paper_chunks,
     handle_get_paper_pdf,
     handle_get_latex_draft,
     handle_get_research_result,
+    handle_get_research_artifact,
     handle_homework_create,
     handle_homework_delete,
     handle_homework_detail,
@@ -72,8 +88,11 @@ from nanobot.api.handlers import (
     handle_list_latex_draft_versions,
     handle_list_latex_drafts,
     handle_list_research_attachments,
+    handle_list_research_artifacts,
     handle_list_research_projects,
     handle_list_research_results,
+    handle_regenerate_research_artifact,
+    handle_update_research_artifact,
     handle_question_bank_add,
     handle_question_bank_batch_add,
     handle_question_bank_delete,
@@ -101,6 +120,7 @@ from nanobot.api.handlers import (
     handle_upload_paper,
     handle_upload_research_attachment,
 )
+from nanobot.api.handlers.research_workspace import _safe_tex_file_name
 from nanobot.api.router import Router
 from nanobot.api.utils import (
     b64url_decode,
@@ -138,6 +158,17 @@ def _normalize_config_path(path: str) -> str:
     return _strip_trailing_slash(path)
 
 
+class _RequestWithRawPath:
+    """Proxy an aiohttp request while preserving its query string for legacy handlers."""
+
+    def __init__(self, request: web.Request) -> None:
+        self._request = request
+        self.path = request.raw_path
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._request, name)
+
+
 class WebSocketConfig(Base):
     """WebSocket server channel configuration.
 
@@ -161,6 +192,8 @@ class WebSocketConfig(Base):
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 8765
+    http_port: int = 8767
+    latex_http_port: int = 8766
     path: str = "/"
     token: str = ""
     token_issue_path: str = ""
@@ -392,6 +425,8 @@ class WebSocketChannel(BaseChannel):
         self._auth: AuthManager | None = None
         # Declarative HTTP route table (lazy initialized)
         self._router: Router | None = None
+        self._api_http_runner: web.AppRunner | None = None
+        self._latex_http_runner: web.AppRunner | None = None
 
     # -- Subscription bookkeeping -------------------------------------------
 
@@ -448,6 +483,9 @@ class WebSocketChannel(BaseChannel):
             await init_storage("file")
             storage = get_storage()
             self._storage = StorageWrapper(storage)
+        if isinstance(self.storage.storage, DatabaseStorage):
+            from nanobot.services.research_jobs import ensure_research_job_worker
+            ensure_research_job_worker(self.storage)
         return self.storage
 
     def _attach(self, connection: Any, chat_id: str) -> None:
@@ -699,6 +737,10 @@ class WebSocketChannel(BaseChannel):
             handle_upload_paper, is_async=True, name="paper-upload",
         )
         r.add(
+            r"/api/researcher/papers/(?P<paper_id>\d+)/copilot",
+            handle_paper_copilot, is_async=True, name="paper-copilot",
+        )
+        r.add(
             r"/api/researcher/papers/(?P<paper_id>\d+)/favorite",
             handle_toggle_favorite, is_async=True, name="paper-favorite",
         )
@@ -743,6 +785,10 @@ class WebSocketChannel(BaseChannel):
 
         # -- Researcher: Research results ----------------------------------
         r.add(
+            r"/api/researcher/results/(?P<result_id>\d+)/export",
+            handle_export_research_result, is_async=True, name="result-export",
+        )
+        r.add(
             r"/api/researcher/results/create",
             handle_create_research_result, is_async=True, name="result-create",
         )
@@ -763,7 +809,53 @@ class WebSocketChannel(BaseChannel):
             handle_list_research_results, is_async=True, name="result-list",
         )
 
+        # -- Researcher: generated artifacts -------------------------------
+        r.add(
+            r"/api/researcher/artifacts/(?P<artifact_id>\d+)/export",
+            handle_export_research_artifact, is_async=True, name="artifact-export",
+        )
+        r.add(
+            r"/api/researcher/artifacts/create",
+            handle_create_research_artifact, is_async=True, name="artifact-create",
+        )
+        r.add(
+            r"/api/researcher/artifacts/(?P<artifact_id>\d+)/generate",
+            handle_regenerate_research_artifact, is_async=True, name="artifact-generate",
+        )
+        r.add(
+            r"/api/researcher/artifacts/(?P<artifact_id>\d+)/update",
+            handle_update_research_artifact, is_async=True, name="artifact-update",
+        )
+        r.add(
+            r"/api/researcher/artifacts/(?P<artifact_id>\d+)/delete",
+            handle_delete_research_artifact, is_async=True, name="artifact-delete",
+        )
+        r.add(
+            r"/api/researcher/artifacts/(?P<artifact_id>\d+)",
+            handle_get_research_artifact, is_async=True, name="artifact-detail",
+        )
+        r.add(
+            r"/api/researcher/artifacts",
+            handle_list_research_artifacts, is_async=True, name="artifact-list",
+        )
+
         # -- Researcher: workspace projects and uploaded context ------------
+        r.add(
+            r"/api/researcher/projects/links/migrate",
+            handle_migrate_research_project_links, is_async=True, name="research-project-links-migrate",
+        )
+        r.add(
+            r"/api/researcher/projects/(?P<project_id>\d+)/links",
+            handle_get_research_project_links, is_async=True, name="research-project-links-get",
+        )
+        r.add(
+            r"/api/researcher/projects/(?P<project_id>\d+)",
+            handle_update_research_project, is_async=True, name="research-project-update",
+        )
+        r.add(
+            r"/api/researcher/projects/(?P<project_id>\d+)/delete",
+            handle_delete_research_project, is_async=True, name="research-project-delete",
+        )
         r.add(
             r"/api/researcher/projects/create",
             handle_create_research_project, is_async=True, name="research-project-create",
@@ -793,12 +885,24 @@ class WebSocketChannel(BaseChannel):
             handle_list_latex_drafts, is_async=True, name="latex-draft-list",
         )
         r.add(
+            r"/api/researcher/jobs/(?P<job_id>\d+)/retry",
+            handle_retry_research_job, is_async=True, name="research-job-retry",
+        )
+        r.add(
+            r"/api/researcher/jobs/(?P<job_id>\d+)",
+            handle_get_research_job, is_async=True, name="research-job-detail",
+        )
+        r.add(
             r"/api/researcher/attachments/upload",
             handle_upload_research_attachment, is_async=True, name="research-attachment-upload",
         )
         r.add(
             r"/api/researcher/attachments",
             handle_list_research_attachments, is_async=True, name="research-attachment-list",
+        )
+        r.add(
+            r"/api/researcher/attachments/(?P<attachment_id>\d+)/delete",
+            handle_delete_research_attachment, is_async=True, name="research-attachment-delete",
         )
 
         # -- Media fetch (sync, HMAC-signed URLs, self-authenticating) ------
@@ -842,6 +946,12 @@ class WebSocketChannel(BaseChannel):
         if resp is not None:
             return resp
 
+        # API requests should never fall through to the SPA history fallback.
+        # Returning index.html for a missing API route makes the browser try to
+        # parse HTML as JSON and hides the real routing/authentication problem.
+        if got == "/api" or got.startswith("/api/"):
+            return http_error(404, "API endpoint not found")
+
         # 3. WebSocket upgrade (the channel's primary purpose). Only run the
         # handshake gate on requests that actually ask to upgrade; otherwise
         # a bare ``GET /`` from the browser would be rejected as an
@@ -873,7 +983,7 @@ class WebSocketChannel(BaseChannel):
         if not role or not user_id:
             logger.warning("[source] _resolve_source_dir: missing role or user_id, identity={}", identity)
             return http_error(400, "role and user_id are required")
-        source_dir = Path.home() / ".nanobot" / "users" / role / user_id / "source"
+        source_dir = get_path_root() / "users" / role / user_id / "source"
         if not source_dir.is_dir():
             return http_error(404, "Source directory not found")
         return source_dir
@@ -923,7 +1033,7 @@ class WebSocketChannel(BaseChannel):
 
         # Determine sessions directory: user workspace or global
         if role and user_id:
-            sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+            sessions_dir = get_path_root() / "users" / role / user_id / "sessions"
             user_prefix = f"{role}_{user_id}_"
         elif self._session_manager is not None:
             sessions_dir = self._session_manager.workspace / "sessions"
@@ -1003,7 +1113,7 @@ class WebSocketChannel(BaseChannel):
         if role and user_id:
             # Reconstruct full key with user prefix for user workspace
             full_key = f"{role}:{user_id}:{decoded_key}"
-            user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+            user_sessions_dir = get_path_root() / "users" / role / user_id / "sessions"
             # Use safe_key to match file naming convention (colons -> underscores)
             from nanobot.session.manager import SessionManager
             safe_key = SessionManager.safe_key(full_key)
@@ -1199,7 +1309,7 @@ class WebSocketChannel(BaseChannel):
             if role and user_id:
                 # Reconstruct full key with user prefix for user workspace
                 full_key = f"{role}:{user_id}:{decoded_key}"
-                user_sessions_dir = Path.home() / ".nanobot" / "users" / role / user_id / "sessions"
+                user_sessions_dir = get_path_root() / "users" / role / user_id / "sessions"
                 # Use safe_key to match file naming convention (colons -> underscores)
                 from nanobot.session.manager import SessionManager
                 safe_key = SessionManager.safe_key(full_key)
@@ -1479,6 +1589,114 @@ class WebSocketChannel(BaseChannel):
                 assert self._stop_event is not None
                 await self._stop_event.wait()
 
+        def aiohttp_response(response: Response) -> web.Response:
+            headers = {key: value for key, value in response.headers.raw_items()}
+            headers.pop("Connection", None)
+            headers.pop("Content-Length", None)
+            return web.Response(status=response.status_code, body=response.body, headers=headers)
+
+        @web.middleware
+        async def api_cors_middleware(request: web.Request, handler: Any) -> web.Response:
+            origin = request.headers.get("Origin", "")
+            if request.method == "OPTIONS":
+                response = web.Response(status=204)
+            else:
+                response = await handler(request)
+            if origin in {"http://localhost:5173", "http://127.0.0.1:5173"}:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
+                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                response.headers["Vary"] = "Origin"
+            return response
+
+        async def dispatch_api_http(request: web.Request) -> web.Response:
+            await self._ensure_storage()
+            # aiohttp's ``request.path`` excludes the query string, while the
+            # shared legacy handlers read query parameters from ``request.path``.
+            # Keep the route match path clean but pass handlers the raw path.
+            handler_request = _RequestWithRawPath(request) if request.query_string else request
+            response = await self._router_instance.dispatch(
+                handler_request,
+                normalize_path(request.path),
+                context={
+                    "storage": self.storage,
+                    "check_token": self.auth.check_api_token,
+                    "check_identity": self.auth.check_api_token_with_identity,
+                    "model_name": _read_webui_model_name(),
+                },
+            )
+            if response is None:
+                response = http_error(404, "API endpoint not found")
+            return aiohttp_response(response)
+
+        api_app = web.Application(middlewares=[api_cors_middleware], client_max_size=self.config.max_message_bytes)
+        api_app.router.add_route("*", "/api/{tail:.*}", dispatch_api_http)
+        api_app.router.add_route("*", "/webui/{tail:.*}", dispatch_api_http)
+        self._api_http_runner = web.AppRunner(api_app)
+        await self._api_http_runner.setup()
+        api_site = web.TCPSite(self._api_http_runner, self.config.host, self.config.http_port)
+        await api_site.start()
+        logger.info("aiohttp API server listening on http://{}:{}", self.config.host, self.config.http_port)
+
+        async def save_latex_http(request: web.Request) -> web.Response:
+            token = (request.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
+            identity = self.auth.get_token_metadata(token) if token else {}
+            if identity.get("role") != "researcher":
+                return web.json_response({"error": "Only researchers can save LaTeX drafts"}, status=403)
+            try:
+                payload = await request.json()
+            except Exception:
+                return web.json_response({"error": "invalid JSON body"}, status=400)
+            if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
+                return web.json_response({"error": "content is required"}, status=400)
+            file_name = _safe_tex_file_name(str(payload.get("fileName") or "document.tex"))
+            try:
+                draft = await self.storage.save_latex_draft({
+                    "id": payload.get("draftId") or payload.get("id"),
+                    "user_id": identity.get("user_id", ""),
+                    "user_role": "researcher",
+                    "project_id": payload.get("projectId"),
+                    "chat_id": str(payload.get("chatId", "")),
+                    "title": str(payload.get("title") or file_name.removesuffix(".tex")).strip(),
+                    "file_name": file_name,
+                    "content": payload["content"],
+                    "status": payload.get("status", "draft"),
+                    "tags": payload.get("tags", []),
+                    "metadata": payload.get("metadata", {}),
+                    "attachment_ids": payload.get("attachmentIds"),
+                    "change_source": payload.get("changeSource", "manual"),
+                })
+            except Exception as exc:
+                logger.exception("Failed to save LaTeX draft over HTTP")
+                return web.json_response({"error": str(exc)}, status=500)
+            return web.json_response({"ok": True, "data": draft})
+
+        @web.middleware
+        async def latex_cors_middleware(request: web.Request, handler: Any) -> web.Response:
+            origin = request.headers.get("Origin", "")
+            allowed_origins = {"http://localhost:5173", "http://127.0.0.1:5173"}
+            if request.method == "OPTIONS":
+                response = web.Response(status=204)
+            else:
+                response = await handler(request)
+            if origin in allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Requested-With"
+                response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+                response.headers["Vary"] = "Origin"
+            return response
+
+        latex_app = web.Application(middlewares=[latex_cors_middleware])
+        latex_app.router.add_options("/{path:.*}", lambda request: web.Response(status=204))
+        latex_app.router.add_post("/api/researcher/latex-drafts/save", save_latex_http)
+        self._latex_http_runner = web.AppRunner(latex_app)
+        await self._latex_http_runner.setup()
+        latex_site = web.TCPSite(self._latex_http_runner, self.config.host, self.config.latex_http_port)
+        await latex_site.start()
+        logger.info("LaTeX HTTP server listening on http://{}:{}", self.config.host, self.config.latex_http_port)
+
         self._server_task = asyncio.create_task(runner())
         await self._server_task
 
@@ -1666,6 +1884,12 @@ class WebSocketChannel(BaseChannel):
             except Exception as e:
                 logger.warning("websocket: server task error during shutdown: {}", e)
             self._server_task = None
+        if self._latex_http_runner:
+            await self._latex_http_runner.cleanup()
+            self._latex_http_runner = None
+        if self._api_http_runner:
+            await self._api_http_runner.cleanup()
+            self._api_http_runner = None
         self._subs.clear()
         self._conn_chats.clear()
         self._conn_default.clear()

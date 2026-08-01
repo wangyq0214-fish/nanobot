@@ -21,6 +21,9 @@ function normalizeLatexForCompile(texCode, attachments = []) {
     attachments.map(file => String(file?.name || '').split(/[\\/]/).pop().toLowerCase()).filter(Boolean)
   )
   let normalized = String(texCode || '')
+    // Recover documents saved from a double-escaped AI editor payload.
+    .replace(/\\n/g, '\n')
+    .replace(/\\\\(?=[A-Za-z])/g, '\\')
 
   normalized = normalized
     .replace(/\\citet\*?\s*\{/g, '\\cite{')
@@ -37,6 +40,15 @@ function normalizeLatexForCompile(texCode, attachments = []) {
   })
 
   return normalized
+}
+
+function validateLatexForCompile(texCode) {
+  const normalized = String(texCode || '').trim()
+  if (!normalized) return 'LaTeX 内容为空'
+  if (!/\\documentclass(?:\[[^\]]*\])?\{[^}]+\}/.test(normalized)) return '缺少 \\documentclass'
+  if (!normalized.includes('\\begin{document}')) return '缺少 \\begin{document}'
+  if (!normalized.includes('\\end{document}')) return '缺少 \\end{document}'
+  return ''
 }
 
 async function blobLooksLikePdf(blob) {
@@ -70,6 +82,12 @@ export function useLatexCompiler() {
 
     try {
       const normalizedTexCode = normalizeLatexForCompile(texCode, attachments)
+      const validationError = validateLatexForCompile(normalizedTexCode)
+      if (validationError) {
+        compileError.value = validationError
+        compileLog.value = normalizedTexCode.slice(0, 2000)
+        return { success: false, texCode: normalizedTexCode }
+      }
       const texBlob = new Blob([normalizedTexCode], { type: 'text/plain' })
       const texFile = new File([texBlob], 'main.tex', { type: 'text/plain' })
 

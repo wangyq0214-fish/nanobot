@@ -41,6 +41,7 @@ class ResearchResult(Base):
     sections: Mapped[list] = mapped_column(JSON, default=list)
     citations: Mapped[list] = mapped_column(JSON, default=list)
     attachments: Mapped[list] = mapped_column(JSON, default=list)
+    resources: Mapped[list] = mapped_column(JSON, default=list)
 
     # Metadata
     tags: Mapped[dict] = mapped_column(JSON, default=list)
@@ -67,6 +68,7 @@ class ResearchResult(Base):
             "sections": self.sections or [],
             "citations": self.citations or [],
             "attachments": self.attachments or [],
+            "resources": self.resources or [],
             "tags": self.tags or [],
             "metadata": self.metadata_ or {},
             "createdAt": self.created_at.isoformat() if self.created_at else None,

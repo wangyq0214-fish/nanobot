@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import csv
 import io
+import json
 import re
 import uuid
 import zipfile
@@ -17,7 +18,7 @@ from websockets.http11 import Response
 
 from nanobot.storage.storage_wrapper import StorageWrapper
 
-from ..utils import http_error, http_json_response, parse_mutation_data, parse_query
+from ..utils import http_error, http_json_response, parse_mutation_data, parse_query, parse_request_mutation
 
 
 UPLOAD_DIR = Path.home() / ".nanobot" / "uploads" / "research_workspace"
@@ -70,7 +71,18 @@ async def handle_save_latex_draft(
     if role != "researcher":
         return http_error(403, "Only researchers can save LaTeX drafts")
 
-    payload = parse_mutation_data(parse_query(request.path))
+    body = getattr(request, "body", b"") or b""
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    if body:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return http_error(400, "invalid JSON body")
+        if not isinstance(payload, dict):
+            return http_error(400, "request body must be a JSON object")
+    else:
+        payload = parse_mutation_data(parse_query(request.path))
     if isinstance(payload, Response):
         return payload
     content = payload.get("content")
@@ -133,7 +145,7 @@ async def handle_create_latex_compile_record(
     if role != "researcher":
         return http_error(403, "Only researchers can save compile records")
 
-    payload = parse_mutation_data(parse_query(request.path))
+    payload = await parse_request_mutation(request)
     if isinstance(payload, Response):
         return payload
     draft_id = _optional_int(payload.get("draftId"))
@@ -184,7 +196,7 @@ async def handle_create_research_project(
     if role != "researcher":
         return http_error(403, "Only researchers can create projects")
 
-    payload = parse_mutation_data(parse_query(request.path))
+    payload = await parse_request_mutation(request)
     if isinstance(payload, Response):
         return payload
     name = str(payload.get("name", "")).strip()
@@ -202,6 +214,99 @@ async def handle_create_research_project(
     return http_json_response({"ok": True, "data": project})
 
 
+async def handle_get_research_project_links(request: WsRequest, storage: StorageWrapper, project_id: str, *, identity: dict[str, str]) -> Response:
+    if getattr(request, "method", "GET").upper() in {"PUT", "POST"}:
+        return await handle_update_research_project_links(request, storage, project_id, identity=identity)
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can access project links")
+    links = await storage.get_research_project_links(int(project_id), identity.get("user_id", ""), "researcher")
+    if links is None:
+        return http_error(404, "Project not found")
+    return http_json_response({"ok": True, "data": links})
+
+
+async def handle_update_research_project_links(request: WsRequest, storage: StorageWrapper, project_id: str, *, identity: dict[str, str]) -> Response:
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can update project links")
+    payload = await parse_request_mutation(request)
+    if isinstance(payload, Response):
+        return payload
+    paper_ids = _int_list(payload.get("paperIds"))
+    result_ids = _int_list(payload.get("resultIds"))
+    links = await storage.replace_research_project_links(int(project_id), identity.get("user_id", ""), "researcher", paper_ids, result_ids)
+    if links is None:
+        return http_error(404, "Project not found")
+    return http_json_response({"ok": True, "data": links})
+
+
+async def handle_migrate_research_project_links(request: WsRequest, storage: StorageWrapper, *, identity: dict[str, str]) -> Response:
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can migrate project links")
+    payload = await parse_request_mutation(request)
+    if isinstance(payload, Response):
+        return payload
+    links_by_project = payload.get("links") if isinstance(payload.get("links"), dict) else payload
+    migrated = []
+    if isinstance(links_by_project, dict):
+        for raw_project_id, value in links_by_project.items():
+            if not str(raw_project_id).isdigit() or not isinstance(value, dict):
+                continue
+            links = await storage.replace_research_project_links(
+                int(raw_project_id), identity.get("user_id", ""), "researcher",
+                _int_list(value.get("paperIds", value.get("papers"))),
+                _int_list(value.get("resultIds", value.get("results"))),
+            )
+            if links is not None:
+                migrated.append({"projectId": int(raw_project_id), **links})
+    return http_json_response({"ok": True, "data": migrated})
+
+
+async def handle_update_research_project(request: WsRequest, storage: StorageWrapper, project_id: str, *, identity: dict[str, str]) -> Response:
+    if getattr(request, "method", "PATCH").upper() == "DELETE":
+        return await handle_delete_research_project(request, storage, project_id, identity=identity)
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can update projects")
+    payload = await parse_request_mutation(request)
+    if isinstance(payload, Response):
+        return payload
+    project = await storage.update_research_project(int(project_id), identity.get("user_id", ""), "researcher", {
+        "name": str(payload.get("name", "")).strip(),
+        "description": str(payload.get("description", "")).strip(),
+        "status": str(payload.get("status", "active")),
+        "metadata": payload.get("metadata", {}),
+    })
+    if not project:
+        return http_error(404, "Project not found")
+    return http_json_response({"ok": True, "data": project})
+
+
+async def handle_delete_research_project(request: WsRequest, storage: StorageWrapper, project_id: str, *, identity: dict[str, str]) -> Response:
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can delete projects")
+    deleted = await storage.delete_research_project(int(project_id), identity.get("user_id", ""), "researcher")
+    if not deleted:
+        return http_error(404, "Project not found")
+    return http_json_response({"ok": True})
+
+
+async def handle_get_research_job(request: WsRequest, storage: StorageWrapper, job_id: str, *, identity: dict[str, str]) -> Response:
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can access jobs")
+    job = await storage.get_research_job(int(job_id), identity.get("user_id", ""), "researcher")
+    if not job:
+        return http_error(404, "Job not found")
+    return http_json_response({"ok": True, "data": job})
+
+
+async def handle_retry_research_job(request: WsRequest, storage: StorageWrapper, job_id: str, *, identity: dict[str, str]) -> Response:
+    if identity.get("role") != "researcher":
+        return http_error(403, "Only researchers can retry jobs")
+    job = await storage.retry_research_job(int(job_id), identity.get("user_id", ""), "researcher")
+    if not job:
+        return http_error(404, "Job not found")
+    return http_json_response({"ok": True, "data": job})
+
+
 async def handle_list_research_attachments(
     request: WsRequest,
     storage: StorageWrapper,
@@ -217,7 +322,40 @@ async def handle_list_research_attachments(
     query = parse_query(request.path)
     chat_id = (query.get("chat_id") or [""])[0] or None
     attachments = await storage.list_research_attachments(user_id, role, chat_id)
+    for attachment in attachments:
+        if attachment.get("jobId"):
+            job = await storage.get_research_job(int(attachment["jobId"]), user_id, role)
+            if job:
+                attachment["progress"] = job.get("progress", 0)
+                attachment["parseStatus"] = {"succeeded": "ready", "running": "parsing"}.get(job.get("status"), job.get("status", attachment.get("parseStatus", "queued")))
+                attachment["errorMessage"] = job.get("errorMessage", "")
     return http_json_response({"ok": True, "data": attachments})
+
+
+async def handle_delete_research_attachment(
+    request: WsRequest,
+    storage: StorageWrapper,
+    attachment_id: str,
+    *,
+    identity: dict[str, str],
+) -> Response:
+    """Delete a researcher attachment after checking ownership."""
+    user_id = identity.get("user_id", "")
+    role = identity.get("role", "researcher")
+    if role != "researcher":
+        return http_error(403, "Only researchers can delete attachments")
+    attachment = await storage.get_research_attachment(int(attachment_id))
+    if not attachment or attachment.get("userId", attachment.get("user_id")) != user_id or (attachment.get("userRole") or attachment.get("user_role") or "researcher") != role:
+        return http_error(404, "Attachment not found")
+    deleted = await storage.delete_research_attachment(int(attachment_id))
+    if deleted:
+        file_path = deleted.get("filePath") or deleted.get("file_path")
+        if file_path:
+            try:
+                Path(file_path).unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Unable to remove attachment file {}", file_path)
+    return http_json_response({"ok": bool(deleted)})
 
 
 async def handle_upload_research_attachment(
@@ -231,8 +369,10 @@ async def handle_upload_research_attachment(
     role = identity.get("role", "researcher")
     if role != "researcher":
         return http_error(403, "Only researchers can upload attachments")
+    if not hasattr(storage.storage, "create_research_job"):
+        return http_error(503, "Researcher attachment parsing requires PostgreSQL")
 
-    payload = parse_mutation_data(parse_query(request.path))
+    payload = await parse_request_mutation(request)
     if isinstance(payload, Response):
         return payload
 
@@ -245,6 +385,8 @@ async def handle_upload_research_attachment(
         raw_bytes = _decode_base64_payload(str(file_data))
     except Exception:
         return http_error(400, "Invalid base64 file data")
+    if len(raw_bytes) > 50 * 1024 * 1024:
+        return http_error(413, "File exceeds the 50 MB limit")
 
     user_dir = UPLOAD_DIR / role / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -253,23 +395,17 @@ async def handle_upload_research_attachment(
     file_path.write_bytes(raw_bytes)
 
     file_type = str(payload.get("fileType") or _infer_type(file_name)).lower()
+    if file_type not in {"pdf", "docx", "xlsx", "xls", "csv", "txt", "md"}:
+        file_path.unlink(missing_ok=True)
+        return http_error(415, "Unsupported file type")
     project_id = payload.get("projectId")
     try:
         project_id = int(project_id) if project_id not in (None, "") else None
     except (TypeError, ValueError):
         project_id = None
-
-    try:
-        parsed = _parse_attachment(file_path, file_type)
-        parse_status = "ready"
-    except Exception as exc:
-        logger.exception("Failed to parse researcher attachment {}", file_name)
-        parsed = {
-            "summary": f"解析失败：{exc}",
-            "chunks": [],
-            "metadata": {"error": str(exc)},
-        }
-        parse_status = "failed"
+    if project_id is not None and await storage.get_research_project(project_id, user_id, role) is None:
+        file_path.unlink(missing_ok=True)
+        return http_error(403, "Project does not belong to the current researcher")
 
     attachment = await storage.create_research_attachment({
         "user_id": user_id,
@@ -279,15 +415,24 @@ async def handle_upload_research_attachment(
         "file_name": file_name,
         "file_type": file_type,
         "file_path": str(file_path),
-        "parse_status": parse_status,
-        "summary": parsed["summary"],
-        "metadata": parsed.get("metadata", {}),
+        "parse_status": "queued",
+        "summary": "等待解析",
+        "metadata": {},
     })
-    if parsed["chunks"]:
-        await storage.create_research_attachment_chunks(int(attachment["id"]), parsed["chunks"])
-
-    attachment["chunkCount"] = len(parsed["chunks"])
-    return http_json_response({"ok": True, "data": attachment})
+    job = await storage.create_research_job({
+        "user_id": user_id,
+        "user_role": role,
+        "job_type": "attachment_parse",
+        "status": "queued",
+        "payload": {"attachmentId": int(attachment["id"]), "filePath": str(file_path), "fileType": file_type},
+        "max_attempts": 3,
+    })
+    await storage.update_research_attachment(int(attachment["id"]), {"job_id": int(job["id"])})
+    from nanobot.services.research_jobs import ensure_research_job_worker
+    ensure_research_job_worker(storage)
+    attachment["jobId"] = job["id"]
+    attachment["parseStatus"] = "queued"
+    return http_json_response({"ok": True, "data": attachment, "job": job}, status=202)
 
 
 def _decode_base64_payload(value: str) -> bytes:
@@ -318,6 +463,12 @@ def _optional_int(value: object) -> int | None:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+
+
+def _int_list(value: object) -> list[int]:
+    if not isinstance(value, list):
+        return []
+    return [int(item) for item in value if str(item).isdigit()]
 
 
 def _infer_type(file_name: str) -> str:

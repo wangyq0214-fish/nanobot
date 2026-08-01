@@ -19,11 +19,18 @@ def _resolve_path(
     workspace: Path | None = None,
     allowed_dir: Path | None = None,
     extra_allowed_dirs: list[Path] | None = None,
+    skill_workspace: Path | None = None,
 ) -> Path:
     """Resolve path against workspace (if relative) and enforce directory restriction."""
     p = Path(path).expanduser()
     if not p.is_absolute() and workspace:
-        p = workspace / p
+        # Role skills are shared by all users of a role. Keep ordinary
+        # relative paths in the per-user workspace, but resolve skills from
+        # the active role workspace.
+        if skill_workspace and (p == Path("skills") or Path("skills") in p.parents):
+            p = skill_workspace / p
+        else:
+            p = workspace / p
     resolved = p.resolve()
     if allowed_dir:
         media_path = get_media_dir().resolve()
@@ -49,13 +56,21 @@ class _FsTool(Tool):
         workspace: Path | None = None,
         allowed_dir: Path | None = None,
         extra_allowed_dirs: list[Path] | None = None,
+        skill_workspace: Path | None = None,
     ):
         self._workspace = workspace
         self._allowed_dir = allowed_dir
         self._extra_allowed_dirs = extra_allowed_dirs
+        self._skill_workspace = skill_workspace
 
     def _resolve(self, path: str) -> Path:
-        return _resolve_path(path, self._workspace, self._allowed_dir, self._extra_allowed_dirs)
+        return _resolve_path(
+            path,
+            self._workspace,
+            self._allowed_dir,
+            self._extra_allowed_dirs,
+            self._skill_workspace,
+        )
 
 
 # ---------------------------------------------------------------------------

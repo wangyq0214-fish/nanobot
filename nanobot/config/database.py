@@ -85,20 +85,29 @@ async def init_database(config: Optional[DatabaseConfig] = None) -> None:
                 await conn.execute(text("ALTER TABLE papers ADD COLUMN annotations TEXT DEFAULT '[]'"))
             except Exception:
                 pass  # Column already exists
-            # Research result structured fields (migration for existing databases).
-            for ddl in (
-                "ALTER TABLE research_results ADD COLUMN source_message_id VARCHAR(100) DEFAULT ''",
-                "ALTER TABLE research_results ADD COLUMN project_id INTEGER",
-                "ALTER TABLE research_results ADD COLUMN project_name VARCHAR(200) DEFAULT ''",
-                "ALTER TABLE research_results ADD COLUMN status VARCHAR(30) DEFAULT 'saved'",
-                "ALTER TABLE research_results ADD COLUMN sections JSON DEFAULT '[]'",
-                "ALTER TABLE research_results ADD COLUMN citations JSON DEFAULT '[]'",
-                "ALTER TABLE research_results ADD COLUMN attachments JSON DEFAULT '[]'",
-            ):
-                try:
-                    await conn.execute(text(ddl))
-                except Exception:
-                    pass  # Column already exists or backend uses compatible create_all
+        # Research result structured fields (migration for existing databases).
+        # Run each DDL in its own transaction. PostgreSQL marks a transaction as
+        # failed after a duplicate-column error, which otherwise prevents the
+        # remaining migrations from running.
+        for ddl in (
+            "ALTER TABLE papers ADD COLUMN IF NOT EXISTS user_role VARCHAR(20) NOT NULL DEFAULT 'researcher'",
+            "UPDATE papers SET user_role = 'researcher' WHERE user_role IS NULL OR user_role = ''",
+            "ALTER TABLE research_artifacts ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "ALTER TABLE research_attachments ADD COLUMN IF NOT EXISTS job_id INTEGER",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS source_message_id VARCHAR(100) DEFAULT ''",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS project_id INTEGER",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS project_name VARCHAR(200) DEFAULT ''",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'saved'",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS sections JSON DEFAULT '[]'",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS citations JSON DEFAULT '[]'",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS attachments JSON DEFAULT '[]'",
+            "ALTER TABLE research_results ADD COLUMN IF NOT EXISTS resources JSON DEFAULT '[]'",
+        ):
+            try:
+                async with _engine.begin() as migration_conn:
+                    await migration_conn.execute(text(ddl))
+            except Exception as migration_error:
+                logger.warning(f"Research result migration skipped: {migration_error}")
         logger.info("Database tables ensured")
     except Exception as e:
         logger.error(f"Failed to connect to database: {e}")

@@ -1162,7 +1162,7 @@ class FileStorage(BaseStorage):
                     pass
         return paper
 
-    async def list_papers(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_papers(self, user_id: Optional[str] = None, user_role: str = "researcher") -> List[Dict[str, Any]]:
         """List papers, optionally filtered by user."""
         papers_dir = self.base_path / "papers"
         if not papers_dir.exists():
@@ -1175,6 +1175,8 @@ class FileStorage(BaseStorage):
             paper = self._load_json(paper_file)
             if paper:
                 if user_id and paper.get("userId") != user_id:
+                    continue
+                if user_id and (paper.get("userRole") or "researcher") != user_role:
                     continue
                 papers.append(paper)
 
@@ -1387,7 +1389,7 @@ class FileStorage(BaseStorage):
         valid_fields = {
             'user_id', 'user_role', 'title', 'content', 'chat_id', 'session_title',
             'source_message_id', 'project_id', 'project_name', 'status', 'sections',
-            'citations', 'attachments', 'tags', 'metadata'
+            'citations', 'attachments', 'resources', 'tags', 'metadata'
         }
         filtered = {k: v for k, v in data.items() if k in valid_fields}
 
@@ -1447,7 +1449,7 @@ class FileStorage(BaseStorage):
         updatable_fields = {
             'title', 'content', 'tags', 'session_title', 'source_message_id',
             'project_id', 'project_name', 'status', 'sections', 'citations',
-            'attachments', 'metadata'
+            'attachments', 'resources', 'metadata'
         }
         users_dir = self.base_path / "users" / "researcher"
         if not users_dir.exists():
@@ -1611,6 +1613,30 @@ class FileStorage(BaseStorage):
         """Get chunks for a workspace attachment."""
         attachment = await self.get_research_attachment(attachment_id)
         return attachment.get("chunks", []) if attachment else []
+
+    async def delete_research_attachment(self, attachment_id: int) -> Optional[Dict[str, Any]]:
+        """Delete an attachment and its stored file."""
+        users_dir = self.base_path / "users" / "researcher"
+        if not users_dir.exists():
+            return None
+        for user_dir in users_dir.iterdir():
+            if not user_dir.is_dir():
+                continue
+            attachments = self._load_research_attachments(user_dir.name)
+            for index, item in enumerate(attachments):
+                if item.get("id") != attachment_id:
+                    continue
+                deleted = attachments.pop(index)
+                self._save_research_attachments(user_dir.name, attachments)
+                file_path = deleted.get("filePath") or deleted.get("file_path")
+                if file_path:
+                    try:
+                        Path(file_path).unlink(missing_ok=True)
+                    except OSError:
+                        logger.warning("Unable to remove attachment file: %s", file_path)
+                return deleted
+        return None
+
 
     async def save_latex_draft(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Create or update a LaTeX draft in local development storage."""
