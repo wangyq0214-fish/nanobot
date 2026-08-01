@@ -35,6 +35,7 @@ from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.search import GlobTool, GrepTool
 from nanobot.agent.tools.self import MyTool
 from nanobot.agent.tools.shell import ExecTool
+from nanobot.agent.tools.nature import NatureExecTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
@@ -373,6 +374,12 @@ class AgentLoop:
             ))
         self.tools.register(NotebookEditTool(workspace=self.workspace, allowed_dir=allowed_dir))
         if self.exec_config.enable:
+            self.tools.register(
+                NatureExecTool(
+                    skill_root=self.context.role_workspace / "skills",
+                    allowed_env_keys=self.exec_config.allowed_env_keys,
+                )
+            )
             self.tools.register(
                 ExecTool(
                     working_dir=str(self.workspace),
