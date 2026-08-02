@@ -1,0 +1,61 @@
+{
+  "template": "grouped_bar",
+  "backend": "python",
+  "demo": false,
+  "input": "grouped_bar_cn_fields.csv",
+  "output_prefix": "native_grouped_bar_cn_font_fixed",
+  "rows_input": 9,
+  "rows_plotted": 9,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "category": "分类",
+    "group": "组别",
+    "value": "数值",
+    "error": "误差"
+  },
+  "parameters": {
+    "category_order": [
+      "0h",
+      "24h",
+      "48h"
+    ],
+    "group_order": [
+      "Control",
+      "Treatment A",
+      "Treatment B"
+    ],
+    "error_type": "ci95",
+    "error_source": "supplied_error_column",
+    "counts": {
+      "Control": {
+        "0h": 1,
+        "24h": 1,
+        "48h": 1
+      },
+      "Treatment A": {
+        "0h": 1,
+        "24h": 1,
+        "48h": 1
+      },
+      "Treatment B": {
+        "0h": 1,
+        "24h": 1,
+        "48h": 1
+      }
+    },
+    "palette": [
+      "#2166AC",
+      "#B2182B",
+      "#762A83",
+      "#F1A340",
+      "#666666",
+      "#92C5DE"
+    ]
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths.",
+    "Bar heights are means per category/group; error bars use supplied error magnitudes when an error column is mapped, otherwise replicate values are used."
+  ]
+}

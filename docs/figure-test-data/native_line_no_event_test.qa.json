@@ -1,0 +1,48 @@
+{
+  "template": "line",
+  "backend": "python",
+  "input": "line.csv",
+  "output_prefix": "native_line_no_event_test",
+  "rows_input": 10,
+  "rows_plotted": 10,
+  "excluded_rows": 0,
+  "mapping": {
+    "x": "time",
+    "group": "group",
+    "value": "value",
+    "event": null
+  },
+  "parameters": {
+    "cumulative": false,
+    "show_markers": false,
+    "show_events": false,
+    "show_fill": false,
+    "x_kind": "numeric",
+    "x_order": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "groups": [
+      "Control",
+      "Treatment"
+    ],
+    "event_count": 0,
+    "palette": [
+      "#2166AC",
+      "#B2182B",
+      "#1B7837",
+      "#F1A340",
+      "#762A83",
+      "#666666"
+    ],
+    "duplicate_x_group_policy": "sum"
+  },
+  "notes": [
+    "Line colors use the manuscript palette from this template, not frontend UI colors.",
+    "Duplicate values within the same x/group cell are summed before optional cumulative summation.",
+    "Asterisks in event labels raise annotation height and are not printed."
+  ]
+}

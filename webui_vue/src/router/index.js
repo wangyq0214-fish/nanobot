@@ -114,6 +114,11 @@ const routes = [
         component: () => import('../pages/researcher/Workspace.vue'),
       },
       {
+        path: 'figure-studio',
+        name: 'FigureStudio',
+        component: () => import('../pages/researcher/FigureStudio.vue'),
+      },
+      {
         path: 'results',
         name: 'ResearchResults',
         component: () => import('../pages/researcher/ResearchResults.vue'),

@@ -1,0 +1,57 @@
+{
+  "template": "grouped_bar",
+  "backend": "python",
+  "demo": false,
+  "input": "grouped_bar.csv",
+  "output_prefix": "native_grouped_bar_test",
+  "rows_input": 6,
+  "rows_plotted": 6,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "category": "category",
+    "group": "group",
+    "value": "value",
+    "error": null
+  },
+  "parameters": {
+    "category_order": [
+      "Control",
+      "Treatment"
+    ],
+    "group_order": [
+      "Day_1",
+      "Day_7",
+      "Day_14"
+    ],
+    "error_type": "sem",
+    "error_source": "computed_from_replicates",
+    "counts": {
+      "Day_1": {
+        "Control": 1,
+        "Treatment": 1
+      },
+      "Day_7": {
+        "Control": 1,
+        "Treatment": 1
+      },
+      "Day_14": {
+        "Control": 1,
+        "Treatment": 1
+      }
+    },
+    "palette": [
+      "#2166AC",
+      "#B2182B",
+      "#762A83",
+      "#F1A340",
+      "#666666",
+      "#92C5DE"
+    ]
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths.",
+    "Bar heights are means per category/group; error bars use supplied error magnitudes when an error column is mapped, otherwise replicate values are used."
+  ]
+}

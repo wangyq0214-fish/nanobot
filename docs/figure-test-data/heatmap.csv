@@ -1,0 +1,10 @@
+row,column,value
+Gene_A,Condition_1,1.2
+Gene_A,Condition_2,2.4
+Gene_A,Condition_3,0.8
+Gene_B,Condition_1,2.1
+Gene_B,Condition_2,1.5
+Gene_B,Condition_3,3.2
+Gene_C,Condition_1,0.6
+Gene_C,Condition_2,2.8
+Gene_C,Condition_3,1.9

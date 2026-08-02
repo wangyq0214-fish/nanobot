@@ -1,0 +1,48 @@
+{
+  "template": "line",
+  "backend": "python",
+  "input": "折线图_中文事件排序.csv",
+  "output_prefix": "native_line_99002",
+  "rows_input": 12,
+  "rows_plotted": 12,
+  "excluded_rows": 0,
+  "mapping": {
+    "x": "x",
+    "group": "group",
+    "value": "value",
+    "event": "event"
+  },
+  "parameters": {
+    "cumulative": true,
+    "show_markers": true,
+    "show_events": true,
+    "show_fill": true,
+    "x_kind": "date",
+    "x_order": [
+      "2024-01",
+      "2024-02",
+      "2024-03",
+      "2024-04"
+    ],
+    "groups": [
+      "对照组",
+      "处理组A",
+      "处理组B"
+    ],
+    "event_count": 3,
+    "palette": [
+      "#2166AC",
+      "#B2182B",
+      "#1B7837",
+      "#F1A340",
+      "#762A83",
+      "#666666"
+    ],
+    "duplicate_x_group_policy": "sum"
+  },
+  "notes": [
+    "Line colors use the manuscript palette from this template, not frontend UI colors.",
+    "Duplicate values within the same x/group cell are summed before optional cumulative summation.",
+    "Asterisks in event labels raise annotation height and are not printed."
+  ]
+}

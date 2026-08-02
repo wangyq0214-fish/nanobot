@@ -79,6 +79,16 @@ from .research_workspace import (
     handle_save_latex_draft,
     handle_upload_research_attachment,
 )
+from .figure_studio import (
+    handle_create_figure_job,
+    handle_figure_templates,
+    handle_figure_template_preview,
+    handle_get_figure_job,
+    handle_run_figure_preview,
+    handle_set_figure_template,
+    handle_normalize_figure_data,
+    handle_upload_figure_data,
+)
 from .search import handle_import_paper, handle_search_papers
 from .student_categories import (
     handle_student_categories_list,
@@ -177,4 +187,12 @@ __all__ = [
     "handle_save_latex_draft",
     "handle_list_latex_draft_versions",
     "handle_create_latex_compile_record",
+    "handle_figure_templates",
+    "handle_figure_template_preview",
+    "handle_create_figure_job",
+    "handle_upload_figure_data",
+    "handle_set_figure_template",
+    "handle_normalize_figure_data",
+    "handle_run_figure_preview",
+    "handle_get_figure_job",
 ]

@@ -119,6 +119,14 @@ from nanobot.api.handlers import (
     handle_update_tags,
     handle_upload_paper,
     handle_upload_research_attachment,
+    handle_figure_templates,
+    handle_figure_template_preview,
+    handle_create_figure_job,
+    handle_upload_figure_data,
+    handle_set_figure_template,
+    handle_normalize_figure_data,
+    handle_run_figure_preview,
+    handle_get_figure_job,
 )
 from nanobot.api.handlers.research_workspace import _safe_tex_file_name
 from nanobot.api.router import Router
@@ -840,6 +848,15 @@ class WebSocketChannel(BaseChannel):
         )
 
         # -- Researcher: workspace projects and uploaded context ------------
+        r.add(r"/api/researcher/figure-templates", handle_figure_templates, is_async=True, name="figure-templates")
+        r.add(r"/api/researcher/figure-templates/(?P<template_id>[a-z_]+)/preview", handle_figure_template_preview, is_async=True, name="figure-template-preview")
+        r.add(r"/api/researcher/figure-jobs/create", handle_create_figure_job, is_async=True, name="figure-job-create")
+        r.add(r"/api/researcher/figure-jobs/(?P<job_id>\d+)/data", handle_upload_figure_data, is_async=True, name="figure-data-upload")
+        r.add(r"/api/researcher/figure-jobs/(?P<job_id>\d+)/template", handle_set_figure_template, is_async=True, name="figure-template-set")
+        r.add(r"/api/researcher/figure-jobs/(?P<job_id>\d+)/normalize", handle_normalize_figure_data, is_async=True, name="figure-data-normalize")
+        r.add(r"/api/researcher/figure-jobs/(?P<job_id>\d+)/preview", handle_run_figure_preview, is_async=True, name="figure-preview-run")
+        r.add(r"/api/researcher/figure-jobs/(?P<job_id>\d+)", handle_get_figure_job, is_async=True, name="figure-job-detail")
+
         r.add(
             r"/api/researcher/projects/links/migrate",
             handle_migrate_research_project_links, is_async=True, name="research-project-links-migrate",

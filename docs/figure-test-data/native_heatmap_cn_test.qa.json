@@ -1,0 +1,43 @@
+{
+  "template": "heatmap",
+  "backend": "python",
+  "input": "heatmap_cn_complete.csv",
+  "output_prefix": "native_heatmap_cn_test",
+  "rows_input": 9,
+  "rows_plotted": 9,
+  "row_count": 3,
+  "column_count": 3,
+  "matrix_cells": 9,
+  "mapping": {
+    "row": "行分类",
+    "column": "列分类",
+    "value": "表达值"
+  },
+  "parameters": {
+    "color_map": "Reds",
+    "show_values": true,
+    "vmin": 0.0,
+    "vmax": 4.0,
+    "show_colorbar": true,
+    "row_order": [
+      "视网膜",
+      "角膜",
+      "晶状体"
+    ],
+    "column_order": [
+      "对照组",
+      "低剂量",
+      "高剂量"
+    ]
+  },
+  "validation": {
+    "duplicate_policy": "fail",
+    "missing_matrix_policy": "fail",
+    "invalid_required_value_policy": "fail"
+  },
+  "notes": [
+    "Input long table is converted to a matrix after validating every row-column cell.",
+    "Cell borders and optional numeric annotations follow the source composition heatmap style.",
+    "Chinese column names and category labels are read as UTF-8 with BOM support."
+  ]
+}

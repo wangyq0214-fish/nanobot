@@ -1,0 +1,30 @@
+{
+  "template": "paired",
+  "backend": "python",
+  "demo": false,
+  "input": "paired.csv",
+  "output_prefix": "native_paired_105",
+  "rows_input": 10,
+  "rows_plotted": 10,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "pair_id": "subject",
+    "condition": "condition",
+    "value": "value"
+  },
+  "parameters": {
+    "condition_order": [
+      "Before",
+      "After"
+    ],
+    "complete_pairs": 5,
+    "incomplete_pairs_excluded": 0,
+    "statistical_test": null
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths.",
+    "No inferential test is computed; add one only after choosing a justified paired analysis."
+  ]
+}

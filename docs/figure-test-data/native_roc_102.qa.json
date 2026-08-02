@@ -1,0 +1,31 @@
+{
+  "template": "roc",
+  "backend": "python",
+  "demo": false,
+  "input": "roc.csv",
+  "output_prefix": "native_roc_102",
+  "rows_input": 8,
+  "rows_plotted": 8,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "fpr": "fpr",
+    "tpr_series": [
+      "model_a",
+      "model_b"
+    ]
+  },
+  "parameters": {
+    "auc_method": "trapezoidal",
+    "auc": {
+      "model_a": 0.8327500000000001,
+      "model_b": 0.76875
+    },
+    "input_already_sorted_by_fpr": true,
+    "show_baseline": true
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths."
+  ]
+}

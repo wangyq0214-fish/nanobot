@@ -1,0 +1,9 @@
+cell_type,gene,pct_exp,avg_exp_scaled
+T_cell,CD3D,82,1.45
+T_cell,IL7R,54,0.92
+B_cell,MS4A1,76,1.62
+B_cell,CD79A,68,1.21
+Macrophage,LYZ,91,1.88
+Macrophage,CD68,73,1.08
+Fibroblast,COL1A1,64,1.36
+Fibroblast,DCN,71,1.52

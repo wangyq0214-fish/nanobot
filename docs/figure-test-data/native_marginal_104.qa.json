@@ -1,0 +1,32 @@
+{
+  "template": "marginal",
+  "backend": "python",
+  "demo": false,
+  "input": "marginal.csv",
+  "output_prefix": "native_marginal_104",
+  "rows_input": 8,
+  "rows_plotted": 8,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "x": "x",
+    "y": "y",
+    "group": "group"
+  },
+  "parameters": {
+    "group_order": [
+      "Control",
+      "Treatment"
+    ],
+    "group_counts": {
+      "Control": 4,
+      "Treatment": 4
+    },
+    "histogram_bins": 8,
+    "rasterized_marks": false
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths."
+  ]
+}

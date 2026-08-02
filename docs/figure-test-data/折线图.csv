@@ -1,0 +1,11 @@
+time,value,group
+1,12.0,Control
+2,13.1,Control
+3,13.8,Control
+4,14.4,Control
+5,15.0,Control
+1,12.5,Treatment
+2,15.2,Treatment
+3,18.1,Treatment
+4,21.4,Treatment
+5,24.7,Treatment

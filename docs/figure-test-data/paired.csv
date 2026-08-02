@@ -1,0 +1,11 @@
+subject,condition,value
+S01,Before,42
+S01,After,55
+S02,Before,38
+S02,After,49
+S03,Before,51
+S03,After,63
+S04,Before,46
+S04,After,58
+S05,Before,40
+S05,After,52

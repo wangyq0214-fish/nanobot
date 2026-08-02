@@ -1,2 +1,4 @@
 # Ensure shell scripts always use LF line endings (Docker/Linux compat)
 *.sh text eol=lf
+*.pdf filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text

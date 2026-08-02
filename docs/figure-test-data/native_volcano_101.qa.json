@@ -1,0 +1,31 @@
+{
+  "template": "volcano",
+  "backend": "python",
+  "demo": false,
+  "input": "volcano.csv",
+  "output_prefix": "native_volcano_101",
+  "rows_input": 10,
+  "rows_plotted": 10,
+  "excluded_rows": 0,
+  "excluded_entities": 0,
+  "mapping": {
+    "gene": "gene",
+    "effect": "log2fc",
+    "adjusted_p": "padj"
+  },
+  "parameters": {
+    "p_threshold": 0.05,
+    "effect_threshold": 1.0,
+    "top_labels": 3,
+    "rasterized_marks": false,
+    "category_counts": {
+      "up": 4,
+      "down": 4,
+      "neutral": 2
+    }
+  },
+  "notes": [
+    "All supplied observations are used unless excluded through explicit --drop-incomplete.",
+    "The QA record stores input basenames rather than private absolute paths."
+  ]
+}
