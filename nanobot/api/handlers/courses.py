@@ -74,9 +74,15 @@ async def handle_courses_create(
     if len(teacher_courses) >= 100:
         return http_error(400, "Course limit reached (max 100)")
 
+    # Check duplicate course name for this teacher
+    for c in teacher_courses:
+        if c.get("course_name", "").strip() == course_name:
+            return http_error(409, f"课程名称'{course_name}'已存在，请勿重复创建")
+
     course_id = generate_id()
     join_code = await _generate_join_code(storage)
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    from datetime import datetime
+    now = datetime.utcnow()
     display_name = payload.get("teacherName") or user_id
 
     course_data = {

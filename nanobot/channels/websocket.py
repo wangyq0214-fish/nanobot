@@ -73,6 +73,8 @@ from nanobot.api.handlers import (
     handle_get_latex_draft,
     handle_get_research_result,
     handle_get_research_artifact,
+    handle_ai_grade_cropgpt,
+    handle_ai_grade_general,
     handle_homework_create,
     handle_homework_delete,
     handle_homework_detail,
@@ -117,6 +119,16 @@ from nanobot.api.handlers import (
     handle_update_annotations,
     handle_update_research_result,
     handle_update_tags,
+    # Resources & notifications
+    handle_resource_list,
+    handle_resource_create,
+    handle_resource_delete,
+    handle_notification_list,
+    handle_notification_create,
+    handle_notification_mark_read,
+    handle_discussion_list,
+    handle_discussion_create,
+    handle_discussion_reply,
     handle_upload_paper,
     handle_upload_research_attachment,
 )
@@ -464,14 +476,18 @@ class WebSocketChannel(BaseChannel):
 
         # Check if we need to initialize database
         if is_database_configured():
-            # Check if storage is already initialized as database
+            # Check if storage is already initialized as a database backend
             try:
                 storage = get_storage()
-                if not isinstance(storage, DatabaseStorage):
-                    # Need to switch to database storage
+                storage_cls = storage.__class__.__name__
+                # Both DatabaseStorage (PostgreSQL) and MySQLStorage are database backends
+                if isinstance(storage, DatabaseStorage) or storage_cls == 'MySQLStorage':
+                    pass  # Already initialized with a DB backend, skip re-init
+                else:
+                    # Need to switch from file storage to database storage
                     await auto_init_storage()
                     storage = get_storage()
-                    self._storage = StorageWrapper(storage)  # Pass storage instance
+                    self._storage = StorageWrapper(storage)
             except Exception:
                 # Storage not initialized yet, initialize it
                 await auto_init_storage()
@@ -551,6 +567,31 @@ class WebSocketChannel(BaseChannel):
         """
         r = Router()
 
+        # -- Global question bank --
+        async def _qb_list(req, storage, *, identity=None):
+            from nanobot.api.utils import http_json_response as j, parse_query as pq, query_first as qf
+            qp = pq(req.path); qtype = qf(qp, "type") or None
+            questions = await storage.list_question_bank(None, qtype)
+            return j({"questions": questions})
+        async def _qb_add(req, storage, *, identity=None):
+            from nanobot.api.utils import http_json_response as j, parse_query as pq, parse_mutation_data
+            qp = pq(req.path); payload = parse_mutation_data(qp)
+            uid = (identity or {}).get("user_id","") if identity else qp.get("user_id","")
+            # Batch mode
+            if payload.get("type") == "batch" and payload.get("questions"):
+                results = []
+                for qd in payload["questions"]:
+                    data = {"course_id":"","question_type":qd.get("type","essay"),"content":qd.get("content",""),"points":qd.get("points",10),"answer":qd.get("answer",""),"options":qd.get("options",[]),"tags":qd.get("tags",[]),"created_by":uid}
+                    q = await storage.add_to_question_bank(data)
+                    results.append(q)
+                return j({"ok":True,"questions":results,"count":len(results)})
+            # Single mode
+            data = {"course_id":"","question_type":payload.get("type","short_answer"),"content":payload.get("content",""),"points":payload.get("points",10),"answer":payload.get("answer",""),"options":payload.get("options",[]),"tags":payload.get("tags",[]),"created_by":uid}
+            q = await storage.add_to_question_bank(data)
+            return j({"ok":True,"question":q})
+        r.add("/api/question-bank", _qb_list, is_async=True, name="qb-global-list", auth_required=False)
+        r.add("/api/question-bank/add", _qb_add, is_async=True, name="qb-global-add", auth_required=False)
+
         # -- Auth endpoints (sync, delegate to AuthManager) ----------------
         r.add("/webui/bootstrap", self.auth.handle_webui_bootstrap, name="webui-bootstrap", auth_required=False)
         r.add("/api/users/register", self.auth.handle_users_register, is_async=True, name="users-register", auth_required=False)
@@ -621,6 +662,14 @@ class WebSocketChannel(BaseChannel):
             handle_ai_grade, is_async=True, name="ai-grade",
         )
         r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/ai-grade-cropgpt",
+            handle_ai_grade_cropgpt, is_async=True, name="ai-grade-cropgpt",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/ai-grade-general",
+            handle_ai_grade_general, is_async=True, name="ai-grade-general",
+        )
+        r.add(
             r"/api/courses/(?P<course_id>[^/]+)/homework/(?P<hw_id>[^/]+)/publish",
             handle_homework_publish, is_async=True, name="homework-publish",
         )
@@ -663,6 +712,16 @@ class WebSocketChannel(BaseChannel):
         r.add(
             r"/api/courses/(?P<course_id>[^/]+)/question-bank",
             handle_question_bank_list, is_async=True, name="qb-list",
+        )
+
+        # -- Exams --
+        async def _list_exams(req, storage, course_id, *, identity=None):
+            from nanobot.api.utils import http_json_response as jj
+            exams = await storage.list_exams(course_id)
+            return jj({"exams": exams})
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/exams",
+            _list_exams, is_async=True, name="exam-list", auth_required=False,
         )
 
         # -- Course detail (must come after all /api/courses/xxx patterns) --
@@ -903,6 +962,46 @@ class WebSocketChannel(BaseChannel):
         r.add(
             r"/api/researcher/attachments/(?P<attachment_id>\d+)/delete",
             handle_delete_research_attachment, is_async=True, name="research-attachment-delete",
+        )
+
+        # -- Course resources ----------------------------------------------
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/resources/create",
+            handle_resource_create, is_async=True, name="resource-create",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/resources/(?P<resource_id>\d+)/delete",
+            handle_resource_delete, is_async=True, name="resource-delete",
+        )
+        r.add(
+            r"/api/courses/(?P<course_id>[^/]+)/resources",
+            handle_resource_list, is_async=True, name="resource-list",
+        )
+
+        # -- Notifications & discussions -----------------------------------
+        r.add(
+            r"/api/notifications/create",
+            handle_notification_create, is_async=True, name="notification-create",
+        )
+        r.add(
+            r"/api/notifications/(?P<notification_id>\d+)/read",
+            handle_notification_mark_read, is_async=True, name="notification-read",
+        )
+        r.add(
+            r"/api/notifications",
+            handle_notification_list, is_async=True, name="notification-list",
+        )
+        r.add(
+            r"/api/discussions/create",
+            handle_discussion_create, is_async=True, name="discussion-create",
+        )
+        r.add(
+            r"/api/discussions/(?P<discussion_id>\d+)/reply",
+            handle_discussion_reply, is_async=True, name="discussion-reply",
+        )
+        r.add(
+            r"/api/discussions",
+            handle_discussion_list, is_async=True, name="discussion-list",
         )
 
         # -- Media fetch (sync, HMAC-signed URLs, self-authenticating) ------

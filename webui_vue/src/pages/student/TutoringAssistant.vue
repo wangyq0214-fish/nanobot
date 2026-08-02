@@ -128,6 +128,12 @@
 
         <!-- 对话视图 -->
         <div class="chat-container" v-show="currentView === 'chat'">
+          <div class="chat-mode-bar">
+            <span class="chat-mode-label">对话模式：</span>
+            <span class="chat-mode-chip" :class="{ on: chatMode === '' }" @click="chatMode = ''">自由对话</span>
+            <span class="chat-mode-chip" :class="{ on: chatMode === 'socratic' }" @click="chatMode = 'socratic'">苏格拉底式引导</span>
+            <span class="chat-mode-chip" :class="{ on: chatMode === 'scenario' }" @click="chatMode = 'scenario'">复杂场景练习</span>
+          </div>
           <div class="messages-area" ref="tutorMessages">
             <div
               v-for="(msg, i) in chatMessages"
@@ -463,6 +469,7 @@ const {
 // UI state
 const currentMode = ref('ai')
 const currentView = ref('answer')
+const chatMode = ref('')  // '' = free chat, 'socratic' = 苏格拉底, 'scenario' = 场景练习
 const studentQuestion = ref('')
 const questionInput = ref('')
 const answerInput = ref('')
@@ -675,7 +682,13 @@ async function askQuestion() {
   const q = studentQuestion.value.trim()
   if (!q) return
   studentQuestion.value = ''
-  await askTutor(q)
+  let context = ''
+  if (chatMode.value === 'socratic') {
+    context = '【苏格拉底引导模式】请用苏格拉底式引导法：不要直接给出答案。先引导学生观察特征 → 提出假设 → 验证假设 → 得出结论。用提问的方式一步步引导。\n学生问题：'
+  } else if (chatMode.value === 'scenario') {
+    context = '【复杂场景练习模式】请给学生一个综合性的植保案例（如：某地块作物出现异常症状）。让学生主动提问收集信息（土壤、天气、施肥记录等），不直接展示所有信息。当学生给出诊断后，评估其准确性。\n学生需求：'
+  }
+  await askTutor(context + q)
   nextTick(() => {
     if (tutorMessages.value) tutorMessages.value.scrollTop = tutorMessages.value.scrollHeight
   })
@@ -1096,12 +1109,58 @@ function useAuthFetch() {
   border-color: #121212;
 }
 
+.mode-sep { width:1px; height:20px; background:#f0f0f0; margin:0 4px; }
+body.green .chat-mode-bar { border-bottom-color: #dee2de; }
+body.green .chat-mode-chip.on { background: rgba(82,110,90,0.08); color: #526e5a; border-color: rgba(82,110,90,0.3); }
+body.dark .chat-mode-bar { border-bottom-color: #2d2d2d; }
+body.dark .chat-mode-label { color: #777; }
+body.dark .chat-mode-chip { color: #777; }
+body.dark .chat-mode-chip:hover { color: #fff; }
+body.dark .chat-mode-chip.on { background: rgba(255,255,255,0.08); color: #fff; border-color: rgba(255,255,255,0.2); }
+
 /* ===== 对话视图 ===== */
 .chat-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.chat-mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
+}
+
+.chat-mode-label {
+  font-size: 11px;
+  color: #999;
+  margin-right: 4px;
+}
+
+.chat-mode-chip {
+  padding: 4px 12px;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #999;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.chat-mode-chip:hover {
+  color: #526e5a;
+}
+
+.chat-mode-chip.on {
+  background: rgba(82, 110, 90, 0.08);
+  color: #526e5a;
+  border-color: rgba(82, 110, 90, 0.3);
+  font-weight: 600;
 }
 
 .messages-area {

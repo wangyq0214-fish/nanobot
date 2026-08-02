@@ -7,6 +7,7 @@ import hmac
 import secrets
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -414,7 +415,7 @@ class AuthManager:
             "display_name": display_name,
             "password_hash": password_hash,
             "password_salt": "",  # bcrypt embeds salt in the hash
-            "registered_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "registered_at": datetime.utcnow(),
         }
         user = await storage.create_user(user_data)
         self.create_user_workspace(role, user_id)

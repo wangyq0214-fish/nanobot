@@ -15,16 +15,37 @@
 
       <!-- 导航菜单 -->
       <nav class="nav-menu">
-        <router-link
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          class="nav-item"
-          :class="{ active: isActive(item.path) }"
-        >
-          <span class="nav-icon" v-html="item.icon"></span>
-          <span class="nav-label">{{ item.label }}</span>
-        </router-link>
+        <template v-for="item in navItems" :key="item.path || item.label">
+          <!-- 无子项：直接跳转 -->
+          <router-link
+            v-if="!item.children"
+            :to="item.path"
+            class="nav-item"
+            :class="{ active: isActive(item.path) }"
+          >
+            <span class="nav-icon" v-html="item.icon"></span>
+            <span class="nav-label">{{ item.label }}</span>
+          </router-link>
+          <!-- 有子项：折叠展开 -->
+          <div v-else class="nav-group" :class="{ expanded: expandedNav === item.label }">
+            <button class="nav-item nav-parent" @click="toggleNav(item.label)">
+              <span class="nav-icon" v-html="item.icon"></span>
+              <span class="nav-label">{{ item.label }}</span>
+              <svg class="nav-arrow" :class="{ open: expandedNav === item.label }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div v-show="expandedNav === item.label" class="nav-children">
+              <router-link
+                v-for="child in item.children"
+                :key="child.path"
+                :to="child.path"
+                class="nav-item nav-child-item"
+                :class="{ active: isActive(child.path) }"
+              >
+                <span class="nav-label">{{ child.label }}</span>
+              </router-link>
+            </div>
+          </div>
+        </template>
       </nav>
     </div>
 
@@ -131,6 +152,7 @@ const { sessions, fetchSessions, deleteSession } = useSessions()
 const { switchSession, newChat } = useGateway()
 const currentTheme = ref('green')
 const showSettings = ref(false)
+const expandedNav = ref('')
 
 const themeList = [
   { key: 'white', name: '纯净素白', color: '#121212' },
@@ -200,7 +222,7 @@ onMounted(() => {
 const navItems = [
   {
     path: '/teacher/lesson-plan',
-    label: '教案与活动',
+    label: '教案制作',
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>'
   },
   {
@@ -209,9 +231,30 @@ const navItems = [
     icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>'
   },
   {
-    path: '/teacher/exam',
+    label: '布置任务',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 6.5 3 12 0v-5"/></svg>',
+    children: [
+      { label: '创建题库', path: '/teacher/assign?tab=questionBank' },
+      { label: '布置作业', path: '/teacher/assign?tab=homework' },
+      { label: '布置考试', path: '/teacher/assign?tab=exam' },
+    ]
+  },
+  {
     label: '作业批改',
-    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></svg>'
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m9 15 2 2 4-4"/></svg>',
+    children: [
+      { label: '批改作业', path: '/teacher/exam' },
+      { label: '批改考试', path: '/teacher/grading?tab=exam' },
+      { label: '实习报告', path: '/teacher/grading?tab=report' },
+    ]
+  },
+  {
+    label: '教学工具',
+    icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    children: [
+      { label: '互动消息', path: '/teacher/tools?tab=feed' },
+      { label: '课程资料', path: '/teacher/tools?tab=resource' },
+    ]
   },
   {
     path: '/teacher/analytics',
@@ -220,8 +263,13 @@ const navItems = [
   }
 ]
 
+function toggleNav(label) {
+  expandedNav.value = expandedNav.value === label ? '' : label
+}
+
 function isActive(path) {
-  return route.path === path || route.path.startsWith(path + '/')
+  const base = path.split('?')[0]
+  return route.path === base || route.path.startsWith(base + '/') || route.fullPath === path
 }
 
 function applyTheme(theme) {
@@ -321,6 +369,47 @@ function handleLogout() {
   background: #121212;
   color: #ffffff;
   font-weight: 600;
+}
+
+/* Expandable nav group */
+.nav-group { }
+.nav-parent {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  justify-content: flex-start;
+}
+.nav-arrow {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  color: #999;
+  flex-shrink: 0;
+}
+.nav-arrow.open {
+  transform: rotate(180deg);
+  color: #fff;
+}
+.nav-item.active .nav-arrow {
+  color: #fff;
+}
+.nav-children {
+  padding-left: 16px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-child-item {
+  padding-left: 46px;
+  font-size: 13px;
+  font-weight: 400;
+}
+.nav-child-item .nav-label::before {
+  content: '— ';
+  color: var(--text-muted);
+  opacity: 0.5;
 }
 
 .nav-icon {
@@ -561,6 +650,15 @@ body.green .nav-item.active {
   color: #1e2720;
 }
 
+body.green .nav-arrow {
+  color: #8a9a8c;
+}
+
+body.green .nav-item.active .nav-arrow,
+body.green .nav-item.active .nav-icon {
+  color: #526e5a;
+}
+
 body.green .nav-icon {
   color: #445c4b;
 }
@@ -656,8 +754,17 @@ body.dark .nav-item.active {
   color: #121212;
 }
 
+body.dark .nav-item.active .nav-arrow,
+body.dark .nav-item.active .nav-icon {
+  color: #121212;
+}
+
 body.dark .nav-icon {
   color: #999999;
+}
+
+body.dark .nav-arrow {
+  color: #999;
 }
 
 body.dark .nav-item.active .nav-icon {

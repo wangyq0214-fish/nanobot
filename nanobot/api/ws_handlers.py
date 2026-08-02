@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -472,7 +473,7 @@ async def handle_create_homework_ws(
             return
 
         hw_id = f"hw{generate_id()}"
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        now = datetime.utcnow()
         status = payload.get("status", "draft")
 
         hw_data = {
@@ -576,7 +577,7 @@ async def handle_ai_tutor_evaluate_ws(
                 existing["attempts"] = existing.get("attempts", 0) + 1
                 if result["is_correct"]:
                     existing["correct"] = existing.get("correct", 0) + 1
-                existing["last_attempt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                existing["last_attempt"] = datetime.utcnow()
             else:
                 kps.append({
                     "id": f"kp_{len(kps) + 1}",
@@ -585,7 +586,7 @@ async def handle_ai_tutor_evaluate_ws(
                     "mastery": max(0, min(1, 0.5 + new_kp["mastery_delta"])),
                     "attempts": 1,
                     "correct": 1 if result["is_correct"] else 0,
-                    "last_attempt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "last_attempt": datetime.utcnow(),
                 })
 
         # Add error record if incorrect (camelCase from StorageWrapper)
@@ -597,7 +598,7 @@ async def handle_ai_tutor_evaluate_ws(
                 "type": result["error_type"],
                 "title": question[:50],
                 "detail": result.get("error_detail", ""),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "timestamp": datetime.utcnow(),
             })
 
         # Add strategy (camelCase from StorageWrapper)
@@ -607,7 +608,7 @@ async def handle_ai_tutor_evaluate_ws(
                 "id": f"strat_{len(strategies) + 1}",
                 "content": result["strategy"],
                 "related_kp": result["knowledge_points"][0]["title"] if result["knowledge_points"] else "",
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "timestamp": datetime.utcnow(),
             })
 
         # Save updated profile (snake_case for storage layer)

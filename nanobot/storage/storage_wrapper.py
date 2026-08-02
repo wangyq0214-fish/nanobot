@@ -266,6 +266,10 @@ class StorageWrapper:
         """Save homework data."""
         await self.storage.update_homework(hw_id, data)
 
+    async def list_exams(self, course_id: str) -> List[Dict[str, Any]]:
+        """List exams for a course."""
+        return await self.storage.list_exams(course_id)
+
     async def update_homework(self, hw_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Update homework fields (e.g. status)."""
         return await self.storage.update_homework(hw_id, data)

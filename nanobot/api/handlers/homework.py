@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -61,7 +62,7 @@ async def handle_homework_create(
         return http_error(400, "title is required")
 
     hw_id = f"hw{generate_id()}"
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    now = datetime.utcnow()
     status = payload.get("status", "draft")
 
     hw_data = {
@@ -124,7 +125,7 @@ async def handle_homework_submit(
         return payload
 
     answers = payload.get("answers", {})
-    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    now = datetime.utcnow()
 
     if existing:
         submission_data = {

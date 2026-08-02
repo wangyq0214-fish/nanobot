@@ -11,6 +11,8 @@ from .courses import (
 from .grading import (
     handle_ai_generate_questions,
     handle_ai_grade,
+    handle_ai_grade_cropgpt,
+    handle_ai_grade_general,
     handle_ai_grade_question,
     handle_homework_delete,
     handle_homework_grade,
@@ -97,6 +99,20 @@ from .student_resources import (
 )
 from .tutor import handle_tutor_profile
 
+from .notifications import (
+    handle_discussion_create,
+    handle_discussion_list,
+    handle_discussion_reply,
+    handle_notification_create,
+    handle_notification_list,
+    handle_notification_mark_read,
+)
+from .resources import (
+    handle_resource_create,
+    handle_resource_delete,
+    handle_resource_list,
+)
+
 __all__ = [
     "handle_analytics_summary",
     "handle_courses_list",
@@ -114,6 +130,8 @@ __all__ = [
     "handle_submission_detail",
     "handle_homework_grade",
     "handle_ai_grade",
+    "handle_ai_grade_cropgpt",
+    "handle_ai_grade_general",
     "handle_ai_grade_question",
     "handle_homework_publish",
     "handle_homework_delete",
@@ -177,4 +195,15 @@ __all__ = [
     "handle_save_latex_draft",
     "handle_list_latex_draft_versions",
     "handle_create_latex_compile_record",
+    # Resources
+    "handle_resource_list",
+    "handle_resource_create",
+    "handle_resource_delete",
+    # Notifications & discussions
+    "handle_notification_list",
+    "handle_notification_create",
+    "handle_notification_mark_read",
+    "handle_discussion_list",
+    "handle_discussion_create",
+    "handle_discussion_reply",
 ]

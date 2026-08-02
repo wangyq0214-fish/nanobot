@@ -69,7 +69,19 @@ async def init_storage(backend: str = "file", **kwargs) -> None:
         await init_database(db_config)
 
         _storage = DatabaseStorage()
-        logger.info("Initialized database storage")
+        logger.info("Initialized database storage (PostgreSQL)")
+
+    elif backend == "mysql":
+        from ..config.mysql_database import init_mysql_database, DatabaseConfig
+
+        db_config = kwargs.get("db_config")
+        if db_config is None:
+            db_config = DatabaseConfig()
+        await init_mysql_database(db_config)
+
+        from .mysql_storage import MySQLStorage
+        _storage = MySQLStorage()
+        logger.info("Initialized MySQL database storage")
 
     else:
         raise ValueError(f"Unknown storage backend: {backend}")
@@ -99,20 +111,40 @@ def get_storage() -> BaseStorage:
 
 
 def is_database_configured() -> bool:
-    """Check if DATABASE_URL is configured."""
+    """Check if DATABASE_URL or MYSQL_DATABASE_URL is configured."""
     import os
-    return bool(os.environ.get("DATABASE_URL", ""))
+    return bool(os.environ.get("DATABASE_URL", "") or os.environ.get("MYSQL_DATABASE_URL", ""))
+
+def is_mysql_configured() -> bool:
+    """Check if MYSQL_DATABASE_URL is configured."""
+    import os
+    return bool(os.environ.get("MYSQL_DATABASE_URL", ""))
 
 
 async def auto_init_storage() -> None:
     """
-    Auto-initialize storage based on DATABASE_URL environment variable.
-    If DATABASE_URL is set, use database storage. Otherwise, use file storage.
+    Auto-initialize storage based on environment variables.
+    Priority: MYSQL_DATABASE_URL > DATABASE_URL > file storage
     """
-    if is_database_configured():
+    if is_mysql_configured():
+        try:
+            await init_storage("mysql")
+            logger.info("Auto-initialized MySQL database storage")
+        except Exception as e:
+            logger.warning(f"Failed to init MySQL: {e}, trying PostgreSQL...")
+            if is_database_configured():
+                try:
+                    await init_storage("database")
+                    logger.info("Falling back to PostgreSQL database storage")
+                except Exception as e2:
+                    logger.warning(f"Failed to init PostgreSQL: {e2}, falling back to file storage")
+                    await init_storage("file")
+            else:
+                await init_storage("file")
+    elif is_database_configured():
         try:
             await init_storage("database")
-            logger.info("Auto-initialized database storage")
+            logger.info("Auto-initialized database storage (PostgreSQL)")
         except Exception as e:
             logger.warning(f"Failed to init database: {e}, falling back to file storage")
             await init_storage("file")
@@ -129,6 +161,9 @@ async def close_storage() -> None:
         if isinstance(_storage, DatabaseStorage):
             from ..config.database import close_database
             await close_database()
+        elif hasattr(_storage, '__class__') and _storage.__class__.__name__ == 'MySQLStorage':
+            from ..config.mysql_database import close_mysql_database
+            await close_mysql_database()
 
         _storage = None
         logger.info("Storage closed")

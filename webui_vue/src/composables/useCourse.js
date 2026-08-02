@@ -138,6 +138,14 @@ export function useCourse() {
     return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade`, { studentId })
   }
 
+  async function aiGradeCropGpt(courseId, hwId, studentId) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-cropgpt`, { studentId })
+  }
+
+  async function aiGradeGeneral(courseId, hwId, studentId) {
+    return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-general`, { studentId })
+  }
+
   async function aiGradeQuestion(courseId, hwId, questionData) {
     return authMutate(`/api/courses/${courseId}/homework/${hwId}/ai-grade-question`, questionData)
   }
@@ -183,13 +191,57 @@ export function useCourse() {
     return authMutate(`/api/courses/${courseId}/question-bank/${questionId}/update`, data)
   }
 
+  // --- Resources ---
+  async function fetchResources(courseId, type = null) {
+    let url = `/api/courses/${courseId}/resources`
+    if (type) url += `?type=${type}`
+    const data = await authGet(url)
+    return data.resources || []
+  }
+
+  async function createResource(courseId, resourceData) {
+    return authMutate(`/api/courses/${courseId}/resources/create`, resourceData)
+  }
+
+  async function deleteResource(courseId, resourceId) {
+    return authMutate(`/api/courses/${courseId}/resources/${resourceId}/delete`, {})
+  }
+
+  // --- Notifications ---
+  async function fetchNotifications() {
+    const data = await authGet('/api/notifications')
+    return data.notifications || []
+  }
+
+  async function createNotification(data) {
+    return authMutate('/api/notifications/create', data)
+  }
+
+  // --- Discussions ---
+  async function fetchDiscussions() {
+    const data = await authGet('/api/discussions')
+    return data.discussions || []
+  }
+
+  async function createDiscussion(data) {
+    return authMutate('/api/discussions/create', data)
+  }
+
+  async function replyDiscussion(discussionId, text) {
+    return authMutate(`/api/discussions/${discussionId}/reply`, { text })
+  }
+
   return {
     courses, currentCourse, members, lessons, homeworkList,
     fetchCourses, createCourse, joinCourse, fetchCourseDetail,
     fetchMembers, fetchLessons, fetchLessonDetail,
     fetchHomeworkList, createHomework, fetchHomeworkDetail,
-    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission, aiGradeSubmission, aiGradeQuestion, deleteHomework,
+    submitHomework, fetchSubmissions, fetchSubmissionDetail, gradeSubmission, aiGradeSubmission,
+    aiGradeCropGpt, aiGradeGeneral, aiGradeQuestion, deleteHomework,
     publishHomework, aiGenerateQuestions,
     fetchQuestionBank, addToQuestionBank, batchAddToQuestionBank, deleteFromQuestionBank, updateQuestionBank,
+    fetchResources, createResource, deleteResource,
+    fetchNotifications, createNotification,
+    fetchDiscussions, createDiscussion, replyDiscussion,
   }
 }

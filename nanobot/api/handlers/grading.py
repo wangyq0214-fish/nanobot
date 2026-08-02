@@ -298,6 +298,130 @@ async def handle_ai_grade_question(
         return http_error(500, str(e))
 
 
+async def handle_ai_grade_cropgpt(
+    request: WsRequest,
+    storage: StorageWrapper,
+    course_id: str,
+    hw_id: str,
+    *,
+    identity: dict[str, str],
+) -> Response:
+    """CropGPT vision model evaluation — dual-model grading lane 1.
+
+    Stub: returns mock evaluation data. Implement vision model call here
+    (e.g. plant disease image analysis for internship reports).
+    """
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
+    if role != "teacher":
+        return http_error(403, "Only teachers can use AI grading")
+
+    course = await storage.get_course(course_id)
+    if not course:
+        return http_error(404, "Course not found")
+    teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+    if teacher_id != user_id:
+        return http_error(403, "Only the course owner can use AI grading")
+
+    query = parse_query(request.path)
+    payload = parse_mutation_data(query)
+    if isinstance(payload, Response):
+        return payload
+
+    student_id = payload.get("studentId", "").strip()
+    if not student_id:
+        return http_error(400, "studentId is required")
+
+    submission = await storage.get_submission(hw_id, student_id)
+    if not submission:
+        return http_error(404, "Submission not found")
+
+    hw = await storage.get_homework(hw_id)
+    if not hw:
+        return http_error(404, "Homework not found")
+
+    logger.info(
+        "[cropgpt] stub called for hw={}, student={}, course={}",
+        hw_id, student_id, course_id,
+    )
+
+    # --- Stub: replace with real CropGPT vision model call ---
+    # TODO: Call CropGPT API with report images/submission content
+    # Returns: { score, feedback, strengths, improvements, vision_analysis }
+    return http_json_response({
+        "ok": True,
+        "stub": True,
+        "model": "cropgpt-vision",
+        "score": None,  # teacher reviews & confirms
+        "feedback": "🌾 CropGPT 视觉评估结果（接口预留中）：请上传实习报告中的病害图像，CropGPT 将自动识别病害类型、严重程度并提供评分建议。",
+        "strengths": ["接口预留 - CropGPT 视觉分析赋能"],
+        "improvements": [{"title": "等待接入", "detail": "CropGPT 视觉模型接口已预留，待后续实现"}],
+        "visionAnalysis": None,
+    })
+
+
+async def handle_ai_grade_general(
+    request: WsRequest,
+    storage: StorageWrapper,
+    course_id: str,
+    hw_id: str,
+    *,
+    identity: dict[str, str],
+) -> Response:
+    """General LLM model evaluation — dual-model grading lane 2.
+
+    Stub: returns mock evaluation data. Implement general-purpose LLM call here
+    (e.g. text content quality, logic, completeness assessment).
+    """
+    role = identity.get("role", "")
+    user_id = identity.get("user_id", "")
+    if role != "teacher":
+        return http_error(403, "Only teachers can use AI grading")
+
+    course = await storage.get_course(course_id)
+    if not course:
+        return http_error(404, "Course not found")
+    teacher_id = course.get("teacherId") or course.get("teacher_id", "")
+    if teacher_id != user_id:
+        return http_error(403, "Only the course owner can use AI grading")
+
+    query = parse_query(request.path)
+    payload = parse_mutation_data(query)
+    if isinstance(payload, Response):
+        return payload
+
+    student_id = payload.get("studentId", "").strip()
+    if not student_id:
+        return http_error(400, "studentId is required")
+
+    submission = await storage.get_submission(hw_id, student_id)
+    if not submission:
+        return http_error(404, "Submission not found")
+
+    hw = await storage.get_homework(hw_id)
+    if not hw:
+        return http_error(404, "Homework not found")
+
+    logger.info(
+        "[general-ai] stub called for hw={}, student={}, course={}",
+        hw_id, student_id, course_id,
+    )
+
+    # --- Stub: replace with real general LLM model evaluation ---
+    # TODO: Call general LLM API with submission content
+    # Returns: { score, feedback, strengths, improvements, logic_assessment }
+    return http_json_response({
+        "ok": True,
+        "stub": True,
+        "model": "general-llm",
+        "score": None,  # teacher reviews & confirms
+        "feedback": "🤖 通用模型评估结果（接口预留中）：将对报告的逻辑结构、内容完整性、语言表达进行综合评分。",
+        "strengths": ["接口预留 - 通用大模型文本评估"],
+        "improvements": [{"title": "等待接入", "detail": "通用模型评估接口已预留，待后续实现"}],
+        "logicAssessment": None,
+    })
+
+
 async def handle_ai_generate_questions(
     request: WsRequest,
     storage: StorageWrapper,

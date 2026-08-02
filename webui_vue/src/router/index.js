@@ -32,6 +32,21 @@ const routes = [
         component: () => import('../pages/teacher/HomeworkGrading.vue'),
       },
       {
+        path: 'assign',
+        name: 'Assignments',
+        component: () => import('../pages/teacher/Assignments.vue'),
+      },
+      {
+        path: 'grading',
+        name: 'GradingCenter',
+        component: () => import('../pages/teacher/GradingCenter.vue'),
+      },
+      {
+        path: 'tools',
+        name: 'TeachingTools',
+        component: () => import('../pages/teacher/TeachingTools.vue'),
+      },
+      {
         path: 'analytics',
         name: 'Analytics',
         component: () => import('../pages/teacher/AnalyticsDashboard.vue'),
@@ -96,6 +111,26 @@ const routes = [
         path: 'my-resources',
         name: 'MyResources',
         component: () => import('../pages/student/MyResources.vue'),
+      },
+      {
+        path: 'homework-exam',
+        name: 'StudentHomeworkExam',
+        component: () => import('../pages/student/HomeworkExam.vue'),
+      },
+      {
+        path: 'tutor-center',
+        name: 'StudentTutorCenter',
+        component: () => import('../pages/student/TutorCenter.vue'),
+      },
+      {
+        path: 'error-book',
+        name: 'StudentErrorBook',
+        component: () => import('../pages/student/ErrorBook.vue'),
+      },
+      {
+        path: 'analytics',
+        name: 'StudentAnalyticsView',
+        component: () => import('../pages/student/StudentAnalytics.vue'),
       },
     ],
   },

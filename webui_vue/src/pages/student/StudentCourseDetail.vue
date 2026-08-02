@@ -13,8 +13,9 @@
 
       <!-- Tabs -->
       <div class="tab-bar">
-        <span class="tab-item" :class="{ active: activeTab === 'lessons' }" @click="activeTab = 'lessons'">课时</span>
+        <span class="tab-item" :class="{ active: activeTab === 'lessons' }" @click="activeTab = 'lessons'">学习章节</span>
         <span class="tab-item" :class="{ active: activeTab === 'homework' }" @click="activeTab = 'homework'">作业</span>
+        <span class="tab-item" :class="{ active: activeTab === 'exams' }" @click="activeTab = 'exams'">考试</span>
       </div>
 
       <!-- Tab: Lessons -->
@@ -113,6 +114,34 @@
           </div>
         </div>
       </div>
+
+      <!-- Tab: 考试 -->
+      <div v-if="activeTab === 'exams'" class="tab-content">
+        <div v-if="examList.length === 0" class="empty-hint">暂无考试</div>
+        <div v-for="e in examList" :key="e.id" class="exam-card">
+          <div class="exam-info">
+            <div class="exam-title-row">
+              <span class="exam-title">{{ e.title }}</span>
+              <span class="exam-status" :class="e.status">
+                {{ e.status === 'ongoing' ? '进行中' : e.status === 'submitted' ? '已交卷' : e.status === 'ended' ? '已结束' : '未开始' }}
+              </span>
+            </div>
+            <div class="exam-meta">
+              <span>时长: {{ e.duration }}分钟</span>
+              <span>·</span>
+              <span>开始: {{ e.startTime }}</span>
+              <span>·</span>
+              <span>总分: {{ e.totalPoints }}分</span>
+            </div>
+          </div>
+          <div class="exam-actions">
+            <button v-if="e.status === 'ongoing'" class="btn-primary btn-sm">进入考试</button>
+            <span v-else-if="e.status === 'submitted'" class="exam-score">{{ e.score }}分</span>
+            <span v-else-if="e.status === 'upcoming'" class="exam-countdown">待开始</span>
+            <span v-else class="exam-ended-text">已结束</span>
+          </div>
+        </div>
+      </div>
     </div>
 </template>
 
@@ -145,6 +174,11 @@ const answers = reactive({})
 const submissions = ref({})
 const submitting = ref(null)
 const submitError = reactive({})
+
+const examList = ref([
+  { id: 1, title: '植物病理学期中考试', duration: 60, startTime: '7月30日 14:00', totalPoints: 100, status: 'upcoming', score: null },
+  { id: 2, title: '植保基础单元测验', duration: 30, startTime: '7月25日 10:00', totalPoints: 50, status: 'ended', score: 42 },
+])
 
 function toggleTheme() { isDark.value = !isDark.value; document.body.classList.toggle('dark', isDark.value) }
 function handleLogout() { authLogout(); router.push('/login') }
@@ -671,6 +705,34 @@ body.dark {
 .btn-primary:not(:disabled):hover {
   background: var(--accent-deep);
 }
+
+/* ========== 考试卡片 ========== */
+.exam-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  transition: border-color 0.3s;
+}
+.exam-card:hover { border-color: var(--border-hover); }
+.exam-info { flex: 1; min-width: 0; }
+.exam-title-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.exam-title { font-weight: 700; font-size: 0.82rem; color: var(--text-primary); }
+.exam-status { font-size: 0.65rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+.exam-status.upcoming { background: var(--bg-subtle); color: var(--text-muted); }
+.exam-status.ongoing { background: rgba(13,148,136,0.08); color: var(--success); }
+.exam-status.submitted { background: rgba(13,148,136,0.08); color: var(--success); }
+.exam-status.ended { background: var(--bg-subtle); color: var(--text-muted); }
+.exam-meta { display: flex; gap: 10px; font-size: 0.7rem; color: var(--text-muted); }
+.exam-actions { flex-shrink: 0; margin-left: 16px; }
+.exam-score { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); }
+.exam-countdown { font-size: 0.74rem; color: var(--text-muted); }
+.exam-ended-text { font-size: 0.74rem; color: var(--text-muted); }
+.btn-sm { padding: 6px 16px; font-size: 0.72rem; border-radius: 8px; }
 
 /* 空状态 */
 .empty-hint, .loading-hint {
